@@ -1,0 +1,63 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/canon-loader.sh\"",
+            "timeout": 5,
+            "statusMessage": "Loading the canon..."
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/handoff-prompt.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking whether this session has residue to hand off..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task|Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/rules-loader.sh\"",
+            "timeout": 5,
+            "statusMessage": "Loading the rules for this scope..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bash-guard.sh\"",
+            "timeout": 5,
+            "statusMessage": "Checking command against security policy..."
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-guard.sh\"",
+            "timeout": 5,
+            "statusMessage": "Checking the agent spawn returns its report..."
+          }
+        ]
+      }
+    ]
+  }
+}

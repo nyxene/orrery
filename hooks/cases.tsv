@@ -1,0 +1,169 @@
+# Case corpus for the guards. One case per line: expectation TAB command.
+# `deny` means the guard must refuse it; `allow` means it must pass through.
+#
+# Run it with `hooks/guard-test.sh`. Run `hooks/guard-test.sh --mutate` to check the corpus
+# still pins the guard: that run blanks one decision line at a time and reports
+# any mutant the corpus fails to kill. Every case below marked with a mutant
+# number was added because a surviving mutant showed nothing was holding it.
+#
+# A 100% mutation score proves this corpus pins the code that is here. It cannot
+# find a check that is missing — those are found adversarially, and the cases
+# they produce are marked `bypass`.
+
+# --- 1a. secrets and machine config: no access at all -----------------------
+deny	cat /etc/passwd
+deny	cat /private/etc/shadow
+deny	ls /var/db/
+deny	cd /var/root
+
+# --- 1b. system trees: read yes, touch no -----------------------------------
+deny	rm -rf /usr/local/lib
+deny	/bin/rm -rf /usr/local/lib
+deny	touch /usr/local/lib/x
+deny	rsync -a . /usr/local/lib/
+deny	find /usr/local/lib -delete
+deny	find /usr/local/lib -exec rm {} +
+deny	cat evil > /usr/local/lib/x
+deny	echo x>/usr/local/lib/y
+# a redirect whose target basename is itself a reader: only the redirect check
+# catches these, and nothing held it until a surviving mutant said so
+deny	echo pwn > /usr/local/bin/cat
+deny	cat a >> /usr/lib/find
+deny	cp x /usr/local/lib/y
+deny	sed -i s/a/b/ /usr/local/lib/x
+deny	python3 -c "import shutil; shutil.rmtree('/usr/local/lib')"
+deny	sudo rm -rf /usr/local/lib
+deny	ln -sf /dev/null /usr/local/lib/x
+deny	tee /usr/local/lib/x < in
+deny	cat x | tee /usr/local/lib/y
+deny	tar -xzf x.tgz -C /usr/local
+allow	ls -la /usr/local/bin
+allow	cat /usr/local/lib/x
+allow	grep -r foo /usr/include
+allow	du -sh /usr/local
+allow	otool -L /usr/lib/libSystem.dylib
+allow	diff /usr/share/a /usr/share/b
+allow	ls /usr/local/lib | head -20
+allow	export PATH=/usr/local/bin:$PATH
+allow	PATH=/usr/bin:$PATH make
+
+# bypasses found adversarially in audit round 3
+deny	echo $(rm -rf /usr/local/lib)
+deny	echo `rm -rf /usr/local/lib`
+deny	env rm -rf /usr/local/lib
+deny	command rm -rf /usr/local/lib
+deny	sed --in-place s/a/b/ /usr/local/lib/x
+deny	awk -v f=/usr/local/lib/x 'BEGIN{print "pwn" > f}'
+
+# false positives measured in audit round 3: reading and running are not writing
+allow	/usr/bin/python3 script.py
+allow	/usr/bin/env node build.js
+allow	node /usr/local/lib/node_modules/x/bin.js
+allow	cp /usr/share/dict/words .
+allow	codesign -dv /usr/local/bin/tool
+# readers that write nothing at all, refused until the list was widened (#4)
+allow	lsof /usr/lib/libSystem.B.dylib
+allow	hexdump -C /usr/lib/dyld
+allow	objdump -d /usr/bin/true
+allow	nl /usr/share/dict/words
+# the value of a wrapper flag is not the verb: this was judged on the word `root`
+allow	sudo -u root cat /usr/local/lib/x
+# gh talks to GitHub and git writes only under .git: system paths in their
+# arguments are text, and the destructive git verbs are 3a's job
+allow	gh issue create --body "the guard protects /System and /Library"
+allow	git commit -m "docs: cover /usr and /lib in the guard"
+# ~/Library is the user's own data, not a system tree
+allow	mkdir -p ~/Library/Application-Support/myapp
+allow	open ~/Library/Logs
+allow	ls ~/Library/Caches
+
+# --- 1c. credential directories under home ----------------------------------
+deny	cat ~/.ssh/id_rsa
+deny	ls ~/.aws/	# mutant L88
+
+# --- 1d. cd outside the project ---------------------------------------------
+deny	cd /Users/someoneelse/project	# mutant L96
+allow	cd {ROOT}/skills
+
+# --- 2. secret files ---------------------------------------------------------
+deny	cat .env
+deny	cat config/credentials.json
+allow	cat .env.example
+
+# --- 3a. destructive git and DB ----------------------------------------------
+deny	git reset --hard HEAD~1
+deny	git push --force origin main
+deny	git clean -fdx
+deny	git branch -D main
+deny	git filter-branch --tree-filter x HEAD	# mutant L112
+deny	git checkout .	# mutant L113
+# git's global options sit where every pattern here reads the subcommand
+deny	git -C /Users/someone/dev clean -fdx
+deny	git -C /Users/someone/dev reset --hard HEAD~5
+deny	git --no-pager branch -D main
+deny	psql -c "DROP TABLE users"	# mutant L115
+deny	psql -c "TRUNCATE TABLE users"	# mutant L116
+allow	git status
+allow	git rm rules/x.md
+allow	git checkout main
+
+# --- 3b. deletion outside the session scratchpad ------------------------------
+deny	rm -rf ~/dev
+deny	rm -rf /Users/someone/dev
+deny	rm -rf /home/someone/dev
+deny	rm -rf ../../../Users/someone/dev
+deny	rm -rf "$HOME/dev"
+deny	rm	# mutant L132
+deny	rm -rf {SCRATCH}/../../../Users/someone/dev	# mutant L141
+allow	rm -rf {SCRATCH}/x
+
+# bypasses found adversarially in audit round 3: 3b was still an allowlist of
+# destructive verbs, the design the deny-by-default rewrite ruled out for 1b.
+deny	bash -c "rm -rf ~/dev"
+deny	xargs rm -rf < list
+deny	find ~/dev -name '*.md' -delete
+deny	perl -e 'unlink glob "/Users/someone/dev/*"'
+deny	echo x | xargs -I{} rm -rf {}
+
+# bypasses found adversarially against the round-3 version (#5). Each of the
+# first three let every verb on the list through at once, which is worth more
+# than any word added to it: a `git` at the head exempted the whole command,
+# `segments()` cut inline interpreter code into pieces before it was read, and a
+# wrapper flag's value was read as the verb.
+deny	git status && rm -rf ~/dev
+deny	git log --oneline && rm -rf /Users/someone/dev
+deny	python3 -c "import shutil; shutil.rmtree('/Users/someone/dev')"
+deny	python3 -c "import os; os.remove('/Users/someone/dev/x')"
+deny	node -e "require('fs').rmSync('/Users/someone/dev',{recursive:true})"
+deny	sudo -u root rm -rf ~/dev
+deny	nice -n 10 rm -rf ~/dev
+# a second dash is still a flag that deletes
+deny	rsync -a --delete /tmp/empty/ ~/dev/
+# the trash family, and coreutils under its Homebrew spelling
+deny	trash ~/dev
+deny	gio trash ~/dev
+deny	safe-rm -rf ~/dev
+deny	trash-put ~/dev
+deny	grm -rf ~/dev
+allow	npm ci
+allow	ls ~/dev
+allow	cat ~/notes.md
+allow	gh pr create --title "chore: rm dead code"
+allow	git commit -m "fix: remove the old rm handler"
+allow	gh issue comment 1 --body "the rm path is denied"
+# a remote branch is git's to delete and 3a governs the destructive git verbs;
+# an interpreter handed a file, not inline code, is running a script
+allow	git push --delete origin feature-x
+allow	node methodology/build.mjs
+
+# ~/Library is not one thing. Exempting the whole tree to fix a false positive
+# opened its secret stores and its login-item directory in a single line.
+deny	cat ~/Library/Keychains/login.keychain-db
+deny	cp ~/Library/Cookies/Cookies.binarycookies /tmp/x
+deny	cat ~/Library/Messages/chat.db
+deny	ls ~/Library/Mail/
+deny	cat ~/Library/Safari/History.db
+deny	echo plist > ~/Library/LaunchAgents/com.evil.plist
+deny	cp agent.plist ~/Library/LaunchAgents/
+allow	ls ~/Library/LaunchAgents
+allow	cat ~/Library/Preferences/com.apple.dock.plist

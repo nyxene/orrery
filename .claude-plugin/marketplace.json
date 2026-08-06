@@ -1,0 +1,17 @@
+{
+  "name": "orrery",
+  "owner": {
+    "name": "Evgeniy Kovrov",
+    "url": "https://github.com/nyxene"
+  },
+  "metadata": {
+    "description": "Methodology and tooling for running AI-agent software projects on GitHub with Claude."
+  },
+  "plugins": [
+    {
+      "name": "orrery",
+      "source": "./",
+      "description": "The Orrery methodology library: canon, thirteen skills, four agents, guards and earned rules."
+    }
+  ]
+}

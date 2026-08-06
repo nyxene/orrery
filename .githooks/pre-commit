@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Runs the quality gates CLAUDE.md declares, because declaring them is not
+# enough: a gate that runs only when someone remembers is a gate that skips.
+#
+# Enabled with `git config core.hooksPath .githooks`, which is why this lives in
+# the repository rather than in `.git/hooks` — a hook nobody else receives
+# protects one machine.
+#
+# `--no-verify` skips it. That is deliberate and not a hole: the point is that
+# skipping becomes a decision someone typed, rather than something that happened.
+set -uo pipefail
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+fail=0
+run() { # $1 = name, rest = command
+  local name="$1"; shift
+  if out=$("$@" 2>&1); then
+    printf '\033[32m✓\033[0m %s\n' "$name"
+  else
+    printf '\033[31m✗\033[0m %s\n' "$name"
+    printf '%s\n' "$out" | sed 's/^/    /'
+    fail=1
+  fi
+}
+
+run "plugin schema"  claude plugin validate . --strict
+run "guard corpus"   ./hooks/guard-test.sh
+run "library claims" ./skills/sharpen/check-claims.sh
+
+# The mutation pass takes minutes, so it runs only when the thing it pins is
+# being changed.
+if git diff --cached --name-only | grep -qE '^hooks/(bash-guard\.sh|cases\.tsv)$'; then
+  printf '  … guard changed, running the mutation pass (minutes)\n'
+  run "guard mutation" ./hooks/guard-test.sh --mutate
+fi
+
+if [ "$fail" -ne 0 ]; then
+  printf '\nCommit refused: a declared gate is red. Fix it, or `git commit --no-verify` and say why.\n'
+  exit 1
+fi

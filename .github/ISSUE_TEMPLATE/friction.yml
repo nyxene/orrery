@@ -1,0 +1,67 @@
+name: Friction
+description: A skill, guard or rule got in the way, fired wrongly, or gave bad advice
+labels: ["tooling-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the most useful report there is, and the hardest to get any
+        other way. A guard that refused something reasonable, a skill that
+        fired when it should not have, a rule whose advice was wrong in your
+        context — all of it belongs here.
+
+        You do not need a fix, or even a diagnosis. What happened is enough.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "0.10.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of friction
+      options:
+        - A guard refused something reasonable
+        - A skill fired when it should not have
+        - A skill did not fire when it should have
+        - A rule's advice was wrong in my context
+        - The wording sent me the wrong way
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you were doing, what fired, and what it did.
+    validations:
+      required: true
+
+  - type: textarea
+    id: cost
+    attributes:
+      label: What it cost you
+      description: >
+        Time, a wrong commit, a lost train of thought, or nothing but annoyance.
+        Say it plainly — this is what decides whether it gets fixed and how soon.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened instead
+      description: Optional. Leave it blank if you are not sure.
+
+  - type: checkboxes
+    id: hygiene
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have taken out anything private — project names, paths, code, business context
+          required: true

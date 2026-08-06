@@ -1,0 +1,8 @@
+.DS_Store
+*.local.json
+.claude/settings.local.json
+node_modules/
+
+# Editor state — machine-specific, never shared
+.idea/
+.vscode/
