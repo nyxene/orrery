@@ -9,6 +9,53 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.10.3
+
+Three refusals that were wrong, and one of them had been wrong since 0.10.0.
+
+### The guard no longer refuses your own scratchpad
+
+A delete inside the session scratchpad was denied whenever that directory did
+not exist yet. The check resolves the target against the filesystem before
+comparing it, and when the parent is missing the resolution produced `/x` — a
+path outside the scratchpad by construction, so the deny was certain.
+
+It only ever happened where the directory was absent, which is never on a
+machine that has been running sessions and always on a fresh one. That is why
+0.10.0 and 0.10.2 shipped with it: the corpus is green on any developer's
+machine and red on every clean checkout.
+
+Resolution now falls back to collapsing `.` and `..` textually when the
+filesystem cannot answer. A path that climbs out of the scratchpad is still
+refused — the fallback is normalisation, not the raw string, and the difference
+is exactly what a prefix test can be fooled by.
+
+### `git tag -d` is allowed again
+
+0.10.2 shipped a section that refused every spelling of ref removal, including
+`git tag -d`, `git tag --delete`, `git branch -d` and `git push --delete`. It
+was withdrawn in the workshop the day after it was written and this release is
+the first that could carry the withdrawal.
+
+The reason it went: a `PreToolUse` hook sees a command, not who typed it, so a
+rule meant to stop an agent from destroying a ref the operator reserved stops
+the operator too. Two deny-list entries go with it.
+
+### `feedback` files nothing, and hands you a link instead
+
+The skill used to run `gh issue create` against a fixed repository. It is
+installed into projects that are not that repository, so the command was
+reachable from every one of them, and only the surrounding prose stood between
+that and an issue nobody asked for.
+
+Now it prints the report and a URL with the form already filled in from it, and
+you submit it or it does not get submitted. Long reports do not fit in a URL, so
+the summaries are prefilled and the rest is printed underneath to paste — the
+skill says so rather than sending a link that arrives cut.
+
+Pre-1.0: skill names and layout may still move between releases. `jq` must be
+on `PATH` before any hook fires.
+
 ## 0.10.2
 
 Release notes get their own files, and this release is the first to have one.

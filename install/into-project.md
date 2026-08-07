@@ -63,7 +63,7 @@ local layer, not in a library that installs into all of them.
 
 ## Merge the deny-list
 
-`hooks/permissions.json` holds 95 deny rules — system paths, secret files,
+`hooks/permissions.json` holds 93 deny rules — system paths, secret files,
 destructive git. Merge its `permissions.deny` array into the project's
 `.claude/settings.json`. It is additive and safe to apply to any repository.
 
