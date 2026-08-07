@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.10.2-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.10.3-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg)](https://github.com/nyxene/orrery/actions/workflows/ci.yml)
 
@@ -76,7 +76,7 @@ its moment arrives.
 - **Five hooks** — two guards (a Bash guard with a mutation-tested case corpus,
   and an agent guard), two loaders for the canon and for scoped rules, and a
   prompt that catches unfinished work before a context reset takes it.
-- **A deny-list** — 95 deny rules covering system paths, secret files and
+- **A deny-list** — 93 deny rules covering system paths, secret files and
   destructive git, additive to your existing settings and safe on any repo.
 
 ## What makes the rules different
@@ -126,7 +126,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.10.2 · Canon, thirteen skills, four agents, 17 rules, five hooks
+Version 0.10.3 · Canon, thirteen skills, four agents, 17 rules, five hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

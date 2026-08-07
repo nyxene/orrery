@@ -23,8 +23,6 @@
       "Bash(git restore .*)",
       "Bash(git symbolic-ref --delete*)",
       "Bash(git symbolic-ref -d*)",
-      "Bash(git tag --delete*)",
-      "Bash(git tag -d*)",
       "Bash(git update-ref --delete*)",
       "Bash(git update-ref -d*)",
       "Edit(//Library/**)",

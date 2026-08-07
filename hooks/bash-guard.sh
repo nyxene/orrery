@@ -55,6 +55,24 @@ segments() {
   sed -E 's@\$\(@\n@g; s@[`(){}]@\n@g' <<<"$1" | tr ';&|<>' '\n'
 }
 
+# Collapses `.` and `..` in an absolute path without asking the filesystem, so
+# a path whose directory does not exist can still be compared against a prefix.
+# Used only when physical resolution is impossible; symlinks stay a physical
+# question and keep the physical answer wherever the directory is really there.
+normalize() {
+  local out="" seg
+  local -a segs
+  IFS=/ read -ra segs <<<"$1"
+  for seg in "${segs[@]}"; do
+    case "$seg" in
+      ''|.) ;;
+      ..) out="${out%/*}" ;;
+      *) out="$out/$seg" ;;
+    esac
+  done
+  printf '%s' "${out:-/}"
+}
+
 # The verb a segment actually runs. Leading variable assignments and exec
 # wrappers are stripped rather than trusted — `env`, `command`, `sudo` and
 # `xargs` all run something else, so judging them as the verb judges nothing.
@@ -254,70 +272,34 @@ if grep -qE "$gitpre"'[[:space:]]+reset[[:space:]]+.*--hard' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+(checkout|restore)[[:space:]]+([^|;&]*[[:space:]])?\.([[:space:]]|$)' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+branch[[:space:]]+([^|;&]*[[:space:]])?-[a-zA-Z]*D' <<<"$cmd" \
   || grep -qE "$gitpre"'[[:space:]]+(update-ref|symbolic-ref)[[:space:]]+([^|;&]*[[:space:]])?(-d([[:space:]]|$)|--delete)' <<<"$lower" \
-  || grep -qE "$gitpre"'[[:space:]]+tag[[:space:]]+([^|;&]*[[:space:]])?(-[a-z]*d([[:space:]]|$)|--delete)' <<<"$lower" \
   || grep -qE '\bdrop[[:space:]]+(table|database|schema)\b' <<<"$lower" \
   || grep -qE '\btruncate[[:space:]]+table\b' <<<"$lower"; then
-  deny "Destructive git/DB operation (reset --hard, push --force, clean -f, checkout/restore ., branch -D, update-ref -d, tag -d, DROP/TRUNCATE, ...) is always denied."
+  deny "Destructive git/DB operation (reset --hard, push --force, clean -f, checkout/restore ., branch -D, update-ref -d, DROP/TRUNCATE, ...) is always denied."
 fi
 
 # `update-ref` and `symbolic-ref` are plumbing: they remove a ref with none of
 # the checks porcelain applies, so `-d` there is dangerous whatever it names.
-# `branch -d` and `push --delete` are not on that list on purpose — git refuses
-# `-d` on an unmerged branch, and retiring a merged feature branch is ordinary
-# work the corpus already says is allowed. What makes a ref untouchable here is
-# *which ref it is*, and that is 3c's question rather than this one.
-
-# 3c. Refs that a tool owns, and a session must not touch by hand.
+# Nothing else was added, and a wider version was tried and withdrawn.
 #
-# `branch -D` was on the list above and nothing else was, so every other way to
-# destroy a ref was allowed: `update-ref -d`, `branch -d`, `branch --delete`,
-# `tag -d`, `push --delete`, and a `:refspec` push. That is not hypothetical —
-# on 2026-08-07 a stage branch the owner had explicitly reserved was deleted
-# with `git update-ref -d`, in a batch, by an assistant that believed `branch -D`
-# was the guard's coverage. A list of spellings is one spelling short of what
-# somebody reaches for, which is the argument this repository already accepts
-# about deletion verbs.
+# For one day this file also carried a section 3c: deny-by-default over
+# `stage/v*`, `refs/promote/*` and `refs/tags/v*`, written after a reserved
+# stage branch was deleted from a session. It was removed on the owner's
+# instruction, and the reason is worth keeping.
 #
-# So this half is not a list of spellings. It is deny-by-default over a *narrow
-# namespace*: three ref prefixes that exist only because a tool creates them.
-# The 1b argument applies exactly — the trigger is a place where reading is the
-# whole legitimate use from a session, so demanding a known reader costs nothing
-# and refuses everything else.
+# It did not protect the product — the product is protected by `tools/promote.sh`
+# being the only thing that can write to it, and by that phase needing a command
+# typed at the moment it runs. What 3c restrained was this assistant, and it did
+# so by restraining *everyone*: a PreToolUse hook cannot tell who typed a
+# command, so the owner lost an operation they had explicitly kept for
+# themselves, twice in one day. It also refused correct commands, because a
+# read-only `git remote get-url` in the same line as a mention of a stage ref
+# was judged by the mention.
 #
-#   stage/v*            build artifacts of tools/promote.sh — the product's next
-#                       tree. Frozen once built; the next change is a new version
-#   refs/promote/*      the record that a plan passed, which push reads
-#   refs/tags/v*        a published release, cited by consumers, immutable
-#
-# `tools/promote.sh` needs no exemption and must not have one. It names no ref on
-# its command line — `promote.sh build 0.10.0` — so the trigger never fires for
-# it, and the guard cannot see inside a script anyway. An earlier version here
-# exempted any command *containing* the script's name; the mutation pass reported
-# that line as unpinned, and reading it back showed why it should not exist at
-# all: `git update-ref -d refs/heads/stage/v0 && tools/promote.sh build 0.10.0`
-# would have been allowed by the mention alone.
-#
-# A slash may precede the name: the fully-qualified form is `refs/heads/stage/v*`
-# and excluding `/` from the boundary class made the trigger miss it entirely.
-# That was masked while a broader push rule happened to catch the same command.
-if grep -qE '(^|[^A-Za-z0-9_-])(stage/v[0-9]|refs/promote/|refs/tags/v[0-9])' <<<"$cmd"; then
-  ref_readers='log|show|show-ref|rev-parse|rev-list|ls-tree|ls-remote|for-each-ref|cat-file|diff|status|describe|name-rev|merge-base|shortlog|blame|grep'
-  bad_seg=""
-  while IFS= read -r seg; do
-    [ -z "${seg// /}" ] && continue
-    sv="$(verb_of "$seg")"
-    case "$sv" in
-      git) ;;                     # a git command — the subcommand decides
-      *) continue ;;              # not git: greps, printf, echo. Not our business
-    esac
-    # The subcommand is the first word after git and its global options.
-    sub="$(sed -E "s/^[[:space:]]*$gitpre[[:space:]]+//" <<<"$seg" | awk '{print $1}')"
-    grep -qxE "$ref_readers" <<<"$sub" || bad_seg="$seg"
-  done < <(segments "$cmd")
-  if [ -n "$bad_seg" ]; then
-    deny "Refs owned by tools/promote.sh (stage/v*, refs/promote/*, refs/tags/v*) are read-only from a session; '$bad_seg' is not a read. Use tools/promote.sh, or ask the owner to do it by hand."
-  fi
-fi
+# A guard earns its place by refusing what would be damage. One that refuses the
+# owner, on their own repository, to enforce an instruction they gave — that is
+# a guard doing the job of a rule, and it was made one instead: a reserved
+# operation runs alone and announced, never as a line inside a batch composed
+# for something else.
 
 # 3b. Deletion: allowed ONLY if every path it names resolves under the session
 #     scratchpad root.
@@ -392,7 +374,22 @@ if [ -n "$hits" ]; then
       /*) resolved="$t" ;;
       *) resolved="$project_root/$t" ;;
     esac
-    resolved="$(cd "$(dirname "$resolved")" 2>/dev/null && pwd -P)/$(basename "$resolved")" || resolved="$t"
+    # Physical resolution needs the directory to exist, and a scratchpad has to
+    # be deletable from before anything created it. The previous spelling put
+    # two substitutions side by side, so the `||` read the exit status of
+    # `basename` — which always succeeds — and a failed `cd` silently produced
+    # `/x`. Outside the scratchpad by construction, so every delete inside a
+    # scratchpad that did not exist yet was refused, and only on a machine where
+    # it did not: locally the directory is always there and the corpus was green.
+    #
+    # The literal path cannot stand in for the resolved one. `$SCRATCH/../../..`
+    # passes a prefix test unresolved and fails it resolved, which is the entire
+    # reason for resolving. So `..` is collapsed textually instead.
+    if dir="$(cd "$(dirname "$resolved")" 2>/dev/null && pwd -P)"; then
+      resolved="$dir/$(basename "$resolved")"
+    else
+      resolved="$(normalize "$resolved")"
+    fi
     if [[ "$resolved" != "$scratchpad_root"* ]]; then
       deny "Destructive delete ($t) targets a path outside the session scratchpad ($scratchpad_root); only temp files created this session may be deleted this way."
     fi

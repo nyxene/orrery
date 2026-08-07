@@ -117,6 +117,20 @@ deny	rm	# mutant L132
 deny	rm -rf {SCRATCH}/../../../Users/someone/dev	# mutant L141
 allow	rm -rf {SCRATCH}/x
 
+# The two above only exercise physical resolution, because the scratchpad root
+# exists on any machine running a session. These name a directory under it that
+# does not exist, so they take the textual path on every machine — which is the
+# path CI took for the whole root, where the guard refused its own scratchpad.
+allow	rm -rf {SCRATCH}/not-created-yet/x
+deny	rm -rf {SCRATCH}/not-created-yet/../../../../Users/someone/dev
+
+# Physical resolution, pinned where nothing else reaches: the parent exists, so
+# `cd` succeeds and the answer comes from the filesystem rather than from the
+# text. The traversal case above lands on /Users and a different section catches
+# it either way, so it pins nothing here. This one lands in /private/tmp, which
+# only the scratchpad test refuses.
+deny	rm -rf {SCRATCH}/../x	# mutant L388
+
 # bypasses found adversarially in audit round 3: 3b was still an allowlist of
 # destructive verbs, the design the deny-by-default rewrite ruled out for 1b.
 deny	bash -c "rm -rf ~/dev"
@@ -168,37 +182,19 @@ deny	cp agent.plist ~/Library/LaunchAgents/
 allow	ls ~/Library/LaunchAgents
 allow	cat ~/Library/Preferences/com.apple.dock.plist
 
-# --- 3c: refs a tool owns are read-only from a session -----------------------
-# `branch -D` was the only ref removal on the list, so every other spelling went
-# through — and on 2026-08-07 a reserved stage branch went by `update-ref`.
-deny	git update-ref -d refs/heads/stage/v0.10.0
+# Plumbing removal of a ref: `update-ref` and `symbolic-ref` apply none of the
+# checks porcelain does, so `-d` there is refused whatever it names.
+deny	git update-ref -d refs/heads/some-feature
 deny	git update-ref --delete refs/heads/stage/v0.10.0
-deny	git branch -d stage/v0.10.0
-deny	git branch --delete stage/v0.10.0
-deny	git tag -d v0.10.0
-deny	git push origin --delete stage/v0.10.0
-deny	git push origin :refs/heads/stage/v0.10.0
-deny	git push product :refs/tags/v0.10.0
-deny	git update-ref -d refs/promote/plan-ok/v0.9.0
+deny	git symbolic-ref --delete HEAD
 deny	git -C /tmp/x update-ref -d refs/heads/stage/v0.10.0
 deny	git status && git update-ref -d refs/heads/stage/v0.10.0
+# Porcelain keeps its own safety net, and a ref that a tool owns is that tool's
+# business rather than this file's — see the note in bash-guard.sh where a
+# section enforcing that used to be.
 allow	git branch -d some-feature-branch
-# An ordinary branch is not this rule's business: git refuses -d on an unmerged
-# one, and retiring a merged feature branch is work, not damage.
-# Reading the owned refs is the whole legitimate use, and stays free.
+allow	git branch stage/v0.10.0 93c53f2
+allow	git tag -d v0.10.0
 allow	git rev-parse refs/heads/stage/v0.10.0
-allow	git log --oneline stage/v0.10.0
 allow	git for-each-ref refs/promote --format=%(refname)
-allow	git ls-tree -r --name-only stage/v0.10.0
-allow	git show stage/v0.10.0:CHANGELOG.md
-# The tool that owns them is exempt by name.
-allow	tools/promote.sh build 0.10.0
-allow	tools/promote.sh release 0.10.0
-# Naming the tool that owns these refs is not a pass. The exemption that used to
-# grant one was a one-line bypass, and the mutation pass is what surfaced it.
-deny	git update-ref -d refs/heads/stage/v0.10.0 && tools/promote.sh build 0.10.0
-deny	tools/promote.sh build 0.10.0 && git update-ref -d refs/heads/stage/v0.10.0
-# Plumbing removal of a ref outside the owned namespace: only 3a refuses this,
-# so without it the 3a clause is unpinned and can be deleted unnoticed.
-deny	git update-ref -d refs/heads/some-feature
-deny	git symbolic-ref --delete HEAD
+allow	tools/promote.sh build 0.10.2

@@ -1,6 +1,6 @@
 ---
 name: feedback
-description: Report friction with the tooling itself — a guard that refused something reasonable, a skill that fired wrongly, a rule whose advice was wrong. Invoke on "feedback", "report this", "the guard is wrong", "this skill misfired", or the moment you notice yourself working around Orrery rather than with it. Files to the product tracker, and only on an explicit word.
+description: Report friction with the tooling itself — a guard that refused something reasonable, a skill that fired wrongly, a rule whose advice was wrong. Invoke on "feedback", "report this", "the guard is wrong", "this skill misfired", or the moment you notice yourself working around Orrery rather than with it. Hands you a prefilled link to the product tracker and files nothing itself.
 argument-hint: "[what misbehaved, in one line]"
 ---
 
@@ -82,40 +82,50 @@ someone tries to reproduce it.
 
 **Version and OS.** From step 1.
 
-## Step 4 — show it, then wait
+## Step 4 — hand over a link, and never file it yourself
 
-**Print the draft in full and stop.** Filing to a public tracker is an outward
-action: it needs the user's explicit word in the current exchange, and a plan to
-file, a prior "yes, report things like this", or their having invoked this skill
-are none of them (Canon §1).
+**This skill creates nothing.** No `gh issue create`, no API call, no write of
+any kind into any tracker. It prints the draft, builds a URL with that draft
+already in the form, and stops. The person submits it, in their own browser, or
+it does not get submitted.
 
-Say plainly that this goes to a public tracker and is permanent.
+That is structural, not caution. This skill is installed in projects that are
+not the tracker's, so a command here that writes to a fixed repository writes
+there **from every project it is ever installed in** — including when someone
+asked for a task in the project they are actually standing in. No wording in
+this file can prevent that; removing the command does.
 
-On their word:
+Print the draft in full, then the link. Say plainly that submitting it is public
+and permanent, and that nothing has been sent.
 
-```bash
-gh issue create --repo nyxene/orrery \
-  --label tooling-feedback \
-  --title "<one line, the symptom>" \
-  --body-file <the draft>
+### The link
+
+The form prefills from the query string, keyed by field id:
+
+| Key | Field |
+|---|---|
+| `version` | from step 1 |
+| `kind` | one of the dropdown's options, copied exactly |
+| `what` | What happened |
+| `cost` | What it cost you |
+| `expected` | What should have happened instead |
+
+```
+https://github.com/nyxene/orrery/issues/new?template=friction.yml&version=<v>&kind=<option>&what=<text>&cost=<text>
 ```
 
-Use `--body-file`. A body passed inline goes through the shell, where the guard
-reads its contents as a command it is being asked to run — quoting a removal verb
-inside the narrative is enough to have the whole call refused.
+Percent-encode every value. A raw newline, `&` or `#` ends the field at that
+character and drops the rest of it without saying so.
 
-Report the issue number back.
+**A long report does not travel in a URL.** Browsers and servers cut one off
+after a few thousand characters, and what gets cut is the tail — the transcript
+that made the report worth filing. Prefill the summaries, print the long part
+below the link to be pasted in, and say that is what you did. A link that
+arrives truncated is worse than a short one, because nobody can see what is
+missing.
 
-## Step 5 — when there is no `gh`, or no network
-
-Do not fail. Print the draft with the URL and say the report was not sent:
-
-```
-https://github.com/nyxene/orrery/issues/new?template=friction.yml
-```
-
-A skill that loses the user's report because the network was down has done worse
-than not existing — they will not write it twice.
+Nothing is reported back afterwards. This skill does not learn whether the issue
+was filed and must not go looking.
 
 ## What this is not
 
