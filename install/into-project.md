@@ -7,7 +7,8 @@
 
 Skills become available as `orrery:frame`, `orrery:plan`, `orrery:build`,
 `orrery:review`, `orrery:diagnose`, `orrery:pare`, `orrery:verify`,
-`orrery:debt`, `orrery:doctor`, `orrery:handoff`, `orrery:learn`,
+`orrery:debt`, `orrery:doctor`, `orrery:feedback`, `orrery:handoff`,
+`orrery:learn`,
 `orrery:sharpen`. Agents (`planner`, `architect`, `critic`, `auditor`) resolve
 by name. All five hooks start firing immediately — including the one that stops
 the first compaction of a session to ask whether there is unfinished work to
@@ -62,7 +63,7 @@ local layer, not in a library that installs into all of them.
 
 ## Merge the deny-list
 
-`hooks/permissions.json` holds 89 deny rules — system paths, secret files,
+`hooks/permissions.json` holds 95 deny rules — system paths, secret files,
 destructive git. Merge its `permissions.deny` array into the project's
 `.claude/settings.json`. It is additive and safe to apply to any repository.
 

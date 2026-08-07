@@ -167,3 +167,38 @@ deny	echo plist > ~/Library/LaunchAgents/com.evil.plist
 deny	cp agent.plist ~/Library/LaunchAgents/
 allow	ls ~/Library/LaunchAgents
 allow	cat ~/Library/Preferences/com.apple.dock.plist
+
+# --- 3c: refs a tool owns are read-only from a session -----------------------
+# `branch -D` was the only ref removal on the list, so every other spelling went
+# through — and on 2026-08-07 a reserved stage branch went by `update-ref`.
+deny	git update-ref -d refs/heads/stage/v0.10.0
+deny	git update-ref --delete refs/heads/stage/v0.10.0
+deny	git branch -d stage/v0.10.0
+deny	git branch --delete stage/v0.10.0
+deny	git tag -d v0.10.0
+deny	git push origin --delete stage/v0.10.0
+deny	git push origin :refs/heads/stage/v0.10.0
+deny	git push product :refs/tags/v0.10.0
+deny	git update-ref -d refs/promote/plan-ok/v0.9.0
+deny	git -C /tmp/x update-ref -d refs/heads/stage/v0.10.0
+deny	git status && git update-ref -d refs/heads/stage/v0.10.0
+allow	git branch -d some-feature-branch
+# An ordinary branch is not this rule's business: git refuses -d on an unmerged
+# one, and retiring a merged feature branch is work, not damage.
+# Reading the owned refs is the whole legitimate use, and stays free.
+allow	git rev-parse refs/heads/stage/v0.10.0
+allow	git log --oneline stage/v0.10.0
+allow	git for-each-ref refs/promote --format=%(refname)
+allow	git ls-tree -r --name-only stage/v0.10.0
+allow	git show stage/v0.10.0:CHANGELOG.md
+# The tool that owns them is exempt by name.
+allow	tools/promote.sh build 0.10.0
+allow	tools/promote.sh release 0.10.0
+# Naming the tool that owns these refs is not a pass. The exemption that used to
+# grant one was a one-line bypass, and the mutation pass is what surfaced it.
+deny	git update-ref -d refs/heads/stage/v0.10.0 && tools/promote.sh build 0.10.0
+deny	tools/promote.sh build 0.10.0 && git update-ref -d refs/heads/stage/v0.10.0
+# Plumbing removal of a ref outside the owned namespace: only 3a refuses this,
+# so without it the 3a clause is unpinned and can be deleted unnoticed.
+deny	git update-ref -d refs/heads/some-feature
+deny	git symbolic-ref --delete HEAD

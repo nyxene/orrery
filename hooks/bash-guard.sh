@@ -253,9 +253,70 @@ if grep -qE "$gitpre"'[[:space:]]+reset[[:space:]]+.*--hard' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+filter-branch' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+(checkout|restore)[[:space:]]+([^|;&]*[[:space:]])?\.([[:space:]]|$)' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+branch[[:space:]]+([^|;&]*[[:space:]])?-[a-zA-Z]*D' <<<"$cmd" \
+  || grep -qE "$gitpre"'[[:space:]]+(update-ref|symbolic-ref)[[:space:]]+([^|;&]*[[:space:]])?(-d([[:space:]]|$)|--delete)' <<<"$lower" \
+  || grep -qE "$gitpre"'[[:space:]]+tag[[:space:]]+([^|;&]*[[:space:]])?(-[a-z]*d([[:space:]]|$)|--delete)' <<<"$lower" \
   || grep -qE '\bdrop[[:space:]]+(table|database|schema)\b' <<<"$lower" \
   || grep -qE '\btruncate[[:space:]]+table\b' <<<"$lower"; then
-  deny "Destructive git/DB operation (reset --hard, push --force, clean -f, checkout/restore ., branch -D, DROP/TRUNCATE, ...) is always denied."
+  deny "Destructive git/DB operation (reset --hard, push --force, clean -f, checkout/restore ., branch -D, update-ref -d, tag -d, DROP/TRUNCATE, ...) is always denied."
+fi
+
+# `update-ref` and `symbolic-ref` are plumbing: they remove a ref with none of
+# the checks porcelain applies, so `-d` there is dangerous whatever it names.
+# `branch -d` and `push --delete` are not on that list on purpose — git refuses
+# `-d` on an unmerged branch, and retiring a merged feature branch is ordinary
+# work the corpus already says is allowed. What makes a ref untouchable here is
+# *which ref it is*, and that is 3c's question rather than this one.
+
+# 3c. Refs that a tool owns, and a session must not touch by hand.
+#
+# `branch -D` was on the list above and nothing else was, so every other way to
+# destroy a ref was allowed: `update-ref -d`, `branch -d`, `branch --delete`,
+# `tag -d`, `push --delete`, and a `:refspec` push. That is not hypothetical —
+# on 2026-08-07 a stage branch the owner had explicitly reserved was deleted
+# with `git update-ref -d`, in a batch, by an assistant that believed `branch -D`
+# was the guard's coverage. A list of spellings is one spelling short of what
+# somebody reaches for, which is the argument this repository already accepts
+# about deletion verbs.
+#
+# So this half is not a list of spellings. It is deny-by-default over a *narrow
+# namespace*: three ref prefixes that exist only because a tool creates them.
+# The 1b argument applies exactly — the trigger is a place where reading is the
+# whole legitimate use from a session, so demanding a known reader costs nothing
+# and refuses everything else.
+#
+#   stage/v*            build artifacts of tools/promote.sh — the product's next
+#                       tree. Frozen once built; the next change is a new version
+#   refs/promote/*      the record that a plan passed, which push reads
+#   refs/tags/v*        a published release, cited by consumers, immutable
+#
+# `tools/promote.sh` needs no exemption and must not have one. It names no ref on
+# its command line — `promote.sh build 0.10.0` — so the trigger never fires for
+# it, and the guard cannot see inside a script anyway. An earlier version here
+# exempted any command *containing* the script's name; the mutation pass reported
+# that line as unpinned, and reading it back showed why it should not exist at
+# all: `git update-ref -d refs/heads/stage/v0 && tools/promote.sh build 0.10.0`
+# would have been allowed by the mention alone.
+#
+# A slash may precede the name: the fully-qualified form is `refs/heads/stage/v*`
+# and excluding `/` from the boundary class made the trigger miss it entirely.
+# That was masked while a broader push rule happened to catch the same command.
+if grep -qE '(^|[^A-Za-z0-9_-])(stage/v[0-9]|refs/promote/|refs/tags/v[0-9])' <<<"$cmd"; then
+  ref_readers='log|show|show-ref|rev-parse|rev-list|ls-tree|ls-remote|for-each-ref|cat-file|diff|status|describe|name-rev|merge-base|shortlog|blame|grep'
+  bad_seg=""
+  while IFS= read -r seg; do
+    [ -z "${seg// /}" ] && continue
+    sv="$(verb_of "$seg")"
+    case "$sv" in
+      git) ;;                     # a git command — the subcommand decides
+      *) continue ;;              # not git: greps, printf, echo. Not our business
+    esac
+    # The subcommand is the first word after git and its global options.
+    sub="$(sed -E "s/^[[:space:]]*$gitpre[[:space:]]+//" <<<"$seg" | awk '{print $1}')"
+    grep -qxE "$ref_readers" <<<"$sub" || bad_seg="$seg"
+  done < <(segments "$cmd")
+  if [ -n "$bad_seg" ]; then
+    deny "Refs owned by tools/promote.sh (stage/v*, refs/promote/*, refs/tags/v*) are read-only from a session; '$bad_seg' is not a read. Use tools/promote.sh, or ask the owner to do it by hand."
+  fi
 fi
 
 # 3b. Deletion: allowed ONLY if every path it names resolves under the session

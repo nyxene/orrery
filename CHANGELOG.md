@@ -5,6 +5,43 @@ Every release of Orrery is recorded here, newest first. The version is the
 installed plugin has an update from that number and nothing else, so a change
 without a bump reaches nobody.
 
+<!-- Assembled by tools/changelog.sh from changelog/<version>.md. Do not edit
+     this file: one release is one file there, and that file is also the body
+     of its GitHub release page. -->
+
+## 0.10.2
+
+Release notes get their own files, and this release is the first to have one.
+
+### One release is one file
+
+`changelog/<version>.md` is now the whole of a release's notes, and it is what
+the GitHub release page carries — sent byte for byte, with nothing reading it on
+the way. `CHANGELOG.md` is assembled from those files and is never edited by
+hand.
+
+The version before this one located its notes by finding the right section
+inside `CHANGELOG.md`, which meant deciding where a section ends: the next
+heading, unless it is inside a fenced code block, unless that fence is inside
+another fence. Every valid changelog that broke it broke it silently — a
+truncated release page and a successful exit. A boundary you have to find is a
+boundary you can get wrong; a file has one already.
+
+### Also
+
+- `SECURITY.md` and the Code of Conduct route reports through GitHub rather than
+  an address, so no inbox has to be watched for a channel to work.
+- `install/into-project.md` lists the `feedback` skill, which 0.10.0 shipped
+  without naming, and states the deny-list count that ships with it.
+
+There is no 0.10.1. Its build was assembled, refused by the publication checks
+over a stale number in this README, and never left the workshop — and a stage
+build is frozen once made, so the correction is the next version rather than a
+second attempt at the same one. Nothing was published under it.
+
+Pre-1.0: skill names and layout may still move between releases. `jq` must be
+on `PATH` before any hook fires.
+
 ## 0.10.0
 
 First release.
