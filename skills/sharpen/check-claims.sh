@@ -29,6 +29,15 @@ bad()  { printf '\033[31m✗\033[0m %s\n' "$1"; }
 SCOPE=(CANON.md README.md CLAUDE.md CHANGELOG.md .githooks
        skills agents rules hooks install)
 
+# The same list without the changelog, for the counting pass below. A release
+# note describes a past state by construction: 0.10.0's notes say seventeen
+# rules and always will. Counting them as present-tense claims makes every
+# future change to any counter unshippable, and the only way past it is
+# rewriting the record of a release that already went out. Pass 1 still reads
+# CHANGELOG.md — a path named in a release note should still resolve.
+COUNT_SCOPE=()
+for s in "${SCOPE[@]}"; do [ "$s" = CHANGELOG.md ] || COUNT_SCOPE+=("$s"); done
+
 # --- 1. Every path the library names exists ---------------------------------
 # Paths inside the guard corpus are test inputs, not references — a case file
 # names paths precisely because they must not resolve, so it is excluded by name.
@@ -70,7 +79,7 @@ word() { case "$1" in
 # number: the checker failed on its own explanation of why not to fail on it.
 check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated number
   local stated
-  stated=$(grep -rhoE "$3" "${SCOPE[@]}" 2>/dev/null | grep -oE '[0-9]+|four|five|ten|eleven|twelve|thirteen' | sort -u | tr '\n' ' ')
+  stated=$(grep -rhoE "$3" "${COUNT_SCOPE[@]}" 2>/dev/null | grep -oE '[0-9]+|four|five|ten|eleven|twelve|thirteen' | sort -u | tr '\n' ' ')
   if [ -z "$stated" ]; then note "$1: nothing states it ($2 on disk)"; return; fi
   for s in $stated; do
     if [ "$s" != "$2" ] && [ "$s" != "$(word "$2")" ]; then
