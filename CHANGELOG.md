@@ -9,6 +9,53 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.10.4
+
+An eighteenth rule, and a counter that could no longer be changed.
+
+### A rule for the operation that was reserved
+
+`rules/git/reserved-operations-never-ride-in-a-batch.md` covers the case where
+someone has said an operation is theirs — not to be delegated, or needing their
+word each time — and it is then performed anyway as one line inside a block run
+for some other purpose. Not defiance: the reservation was remembered when it was
+made and never consulted when the batch was composed, and inside a block whose
+stated purpose is *run the gates*, a destructive line reads as routine because
+its neighbours are.
+
+The rule is that such an operation runs alone, in its own call, with its own
+sentence announcing it. No guard can carry this one — it is about how a command
+is run rather than what the command is — so the rule is the whole of it.
+
+It loads on `git` scope, so it arrives when a session touches git and stays out
+of the way otherwise.
+
+### Release notes are no longer read as claims about the present
+
+`sharpen`'s claims checker requires every number a document states to match what
+is on disk, and the assembled changelog was in its scope. That file carries
+every count any past release ever stated, and a release note describes a past
+state by construction: 0.10.0's notes say seventeen rules and always will.
+
+So the checker blocked any future change to any counter — rules, skills, agents,
+hooks, deny rules — and the only way past it was rewriting the record of a
+release that had already gone out. This is why the rule above is arriving now
+rather than in 0.10.2.
+
+The counting pass now skips the changelog. The pass that verifies every named
+path still resolves keeps reading it, because a path named in a release note
+should still be there.
+
+### The gates badge reports `main`
+
+The badge on the front page pinned no branch, and the same workflow runs on
+release branches inside every release pull request — so it could show the
+verdict of a pull-request run rather than of `main`. Both the badge and the link
+beside it now filter to `main`.
+
+Pre-1.0: skill names and layout may still move between releases. `jq` must be
+on `PATH` before any hook fires.
+
 ## 0.10.3
 
 Three refusals that were wrong, and one of them had been wrong since 0.10.0.
