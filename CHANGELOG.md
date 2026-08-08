@@ -9,6 +9,34 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.10.5
+
+One rule, about the way a check can be green and beside the point.
+
+### A command proves only the question it asked
+
+`rules/process/a-command-proves-only-the-question-it-asked.md`.
+
+Canon §3 says run the proving command and read its output. It is possible to do
+exactly that and still report something false: the command succeeds, its output
+is read, and it proves a fact next to the one being claimed. Existence is not
+occupancy. A commit is not a push. A file being present is not it being
+non-empty.
+
+What makes this hard to catch is that nothing looks wrong from inside — no
+error, no truncation, no gap. The missing step leaves no trace when it is
+skipped, which is why *did I verify this* answers yes and catches nothing. The
+question that catches it is *does this command answer this sentence*.
+
+The rule is to write the sentence you are about to report, name the command
+under it, and check that every word the sentence commits to — held, pushed,
+empty, running, all — is a word the command actually evaluated.
+
+It loads on `process` scope.
+
+Pre-1.0: skill names and layout may still move between releases. `jq` must be
+on `PATH` before any hook fires.
+
 ## 0.10.4
 
 An eighteenth rule, and a counter that could no longer be changed.
