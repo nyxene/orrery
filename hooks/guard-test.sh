@@ -40,6 +40,13 @@ corpus() {
     [ -z "${cmd:-}" ] && continue
     cmd="${cmd//\{ROOT\}/$root}"
     cmd="${cmd//\{SCRATCH\}/$scratch}"
+    # `\n` becomes a real newline, so a case can be a heredoc or any other
+    # multi-line command. One case per line is what keeps this file readable, and
+    # until now it also meant the guard's handling of multi-line input could not
+    # be pinned at all — which is how a heredoc's body came to be segmented as if
+    # it were shell, unnoticed, until it refused four read-only commands.
+    cmd="${cmd//\\n/$'\n'}"
+    cmd="${cmd//\\t/$'\t'}"
     out="$(jq -n --arg c "$cmd" '{tool_input:{command:$c}}' | bash "$1" 2>/dev/null)"
     got=allow
     grep -q '"deny"' <<<"$out" && got=deny

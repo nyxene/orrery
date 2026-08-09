@@ -50,7 +50,7 @@ reclassify a feature as debt to fill a quota.
 Query the project's debt label, whatever it declared:
 
 ```bash
-gh issue list --state open --label "<debt-label>" --limit 50 \
+gh issue list --state open --label "<debt-label>" --limit 200 \
   --json number,title -q '.[]|"#\(.number)  \(.title)"'
 ```
 
@@ -107,14 +107,28 @@ active area whose debt feeds this rule — in its `CLAUDE.md`. Debt outside that
 area is real and stays tracked, but does NOT feed the per-task quota. If the
 project declares no pool, the pool is the area the current task touches.
 
+**Count without the filter first.** A filtered query that returns nothing cannot
+tell a clean pool from a pool it could not see, and it reports the same thing
+either way — so the unfiltered count is what makes the filtered one mean
+anything.
+
 ```bash
-gh issue list --state open --label "<debt-label>" --label "<pool-label>" --limit 50 \
+gh issue list --state open --label "<debt-label>" --limit 200 --json number | jq length
+gh issue list --state open --label "<debt-label>" --label "<pool-label>" --limit 200 \
   --json number,title,createdAt,labels \
   -q '.[]|"\(.createdAt[0:10])  #\(.number)  \(.labels|map(.name)|join(","))  \(.title)"'
 ```
 
-An empty result means the labels are wrong before it means the pool is clean.
-Check the declaration before reporting nothing to pay.
+**Debt exists and the pool is empty is a defect, not a result.** It means those
+issues carry no scope label, and the fix is to label them — not to report
+nothing to pay. The reported case: a debt issue filed without an area label, and
+then a pool query that had just been made blind to what the same session had
+written. A prose warning stood here and did not hold, which is why this is two
+commands.
+
+The limit is 200 and not 50 for the same reason a truncated list proves nothing
+about the rest: a page boundary and a clean tracker look identical. If a count
+comes back at the limit, raise it rather than concluding anything.
 
 Pick **newest first**, skipping anything blocked on external input — a manual
 data fetch, a deploy, a table that does not exist yet. An unworkable item does

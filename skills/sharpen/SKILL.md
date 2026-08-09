@@ -22,8 +22,35 @@ friction is still legible.
    "actually", "wrong", "instead"), friction ("again", "I already said"),
    explicit asks ("next time", "I wish", "should"), and approval ("exactly",
    "yes, that"). Approval matters — it tells you what to protect.
-3. **The rule set itself** — clusters are the real signal. See below.
-4. **What the last run promised.** Every accepted change from the previous
+3. **The call log, where the project keeps one.** `ORRERY_CALL_LOG` names a file
+   of one line per tool call — timestamp, session fingerprint, tool, subagent
+   type, whether the spawn was named — written by `hooks/call-log.sh` and holding
+   no content at all. Absent means the project did not ask for it; that is not a
+   finding.
+
+   It answers what a transcript answers badly and what a skill cannot answer
+   about itself. Group by the session fingerprint and read the shape:
+
+   - **A planner ran, commands ran, and no checker was ever spawned.** The case
+     this log exists for. `plan` requires a spike where an answer cannot be read,
+     and says in prose that a spike does not replace the review — prose that
+     nothing enforces. Each such session is one time it did not hold.
+   - **How often a checker runs at all**, as a fraction of the sessions that
+     spawned a planner. A ratio, not a count: the denominator is what makes it
+     mean anything.
+   - **How many agents a piece of work cost**, which is the number the route
+     table is spending and has never been able to see.
+
+   A skill cannot record the run in which it ignored its own instructions — the
+   same omission removes the behaviour and the evidence of it. That is why this
+   is read here rather than reported by the skill it is about.
+
+   On a handful of sessions this is noise with a shape, not statistics. Say "in
+   this project, after that change, the ratio moved" and never "the change
+   works".
+
+4. **The rule set itself** — clusters are the real signal. See below.
+5. **What the last run promised.** Every accepted change from the previous
    sharpen: did it actually land? Canon §3 applies to this skill too, and a
    self-improvement loop that never audits itself drifts fastest of all.
 

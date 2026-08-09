@@ -64,7 +64,7 @@ n_deny=$(jq '.permissions.deny | length' hooks/permissions.json)
 
 # Written-out numbers are how these sentences read; digits are how they are kept.
 word() { case "$1" in
-  4) echo four;; 5) echo five;; 10) echo ten;; 11) echo eleven;; 12) echo twelve;;
+  4) echo four;; 5) echo five;; 6) echo six;; 10) echo ten;; 11) echo eleven;; 12) echo twelve;;
   13) echo thirteen;;
   *) echo "$1";; esac; }
 
@@ -79,7 +79,7 @@ word() { case "$1" in
 # number: the checker failed on its own explanation of why not to fail on it.
 check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated number
   local stated
-  stated=$(grep -rhoE "$3" "${COUNT_SCOPE[@]}" 2>/dev/null | grep -oE '[0-9]+|four|five|ten|eleven|twelve|thirteen' | sort -u | tr '\n' ' ')
+  stated=$(grep -rhoE "$3" "${COUNT_SCOPE[@]}" 2>/dev/null | grep -oE '[0-9]+|four|five|six|ten|eleven|twelve|thirteen' | sort -u | tr '\n' ' ')
   if [ -z "$stated" ]; then note "$1: nothing states it ($2 on disk)"; return; fi
   for s in $stated; do
     if [ "$s" != "$2" ] && [ "$s" != "$(word "$2")" ]; then
@@ -91,7 +91,7 @@ check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated numb
 check_count "skills"     "$n_skills" '(eleven|ten|twelve|thirteen|[0-9]+) skills'
 check_count "rules"      "$n_rules"  '[0-9]+ rules'
 check_count "agents"     "$n_agents" '(four|five|[0-9]+) agents'
-check_count "hooks"      "$n_hooks"  '(four|five|[0-9]+) hooks'
+check_count "hooks"      "$n_hooks"  '(four|five|six|[0-9]+) hooks'
 check_count "deny rules" "$n_deny"   '[0-9]+ deny rules'
 
 # --- 3. The manifest ships every skill --------------------------------------
