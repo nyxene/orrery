@@ -288,3 +288,15 @@ deny	Rm -RF /Users/someone/dev
 allow	git rev-parse refs/heads/stage/v0.10.0
 allow	git for-each-ref refs/promote --format=%(refname)
 allow	tools/promote.sh build 0.10.2
+
+# Inline interpreter code is judged inside the segment that runs the
+# interpreter, not across the whole command. The wider test refused any command
+# holding both an interpreter and the word rm anywhere — a test payload, a path,
+# an unrelated segment — four times in one day. The holes it existed to close
+# are the four deny lines below and they stay closed.
+allow	python3 - <<'EOF'\nprint("hi")\nEOF\necho "rm -rf /Users/someone/dev"
+allow	jq -n --arg c "rm -rf /Users/someone/dev" '{a:$c}' ; python3 - <<'EOF'\nprint(1)\nEOF
+deny	python3 - <<EOF\nimport shutil\nshutil.rmtree("/Users/someone/dev")\nEOF
+deny	python3 -c "import shutil; shutil.rmtree('/Users/someone/dev')"
+deny	bash <<'EOF'\nrm -rf /Users/someone/dev\nEOF
+deny	node -e "require('fs').rmSync('/Users/someone/dev',{recursive:true})"

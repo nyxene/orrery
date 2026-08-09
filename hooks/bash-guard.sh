@@ -13,6 +13,34 @@
 # prints nothing and exits 0 to pass through (let normal permission flow decide).
 set -euo pipefail
 
+# An error anywhere below must refuse, not pass the command through.
+#
+# The harness reads a non-zero hook exit as a non-blocking error and runs the
+# command anyway. So every failure this script did not anticipate — a `set -u`
+# violation, a missing tool, a broken pipe — was an open door: the guard fell
+# over and the command it never checked proceeded. The header above has always
+# claimed the opposite, and only the `jq` branch made it true.
+#
+# Installed before anything else runs. The first version sat below the first
+# jq call, so the parse failure it existed to catch happened while the trap
+# did not yet exist.
+#
+# EXIT rather than ERR, because ERR does not fire on a `set -u` violation: that
+# exits directly and would have walked straight past a trap that looked
+# complete. Verified rather than assumed, after the ERR version was written.
+#
+# `printf` rather than `jq`, because jq may be exactly what is broken.
+on_exit() {
+  local rc=$?
+  # An explicit `if`, not `[ ... ] && exit 0`: that form returns non-zero on a
+  # non-zero rc, and `set -e` then kills the trap before it can refuse — which
+  # is how the first version of this trap silently did nothing at all.
+  if [ "$rc" -eq 0 ]; then exit 0; fi
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The Bash guard failed while checking this command (exit %s), so it cannot say the command is safe. Refusing rather than passing it through. This is a defect in the guard — report it."}}\n' "$rc"
+  exit 0
+}
+trap on_exit EXIT
+
 input="$(cat)"
 
 # A guard that cannot run must not fail open. Without jq every check below is
@@ -37,6 +65,7 @@ deny() {
   }'
   exit 0
 }
+
 
 lower="$(tr '[:upper:]' '[:lower:]' <<<"$cmd")"
 project_root="$(pwd -P)"
@@ -618,19 +647,25 @@ while IFS= read -r seg; do
   fi
 done < <(segments "$cmd")
 
-# Inline interpreter code is one argument to the shell and several segments to
-# `segments()`, which splits on the `;` and `(` inside it as if they were shell
-# syntax. So this one is asked of the whole command: splitting first is how
-# `python3 -c "import shutil; shutil.rmtree('/Users/someone/dev')"` walked past,
-# with the interpreter in one piece and the deletion in another.
+# Inline interpreter code: `python3 -c "import shutil; shutil.rmtree(...)"`, or
+# the same program handed over as a heredoc body. Neither has a verb position to
+# read, so the delete word is matched loosely — and only inside the segment that
+# actually runs the interpreter.
 #
-# A heredoc is the other way to hand an interpreter a program — `python3 - <<PY`
-# runs whatever the body says — so it is asked here on the same terms as `-c`.
-if { grep -qE "(^|[[:space:]])($interpreters)[[:space:]]+-[a-z]*[ce]([[:space:]\"']|$)" <<<"$cmd" \
-     || grep -qE "(^|[[:space:]])($interpreters)([[:space:]]+-[^[:space:]]*)*[[:space:]]*<<" <<<"$cmd"; } \
-  && grep -qiE "$delete_words" <<<"$cmd"; then
-  hits="$hits$cmd"$'\n'
-fi
+# It used to be asked of the whole command, because the splitter cut inline code
+# into pieces and the interpreter and the deletion landed in different ones. The
+# splitter is quote-aware now and keeps them together, so the wider test bought
+# nothing and cost a great deal: any command containing both an interpreter and
+# the word `rm` anywhere — a test payload, a path, another segment entirely —
+# was refused. Four times in one day, to the author of the check.
+while IFS= read -r seg; do
+  seg="${seg#$'\001'}"
+  [ -z "${seg// /}" ] && continue
+  v="$(verb_of "$seg")"
+  grep -qxE "$interpreters" <<<"$v" || continue
+  grep -qE '(^|[[:space:]])-[a-z]*[ce]([[:space:]"'"'"']|$)' <<<"$seg" || grep -q '<<' <<<"$seg" || continue
+  grep -qiE "$delete_words" <<<"$seg" && hits="$hits$seg"$'\n'
+done < <(segments "$cmd")
 
 if [ -n "$hits" ]; then
   targets="$(printf '%s' "$hits" \

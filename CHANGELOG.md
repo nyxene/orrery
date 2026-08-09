@@ -9,7 +9,7 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
-## 0.10.6
+## 0.10.7
 
 A guard that stopped refusing ordinary work, a planning skill that has to run
 something, and a recorder you can switch on.
@@ -125,6 +125,71 @@ Nothing is transmitted. The privacy section is more precise than it was: no hook
 makes a network call, one skill does when you run it and the page says which and
 what it sends, and the only thing ever written about your usage is this log, on
 your disk, if you asked for it.
+
+### The rule set shrank, and two rules became machinery
+
+Four rules left `rules/process/`, none of them because the incident stopped
+being real.
+
+Three of them described the same law from different angles — a command that
+answered a neighbouring question, output cut by a limit, a decision read as an
+observation — and are now one rule carrying all three incidents. A rule set only
+grows unless something shrinks it, and three files saying nearly the same thing
+is how one stops being read.
+
+The fourth was about checking, before closing an epic, that nothing already
+tracking its doneness disagrees with you. That is a step in `verify` now rather
+than a rule of its own: a procedure beats a sentence asking someone to remember.
+
+A fifth left because the deny-list already enforces it. Staying out of system
+folders is a machine's job, and it has been doing it since the deny-list gained
+those entries.
+
+Sixteen rules ship, down from nineteen. One of the three left because it
+restated a canon section almost word for word, and its own body opened by
+saying so — the canon line gained the one thing the rule had that it did not,
+and the file went. A law stated twice is a law that drifts in one of the two
+places.
+
+Four more left the workshop's own rule set the same way, and two of them landed
+in skills you have: `build` now says to commit the plan document before any
+worktree agent launches — a worktree is made from a commit, so a plan that
+exists only in the working tree is not in it — and to wait for a chained task's
+pull request to actually merge rather than for a workflow to report success.
+`handoff` now says that a follow-up somebody flagged and nobody closed comes
+back every relevant session until it does, which is the one thing that survives
+a handoff being rewritten.
+
+### The guards failed open on their own errors
+
+The most important fix here, and the one nobody would have noticed.
+
+The harness reads a non-zero hook exit as a non-blocking error and runs the
+command anyway. Both guards run under `set -euo pipefail`, so any failure they
+did not anticipate — a malformed payload, a missing tool, an unset variable —
+made them fall over and the command they never checked proceeded. Their own
+headers had always claimed the opposite, and only the branch handling a missing
+`jq` made it true.
+
+Both now refuse on any internal failure. Feeding either one input it cannot
+parse produces a refusal rather than silence, which the test suite asserts
+directly — that check cannot live in the case corpus, because the corpus builds
+valid input by construction.
+
+Two things about the fix are worth stating, because each was wrong first. An
+`ERR` trap does not fire on an unset-variable exit, so it looked complete and
+was not. And a trap whose body starts `[ "$rc" -eq 0 ] && exit 0` is killed by
+`set -e` before it can refuse, which made the first version silently do nothing
+at all.
+
+### A guard that refused reading because a delete appeared elsewhere
+
+Inline interpreter code — `python3 -c "…rmtree(…)"`, or the same program handed
+over as a heredoc — is judged inside the segment that runs the interpreter now,
+rather than across the whole command. The wider test refused any command holding
+both an interpreter and the word `rm` anywhere in it: a test payload, a path, an
+unrelated second command. It did that four times in one day to the person who
+wrote it. Every hole it existed to close is still closed and now has a case.
 
 ### One new rule
 

@@ -35,7 +35,7 @@ that "went silent" is this failure until proven otherwise.
   every mode, and a defensible default is taken autonomously in every mode.
 - Default (no flag): fully autonomous end to end. This skill's entire point is
   that decisions get made and logged, not deferred — don't stop to ask
-  domain/convention/technical questions; see `rules/craft/research-and-decide-domain-questions-yourself.md`.
+  domain/convention/technical questions, per Canon §6.
 
 ## Model tiers (fixed — do not improvise a different split)
 
@@ -66,6 +66,18 @@ them, and what the gate buys is independence, not raw strength.
 1. **Intake.** Read the plan (file path, issue, or in-context text). Extract
    scope, files touched, acceptance criteria, and any open questions the plan
    already flagged.
+
+   **Commit the plan document to the default branch before any worktree agent
+   launches.** A worktree is created from a commit; a plan that exists only in
+   the working tree is not in it, so every isolated agent starts without the
+   document it was told to follow. This has bitten twice in one session and was
+   caught both times by something unrelated, which is the shape of a defect that
+   otherwise ships.
+
+   **In a chained run, wait for the previous task's PR to actually merge**
+   before intake on the next one. Not "the workflow reported success" — the
+   merge. An agent's own completion signal is not evidence about the repository,
+   and a chain that starts on an unmerged base builds on a tree nobody has.
 
 2. **Architecture** (the strongest tier, single agent). Produce a concrete task breakdown:
    for each work item, its target tier and a **self-contained** brief (no
@@ -169,7 +181,7 @@ them, and what the gate buys is independence, not raw strength.
 - Default is fully autonomous: don't surface domain/convention/technical
   questions to the user — research, decide, record. Only genuine
   product-level choices (what the user sees or pays for) or scope changes go
-  to them, per `rules/craft/research-and-decide-domain-questions-yourself.md`.
+  to them, per Canon §6.
 - Every decision gets its id and one-line rationale the moment it's made, not
   reconstructed after the fact for the report.
 - Licensing and provenance are the exception, and step 3 states where the line

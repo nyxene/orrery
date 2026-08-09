@@ -12,4 +12,4 @@ Don't default to a built-in browser-automation MCP tool for visual verification 
 
 Watch for a specific race: `.click()` auto-scrolls its target into view first. If it fires right after another action that itself triggered a scroll, the trailing scroll event can race with code that treats "scroll" as an outside-dismiss signal (a popover/dialog closing itself on any window scroll), and the UI under test appears broken when it isn't. Fix by calling `locator.scrollIntoViewIfNeeded()` plus a short settle wait *before* the click that opens the UI you're about to assert on — not just before reading a bounding box.
 
-**Related:** `rules/process/never-touch-system-folders.md` — the same discipline of staying within the project's own resources.
+**Related:** the same discipline of staying inside the project's own resources is enforced by the deny-list rather than by a rule.

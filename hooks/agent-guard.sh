@@ -19,6 +19,22 @@
 # prints nothing and exits 0 to pass through.
 set -euo pipefail
 
+# An error anywhere below must refuse, not let the spawn through. The harness
+# reads a non-zero hook exit as a non-blocking error and proceeds, so any
+# failure this script did not anticipate was an open door. EXIT rather than ERR,
+# because ERR does not fire on a `set -u` violation; `printf` rather than `jq`,
+# because jq may be what is broken.
+on_exit() {
+  local rc=$?
+  # An explicit `if`, not `[ ... ] && exit 0`: that form returns non-zero on a
+  # non-zero rc, and `set -e` then kills the trap before it can refuse — which
+  # is how the first version of this trap silently did nothing at all.
+  if [ "$rc" -eq 0 ]; then exit 0; fi
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The Agent guard failed while checking this spawn (exit %s), so it cannot say the spawn is safe. Refusing rather than passing it through. This is a defect in the guard — report it."}}\n' "$rc"
+  exit 0
+}
+trap on_exit EXIT
+
 input="$(cat)"
 
 # The same fail-open the Bash guard had: without jq this exits 127, the harness

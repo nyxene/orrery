@@ -58,12 +58,31 @@ corpus() {
   echo "$fails"
 }
 
+# Two checks the corpus cannot express, because its runner builds valid JSON by
+# construction and every case is a command string. What is asserted here is the
+# behaviour when the guard itself fails: the harness reads a non-zero hook exit
+# as a non-blocking error and runs the command anyway, so a guard that falls over
+# is a guard that let something through.
+trap_fails=0
+check_refuses_on_failure() { # $1 = guard path, $2 = label
+  local out
+  out="$(printf 'not json at all' | bash "$1" 2>/dev/null || true)"
+  if grep -q '"deny"' <<<"$out"; then
+    printf '\033[32m✓\033[0m %s refuses when it cannot parse its own input\n' "$2"
+  else
+    printf '\033[31m✗\033[0m %s did NOT refuse on malformed input — it fails open\n' "$2"
+    trap_fails=$((trap_fails + 1))
+  fi
+}
+check_refuses_on_failure "$guard" "the Bash guard"
+check_refuses_on_failure "$here/agent-guard.sh" "the Agent guard"
+
 total="$(grep -cE '^(deny|allow)	' "$cases")"
 fails="$(VERBOSE=1 corpus "$guard")"
 printf '%s cases, %s failing\n' "$total" "$fails"
 
 if [ "${1:-}" != "--mutate" ]; then
-  [ "$fails" -eq 0 ] || exit 1
+  [ "$fails" -eq 0 ] && [ "$trap_fails" -eq 0 ] || exit 1
   exit 0
 fi
 

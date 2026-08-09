@@ -6,8 +6,9 @@
 # never self-loaded; only `learn` and `sharpen` opened the directory, and both do
 # so to *write*. Five more were cited by path from a skill. So a rule filed after
 # a real incident sat in a directory nobody read while the incident repeated —
-# which is what happened with `named-agents-lose-their-reports.md`, cited by four
-# skills and still broken twice by an author who had it open.
+# which is what happened with the rule about named agents losing their reports:
+# cited by four skills, and still broken twice by an author who had it open. That
+# rule no longer exists — a guard enforces it now, which is the better ending.
 #
 # What loads is the rule sentence and what it cost, not the file. A whole scope
 # is 2-4x the size of CANON.md and would be paid on every session that edits a

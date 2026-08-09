@@ -51,7 +51,9 @@ leaves its siblings broken.
 
 Research and settle technical, domain, and convention questions yourself, and
 record the rationale. Escalate only product-level choices — what to build, for
-whom, at what price, under whose licence.
+whom, at what price, under whose licence. When unsure which kind a question is,
+decide and write down why: a default they can overrule costs them less than a
+question they cannot confidently answer.
 
 ## 7. The director's attention
 

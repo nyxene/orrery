@@ -162,6 +162,22 @@ of the dead end survives; one planned for later often is not written at all.
 3. State what you found: what still holds, what has been overtaken, what you
    are doing next. Then start.
 
+## A flagged follow-up comes back until it is closed
+
+Some things are not residue and not a dead end: they are an open item somebody
+explicitly flagged and nobody closed. Those get raised **again**, in every
+session where they are relevant, without waiting to be asked — and they keep
+being raised until the issue is closed or the flag is withdrawn.
+
+The failure this prevents is quiet: an item mentioned once, agreed to be
+important, and never spoken of again. Nothing errors. It simply stops existing,
+and the person who flagged it assumes it is in hand.
+
+This is the one thing that survives a handoff being rewritten. Everything else
+in the note replaces; a flagged open follow-up carries forward the way a dead
+end does, for the same reason — it costs one line and its absence costs the
+item.
+
 ## When to write nothing
 
 If the next session can reconstruct everything from the issue and the diff,
