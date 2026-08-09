@@ -13,6 +13,34 @@
 # prints nothing and exits 0 to pass through (let normal permission flow decide).
 set -euo pipefail
 
+# An error anywhere below must refuse, not pass the command through.
+#
+# The harness reads a non-zero hook exit as a non-blocking error and runs the
+# command anyway. So every failure this script did not anticipate — a `set -u`
+# violation, a missing tool, a broken pipe — was an open door: the guard fell
+# over and the command it never checked proceeded. The header above has always
+# claimed the opposite, and only the `jq` branch made it true.
+#
+# Installed before anything else runs. The first version sat below the first
+# jq call, so the parse failure it existed to catch happened while the trap
+# did not yet exist.
+#
+# EXIT rather than ERR, because ERR does not fire on a `set -u` violation: that
+# exits directly and would have walked straight past a trap that looked
+# complete. Verified rather than assumed, after the ERR version was written.
+#
+# `printf` rather than `jq`, because jq may be exactly what is broken.
+on_exit() {
+  local rc=$?
+  # An explicit `if`, not `[ ... ] && exit 0`: that form returns non-zero on a
+  # non-zero rc, and `set -e` then kills the trap before it can refuse — which
+  # is how the first version of this trap silently did nothing at all.
+  if [ "$rc" -eq 0 ]; then exit 0; fi
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The Bash guard failed while checking this command (exit %s), so it cannot say the command is safe. Refusing rather than passing it through. This is a defect in the guard — report it."}}\n' "$rc"
+  exit 0
+}
+trap on_exit EXIT
+
 input="$(cat)"
 
 # A guard that cannot run must not fail open. Without jq every check below is
@@ -38,6 +66,7 @@ deny() {
   exit 0
 }
 
+
 lower="$(tr '[:upper:]' '[:lower:]' <<<"$cmd")"
 project_root="$(pwd -P)"
 # The scratchpad prefix is the one path here that differs per OS.
@@ -51,8 +80,212 @@ fi
 # shell operators this also opens command substitutions: `echo $(rm -rf /usr)`
 # has two verbs, and reading only the first one is how a destructive command
 # hides behind a reader.
+#
+# Quote-aware, because the shell is. The previous version cut on every operator
+# character wherever it appeared, including inside quoted strings — so
+# `grep -cE "/System|/Library" f.json` became three segments and the second one's
+# "verb" was `/Library`, a directory name read as a command nobody has listed.
+# That produced four refusals of read-only commands in one session, each one
+# inviting whoever hit it to route around the guard, which its own denial text
+# names as the failure it exists to prevent.
+#
+# What is split is decided by what the shell would actually interpret, so this is
+# narrower without being weaker:
+#
+#   * inside single quotes nothing is interpreted, so nothing splits;
+#   * inside double quotes only `$(`, a backtick and a backslash are live — those
+#     still split, because `echo "$(rm -rf /usr)"` really does run the deletion;
+#   * outside quotes every operator splits, exactly as before.
+#
+# A destructive command hidden in a single-quoted string can only run through an
+# interpreter, and both sections that care ask about interpreters separately and
+# against the whole command rather than against these segments.
+#
+# The whole command is one record: quote state has to carry across newlines, or a
+# heredoc body reopens the question on every line.
 segments() {
-  sed -E 's@\$\(@\n@g; s@[`(){}]@\n@g' <<<"$1" | tr ';&|<>' '\n'
+  awk '{ buf = buf (NR > 1 ? "\n" : "") $0 } END {
+    # Accumulated rather than read as one record. `RS = "\0"` was tried and is a
+    # trap: awk sees an empty string there, an empty RS means paragraph mode, and
+    # the input then splits on blank lines. Every multi-line command containing
+    # one was segmented as several independent records with the quote and heredoc
+    # state reset between them — which is how a commit message with a blank line
+    # in it came back refused.
+    n = length(buf); inS = 0; inD = 0; out = ""
+    for (i = 1; i <= n; i++) {
+      c = substr(buf, i, 1)
+      nx = (i < n) ? substr(buf, i + 1, 1) : ""
+
+      # Inside a heredoc body, first, because nothing else applies there. Quotes
+      # are literal, parentheses are literal, and only an unquoted delimiter lets
+      # a substitution through. Testing this after the other branches cost a
+      # refusal: a commit message containing `fix(guard):` closed a substitution
+      # that was still open, which split the body and put a word from the prose
+      # at the head of a segment.
+      if (hd != "") {
+        if (c == "\n") {
+          eol = index(substr(buf, i + 1), "\n")
+          line = (eol > 0) ? substr(buf, i + 1, eol - 1) : substr(buf, i + 1)
+          # `<<-` lets the terminator be indented with tabs, and bash strips them
+          # before comparing. Not doing the same here left the heredoc open, and
+          # an open heredoc swallows the rest of the command.
+          bare = line
+          if (hdash) { sub(/^\t+/, "", bare) }
+          if (bare == hd) { hd = ""; i += length(line); out = out "\n"; continue }
+          # Segments are read back a line at a time, so a newline separates them
+          # whether or not anything split on it. The body is stdin for one
+          # command: keep it on that same segment.
+          out = out " "; continue
+        }
+        if (!hdq && c == "$" && nx == "(") { out = out "\n"; i++; continue }
+        if (!hdq && c == "`")              { out = out "\n"; continue }
+        out = out c
+        continue
+      }
+
+      if (c == "\\" && !inS)            { out = out c nx; i++; continue }
+      if (c == "\047" && !inD)          { inS = !inS; out = out c; continue }
+      if (c == "\"" && !inS)            { inD = !inD; out = out c; continue }
+      # ANSI-C quoting. Inside it a backslash escapes, including a backslash
+      # before the closing quote — and the ordinary single-quote branch below
+      # cannot see that, because it disables the escape branch while inS is set.
+      # So `echo $(printf x)\047\134\047\047` inverted the quote state for the
+      # rest of the command and everything after it stopped being segmented.
+      if (!inS && !inD && c == "$" && nx == "\047") {
+        j = i + 2
+        while (j <= n) {
+          ch = substr(buf, j, 1)
+          if (ch == "\\") { j += 2; continue }
+          if (ch == "\047") { j++; break }
+          j++
+        }
+        i = j - 1
+        continue
+      }
+      # Arithmetic, not a command substitution. `$((1<<n))` was opened as one and
+      # its `<<` was then read as a heredoc whose delimiter never appears, which
+      # swallowed the rest of the command. Consumed whole: nothing executable can
+      # live in an arithmetic expression.
+      if (!inS && c == "$" && nx == "(" && substr(buf, i + 2, 1) == "(") {
+        j = i + 3; par = 2
+        while (j <= n && par > 0) {
+          ch = substr(buf, j, 1)
+          if (ch == "(") par++
+          else if (ch == ")") par--
+          j++
+        }
+        i = j - 1
+        continue
+      }
+      # A command substitution starts a fresh command context: the quotes around
+      # it do not reach inside. Without saving and clearing the state here,
+      # a heredoc opened inside one was still marked as inside double quotes,
+      # the heredoc branch never fired, and the delimiter came back as a verb.
+      if (!inS && c == "$" && nx == "(") {
+        depth++; savedS[depth] = inS; savedD[depth] = inD
+        inS = 0; inD = 0
+        out = out "\n"; i++; continue
+      }
+      if (!inS && c == ")" && depth > 0) {
+        inS = savedS[depth]; inD = savedD[depth]; depth--
+        out = out "\n"; continue
+      }
+      if (!inS && c == "`")              { out = out "\n"; continue }
+      # A heredoc: the delimiter is a word naming where the body ends, and the
+      # body is data on stdin. Splitting `python3 - <<PY` on the two `<`s left
+      # `PY` at the head of a segment and the guard refused a read-only command
+      # for leading with a verb called `py`; splitting the body then did it again
+      # for every line of it.
+      #
+      # The body follows double-quote rules — only `$(` and a backtick are live —
+      # or, when the delimiter is itself quoted, no rules at all. Both are handled
+      # by entering the matching state and leaving it at the line that is exactly
+      # the delimiter, so whatever follows the heredoc is segmented normally again.
+      # A herestring is not a heredoc: `<<<` has no body and no terminator. Read
+      # as one it produced the delimiter `<`, which never appears on a line of
+      # its own — so the heredoc stayed open and every command after it was
+      # swallowed, section 1b and section 3b included. This guard uses `<<<`
+      # itself on twenty lines; it is ordinary shell, not an evasion.
+      if (!inS && !inD && c == "<" && nx == "<" && substr(buf, i + 2, 1) == "<") {
+        out = out "\n"; i += 2; continue
+      }
+      if (!inS && !inD && c == "<" && nx == "<") {
+        j = i + 2
+        hdash = 0
+        while (j <= n && substr(buf, j, 1) == "-") { hdash = 1; j++ }
+        while (j <= n && substr(buf, j, 1) == " ") j++
+        q = ""
+        ch = substr(buf, j, 1)
+        if (ch == "\047" || ch == "\"") { q = ch; j++ }
+        hd = ""
+        while (j <= n) {
+          ch = substr(buf, j, 1)
+          if (q != "" && ch == q) { j++; break }
+          # `<` and `>` end a delimiter word too. Without them
+          # `cat <<EOF>/dev/null` took the redirect into the delimiter, and the
+          # terminator that followed matched nothing.
+          if (q == "" && index(" \t\n;&|)<>", ch) > 0) break
+          hd = hd ch; j++
+        }
+        hdq = (q == "\047")
+        # The backstop for this whole class. A heredoc delimiter is a word; if
+        # what was scanned is not one, this is not a heredoc and treating it as
+        # one hides everything that follows. Four separate ways of getting here
+        # were found by an audit after two of them shipped, and each cost the
+        # guard its sight for the rest of the command. Anything unrecognised now
+        # falls through to the redirect branch, which splits and sees.
+        if (hd !~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+          hd = ""; out = out "\n"; i++; continue
+        }
+        # And the terminator has to actually be there. Entering body mode on a
+        # heredoc that never closes hides everything after it from the sections
+        # that matter, which is the single consequence every defect in this class
+        # had. Checked by looking rather than by hoping.
+        rest = substr(buf, j)
+        m = split(rest, L, "\n")
+        found = 0
+        for (t = 1; t <= m; t++) {
+          b2 = L[t]
+          if (hdash) { sub(/^\t+/, "", b2) }
+          if (b2 == hd) { found = 1; break }
+        }
+        if (!found) { hd = ""; out = out "\n"; i++; continue }
+        i = j - 1
+        # The `<<` stays in the segment and the body stays with it, so the
+        # command keeps its own verb at the head and the sections below can still
+        # see that a heredoc is present — which is how inline interpreter code
+        # delivered this way is recognised as code rather than as stdin data.
+        out = out "<<"
+        continue
+      }
+      # (The heredoc-body branch is handled first, at the top of the loop.)
+      # Redirects split wherever they appear, quoted or not, but the two places
+      # mean different things.
+      #
+      # Outside quotes a redirect is followed by a filename, never by a command.
+      # Reading that filename as a verb refused `cat >> hooks/cases.tsv` for
+      # leading with a verb called cases.tsv. Those segments are marked with \001
+      # and judged as paths by the sections below: under a system directory the
+      # redirect is a write, anywhere else it is an ordinary output file.
+      #
+      # Inside quotes a redirect is a write performed by an awk or perl program,
+      # and its target keeps being judged as a verb. The corpus case using
+      # awk -v with a system path and a BEGIN block that prints into it rests on
+      # exactly that, and it went green to red the moment redirects were made
+      # quote-aware along with everything else — the corpus doing its job.
+      #
+      # No apostrophe may appear anywhere in this awk program. One in a comment
+      # ends the single-quoted argument, turns the rest into shell words, and the
+      # guard stops parsing — which took every Bash call down until it was found.
+      if (c == "<" || c == ">") {
+        out = out "\n" ((inS || inD) ? "" : "\001")
+        continue
+      }
+      if (!inS && !inD && index("(){};&|", c) > 0) { out = out "\n"; continue }
+      out = out c
+    }
+    print out
+  }' <<<"$1"
 }
 
 # Collapses `.` and `..` in an absolute path without asking the filesystem, so
@@ -81,8 +314,18 @@ verb_of() {
     skip = 0
     for (i = 1; i <= NF; i++) {
       t = $i
-      sub(".*/", "", t)
+      # Assignment first, basename second. The other order stripped the
+      # directory off `dir=/some/path/scratchpad` and left `scratchpad`, which no
+      # longer looks like an assignment — so every variable holding a path became
+      # a command nobody had listed, and section 1b refused read-only work for
+      # leading with it. The line below was always meant to skip assignments; it
+      # only ever saw the ones whose value had no slash in it.
       if (t ~ /^[a-z_][a-z0-9_]*=/) continue
+      sub(".*/", "", t)
+      # Punctuation is not a command. A closing quote left over from a command
+      # substitution arrived here as the verb `"` and was refused for not being
+      # on the reader list. Anything executable has a letter or a digit in it.
+      if (t !~ /[a-zA-Z0-9]/) continue
       # The *value* of a wrapper flag is not a verb either, and reading it as one
       # reads no verb at all: `sudo -u root rm -rf ~/dev` was judged on the word
       # `root` and passed. `-u` and `-g` always take a value (`sudo -u`, `env -u`);
@@ -96,6 +339,29 @@ verb_of() {
           t == "nohup" || t == "time" || t == "nice" || t == "ionice" ||
           t == "exec" || t == "builtin" || t == "xargs" || t == "stdbuf" ||
           t == "then" || t == "do" || t == "else") continue
+      # Shell keywords are syntax, not commands. `then`, `do` and `else` were
+      # here from the start and the rest were not, so a loop or a conditional put
+      # `for` or `while` at the head of a segment and section 1b refused a
+      # read-only command for leading with a verb nobody had listed. Whatever the
+      # keyword introduces is still read: `segments` cuts on `;`, so the body has
+      # its own segment with its own verb.
+      # `for` and `select` are followed by the name of the loop variable, which
+      # is no more a command than the keyword is. Same mechanism as the wrapper
+      # flags above: mark the next token to be skipped.
+      #
+      # No apostrophe may appear anywhere in this awk program — it ends the
+      # single-quoted argument and the rest becomes shell words.
+      if (t == "for" || t == "select") { skip = 1; continue }
+      # After `in` comes a word list, not a command: every item of
+      # `for f in /usr/lib/x /usr/lib/y` was being read as a verb, and the first
+      # one refused the loop. Stop reading this segment — anything executable in
+      # that list arrives through a substitution, which is its own segment.
+      if (t == "in") exit
+      if (t == "while" || t == "until" || t == "if" ||
+          t == "elif" || t == "fi" || t == "case" || t == "esac" ||
+          t == "function" || t == "done" ||
+          t == "coproc" || t == "[" || t == "[[" || t == "]" || t == "]]" ||
+          t == "!") continue
       print t
       exit
     }
@@ -173,9 +439,12 @@ if grep -qE "(^|[^a-z0-9_./-])$sys_re(/|[^a-z0-9_-]|\$)" <<<"$stripped"; then
   sys_write=0
   sys_verb=""
 
-  # A redirect into a system path, at any spacing. `>` is not a word character,
-  # so this must not depend on whitespace before the path.
-  grep -qE ">>?[[:space:]]*\"?$sys_re/" <<<"$stripped" && sys_write=1
+  # A redirect into a system path used to be matched here, against the whole
+  # command. The splitter now marks redirect targets and the loop below judges
+  # each one as a path, which is the same decision made where the target is
+  # actually known — so this line stopped being able to fail on its own and the
+  # mutation pass reported it as a survivor. Removed rather than pinned: a check
+  # no case can distinguish from its neighbour is a second source of one answer.
 
   # Flags that turn a reader into a writer.
   grep -qE '(^|[[:space:]])--?(delete|exec|execdir|ok)([[:space:]]|$)' <<<"$stripped" && sys_write=1
@@ -197,11 +466,25 @@ if grep -qE "(^|[^a-z0-9_./-])$sys_re(/|[^a-z0-9_-]|\$)" <<<"$stripped"; then
   readers='ls|cat|head|tail|less|more|grep|egrep|fgrep|rg|ag|fd|find|file|stat|readlink|realpath|which|type|wc|diff|du|df|awk|sed|sort|uniq|cut|tr|echo|printf|test|dirname|basename|strings|nm|otool|ldd|codesign|shasum|md5|pwd|xxd|od|tree|jq|export|cd|source|open|man|column|gh|git|lsof|ps|hexdump|objdump|readelf|dwarfdump|nl|comm|paste|rev|fold|cksum|md5sum|sha1sum|sha256sum'
 
   while IFS= read -r seg; do
+    # A segment the splitter marked as a redirect target: a path, never a verb.
+    # Under a system directory it is a write; anywhere else it is an ordinary
+    # output file and there is nothing here to judge.
+    if [ "${seg:0:1}" = $'\001' ]; then
+      grep -qE "(^|[^a-z0-9_-])$sys_re/" <<<"${seg:1}" && sys_write=1
+      continue
+    fi
     verb="$(verb_of "$seg")"
     [ -z "$verb" ] && continue
     grep -qxE "$readers" <<<"$verb" && continue
     if grep -qxE "$interpreters" <<<"$verb"; then
+      # `-c` and `-e` are not the only ways to hand an interpreter a program.
+      # `python3 - <<PY` is inline code too, and it used to be refused only by
+      # accident: the body's lines each became a segment and the first word of
+      # one of them was an unrecognised verb. Once the body correctly stops being
+      # segmented, that accident stops happening — so the heredoc has to be named
+      # for what it is.
       grep -qE '(^|[[:space:]])-[a-z]*[ce]([[:space:]]|$)' <<<"$seg" && sys_write=1
+      grep -q '<<' <<<"$seg" && sys_write=1
       continue
     fi
     # Verbs whose whole job is to write. Without this they reach the list-gap
@@ -222,7 +505,16 @@ if grep -qE "(^|[^a-z0-9_./-])$sys_re(/|[^a-z0-9_-]|\$)" <<<"$stripped"; then
       continue
     fi
     sys_verb="${sys_verb:-$verb}"
-  done < <(segments "$stripped")
+    # Segmented from `sys_src`, not from `stripped`. The leading-assignment strip
+    # that produces `stripped` exists for the trigger tests above — it stops
+    # `PATH=/usr/local/bin cmd` from reading as a write — but its value pattern
+    # runs to the next space, so `n=$(jq -r ...)` had `n=$(jq` removed as a
+    # prefix and the verb went with it: the next token, a quoted jq filter, was
+    # reported as an unrecognised command. Nothing is lost by using `sys_src`
+    # here, because `verb_of` already skips assignment tokens itself, and
+    # `segments` opens `$(` so the substitution becomes its own segment with its
+    # real verb at the head.
+  done < <(segments "$sys_src")
 
   if [ "$sys_write" -eq 1 ]; then
     deny "Only reading is allowed under a system directory (/System, /Library, /usr, /sbin, /bin), and this command writes there: it leads with a verb whose job is writing (touch, tar, mv, ln, ...), redirects into a system path, carries a flag that turns a reader into a writer (-delete, -exec, sed -i), runs inline interpreter code, or copies to a destination under one. This is the policy and not a gap in a list, so there is no spelling of it that passes. If the write is genuinely required, that is the user's call to make, not something to route around."
@@ -334,6 +626,9 @@ delete_words='(^|[^a-z0-9_-])(rm|rmdir|unlink|shred|srm|rmtree|remove_tree|remov
 # `rsync --delete`, whose second dash the old pattern did not allow).
 hits=""
 while IFS= read -r seg; do
+  # The splitter marks redirect targets; here they are just filenames, and the
+  # marker must not become part of one.
+  seg="${seg#$'\001'}"
   [ -z "${seg// /}" ] && continue
   v="$(verb_of "$seg")"
   # `git rm` stages a removal and keeps the history that makes it recoverable;
@@ -342,21 +637,35 @@ while IFS= read -r seg; do
   # everything downstream of a `git`: `git status && rm -rf ~/dev` reached none
   # of this section.
   [ "$v" = "git" ] && continue
-  if grep -qxE "$delete_verbs" <<<"$v" \
+  # Case-insensitive, because the filesystem this runs on is. macOS resolves
+  # `RM` on PATH to the same binary as `rm`, so `RM -rf` really deletes and was
+  # matching nothing here. Costs a false positive only on a command whose name
+  # differs from a delete verb by case alone, which is not a thing.
+  if grep -qixE "$delete_verbs" <<<"$v" \
     || grep -qE '(^|[[:space:]])--?(delete|exec|execdir|ok)([[:space:]]|$)' <<<"$seg"; then
     hits="$hits$seg"$'\n'
   fi
 done < <(segments "$cmd")
 
-# Inline interpreter code is one argument to the shell and several segments to
-# `segments()`, which splits on the `;` and `(` inside it as if they were shell
-# syntax. So this one is asked of the whole command: splitting first is how
-# `python3 -c "import shutil; shutil.rmtree('/Users/someone/dev')"` walked past,
-# with the interpreter in one piece and the deletion in another.
-if grep -qE "(^|[[:space:]])($interpreters)[[:space:]]+-[a-z]*[ce]([[:space:]\"']|$)" <<<"$cmd" \
-  && grep -qiE "$delete_words" <<<"$cmd"; then
-  hits="$hits$cmd"$'\n'
-fi
+# Inline interpreter code: `python3 -c "import shutil; shutil.rmtree(...)"`, or
+# the same program handed over as a heredoc body. Neither has a verb position to
+# read, so the delete word is matched loosely — and only inside the segment that
+# actually runs the interpreter.
+#
+# It used to be asked of the whole command, because the splitter cut inline code
+# into pieces and the interpreter and the deletion landed in different ones. The
+# splitter is quote-aware now and keeps them together, so the wider test bought
+# nothing and cost a great deal: any command containing both an interpreter and
+# the word `rm` anywhere — a test payload, a path, another segment entirely —
+# was refused. Four times in one day, to the author of the check.
+while IFS= read -r seg; do
+  seg="${seg#$'\001'}"
+  [ -z "${seg// /}" ] && continue
+  v="$(verb_of "$seg")"
+  grep -qxE "$interpreters" <<<"$v" || continue
+  grep -qE '(^|[[:space:]])-[a-z]*[ce]([[:space:]"'"'"']|$)' <<<"$seg" || grep -q '<<' <<<"$seg" || continue
+  grep -qiE "$delete_words" <<<"$seg" && hits="$hits$seg"$'\n'
+done < <(segments "$cmd")
 
 if [ -n "$hits" ]; then
   targets="$(printf '%s' "$hits" \
@@ -390,7 +699,13 @@ if [ -n "$hits" ]; then
     else
       resolved="$(normalize "$resolved")"
     fi
-    if [[ "$resolved" != "$scratchpad_root"* ]]; then
+    # The separator is the whole test. A bare prefix comparison accepts every
+    # sibling whose name merely starts with the same string: with a scratchpad at
+    # `/private/tmp/claude-501`, a delete of `/private/tmp/claude-501-evil/x`
+    # passed, and so did one that arrived there through `..`. One character
+    # different from the boundary and outside it entirely — which is the exact
+    # class of mistake this section exists to refuse.
+    if [ "$resolved" != "$scratchpad_root" ] && [[ "$resolved" != "$scratchpad_root"/* ]]; then
       deny "Destructive delete ($t) targets a path outside the session scratchpad ($scratchpad_root); only temp files created this session may be deleted this way."
     fi
   done <<<"$targets"

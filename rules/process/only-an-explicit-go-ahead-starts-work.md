@@ -34,10 +34,26 @@ is. State what you would do next, then wait. When genuinely unsure whether a
 message was a go-ahead, ask — one short question costs less than one interrupted
 tool call.
 
-**The exception, and its bound:** an explicit auto-continue instruction is itself
-authorisation for every task picked up under it — scoped strictly to the run it
-was given for, never carried into the next one.
+## The exception, and how far it reaches
 
-**Related:** `rules/process/nothing-goes-outward-without-its-own-command.md`
-extends this along the outward axis; `rules/git/arm-auto-merge-only-when-told.md`
-is the same law scoped to merges.
+**An explicit auto-continue instruction is itself the go-ahead**, given up front,
+for every task picked up under it. No per-task grant is needed inside that run.
+
+And it is wider than it looks. It authorises deciding **every** choice point
+autonomously — not only the domain and convention questions that are yours
+anyway, but the product and commercial forks that would otherwise stop the run.
+Applying only the narrower rule still pauses at those, which defeats the point of
+an unattended chain: what was asked for is one consolidated decision log at the
+end, not a gate at every branch.
+
+**Its bound is the run it was given for.** Not a standing policy, not carried
+into a later session, not covering a task outside the chain. Inside it: take the
+best option at each fork with the same judgement you would have brought to the
+question, write the choice and its reasoning into the final report so it can be
+reviewed or vetoed after the fact, and keep applying the safety and quality gates
+unconditionally. Those are invariants, not choice points.
+
+**Related:** Canon §6 is what the exception widens, for the duration of the chain
+and no longer. `rules/process/nothing-goes-outward-without-its-own-command.md`
+extends this along the outward axis, and
+`rules/git/arm-auto-merge-only-when-told.md` is the same law scoped to merges.

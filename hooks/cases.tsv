@@ -195,6 +195,108 @@ deny	git status && git update-ref -d refs/heads/stage/v0.10.0
 allow	git branch -d some-feature-branch
 allow	git branch stage/v0.10.0 93c53f2
 allow	git tag -d v0.10.0
+
+# Quote-aware segmentation. Every `allow` below was a refusal of read-only work
+# in one session: the splitter cut on operator characters inside quoted strings,
+# so a grep alternation, a jq filter and a heredoc delimiter each arrived at the
+# head of a segment and were read as commands nobody had listed. The guard's own
+# denial text calls a refusal that gets routed around the failure it exists to
+# prevent — and it was routed around twice before the cause was found.
+allow	grep -cE "/System|/Library|/usr" {ROOT}/hooks/permissions.json
+allow	grep -oE "/usr|/sbin" {ROOT}/README.md | sort -u
+allow	n=$(jq -r ".permissions.deny[]" {ROOT}/hooks/permissions.json | grep -cE "/System|/Library"); echo $n
+allow	d={ROOT}/hooks; ls "$d" && grep -c usr "$d/permissions.json"
+allow	PATH=/usr/local/bin ls /usr/lib
+allow	cat {ROOT}/README.md >> {SCRATCH}/notes.md
+# A redirect inside quotes still splits and its target is still judged as a verb:
+# there `>` is a write performed by an awk program. Outside quotes the target is
+# a filename and is judged as a path instead.
+deny	awk -v f=/usr/local/lib/x 'BEGIN{print "pwn" > f}'
+allow	awk '$2 ~ /\/usr/ {print $1}' {ROOT}/README.md
+
+# Shell keywords are syntax, not verbs. `then`, `do` and `else` were skipped from
+# the start and the rest were not, so a loop or a conditional put `for`/`while`
+# at the head of a segment and section 1b refused the whole command.
+allow	for f in /usr/lib/x /usr/lib/y; do echo "$f"; done
+allow	if test -d /usr/local; then ls /usr/local; fi
+
+# An assignment whose value is a path. `verb_of` stripped the directory before
+# testing for an assignment, so `dir=/some/path/hooks` became the verb `hooks`.
+allow	libdir=/usr/local/lib; ls "$libdir"
+
+# Heredocs. The delimiter is not a command and the body is not shell, so neither
+# is segmented as one — but an interpreter fed by a heredoc is running inline
+# code exactly as `-c` does, and is judged on the same terms.
+allow	cat <<'EOF' > {SCRATCH}/notes.md\nsee /usr/lib and /System\nEOF
+allow	cat <<EOF\nhello\nEOF
+deny	python3 - <<PY\nimport shutil\nshutil.rmtree("/usr/lib")\nPY
+deny	python3 - <<PY\nopen("/usr/local/x","w").write("p")\nPY
+deny	bash <<'EOF'\nrm -rf /Users/someone/dev\nEOF
+deny	python3 - <<PY\nimport shutil\nshutil.rmtree("/Users/someone/dev")\nPY
+
+# The scratchpad boundary needs its separator. A bare prefix test accepted every
+# sibling whose name merely began with the same string — one character outside
+# the boundary and allowed, which is the exact class this section refuses. Found
+# by probing rather than by a case, which is why these exist now.
+deny	rm -rf {SCRATCH}-evil/x
+deny	rm -rf {SCRATCH}.bak
+deny	rm -rf {SCRATCH}/a/../../tmp/elsewhere/x
+deny	rm -rf {SCRATCH}/../somewhere-else/x
+allow	rm -rf {SCRATCH}/x
+allow	rm -rf {SCRATCH}/nested/dir
+
+# A command substitution is a fresh command context: the quotes around it do not
+# reach inside. Without that, `-m "$(cat <<EOF ...)"` was still marked as inside
+# double quotes when the heredoc arrived, so the heredoc was never recognised and
+# its delimiter came back as a verb. What it must not cost is the substitution
+# itself being read — both holes below were denied before and still are.
+allow	git commit -m "$(cat <<'EOF'\na message mentioning /usr/lib and /System\nEOF\n)"
+deny	echo "$(rm -rf /Users/someone/dev)"
+deny	echo "$(touch /usr/local/evil)"
+allow	echo "$(grep -c usr {ROOT}/hooks/permissions.json)"
+# Prose inside a heredoc is prose. A commit message beginning `fix(guard):`
+# closed a substitution that was still open, split the body, and put a word from
+# the sentence at the head of a segment. Inside a heredoc body nothing is shell:
+# not quotes, not parentheses, and a substitution only when the delimiter was
+# unquoted.
+allow	git commit -q -m "$(cat <<'EOF'\nfix(guard): three findings, and /usr/lib is mentioned here\n\nA body with (parentheses), "quotes" and a ; semicolon.\nEOF\n)"
+deny	git commit -q -m "$(cat <<EOF\nnote: $(rm -rf /Users/someone/dev)\nEOF\n)"
+
+# Anything mistaken for an open heredoc swallows the rest of the command and
+# hides it from sections 1b and 3b. An independent audit found four ways to open
+# one by accident, two of them shipped by the rewrite that was meant to make this
+# splitter safer. Every case below was ALLOW at that point and is DENY again.
+#
+# The backstop is not any single case: a delimiter must look like a word, and its
+# terminator must actually appear ahead in the input. Both are checked before the
+# body is trusted to end.
+deny	grep -q pat <<< "$var" ; rm -rf /Users/someone/dev
+deny	tr a b <<< x ; rsync -a /tmp/y /usr/lib/
+deny	tr a b <<< x && sudo rm -rf /Users/someone/dev
+deny	tr a b <<< x\nrm -rf /Users/someone/dev
+deny	n=2 ; i=$((1<<n)) ; rm -rf /Users/someone/dev
+deny	cat <<-EOF\n\tbody\n\tEOF\nrm -rf /Users/someone/dev
+deny	cat <<EOF>/dev/null\nbody\nEOF\nrm -rf /Users/someone/dev
+deny	cat <<NOPE\nthe terminator never comes\nrm -rf /Users/someone/dev
+allow	grep -q pat <<< "$var"
+allow	n=2 ; i=$((1<<n)) ; echo $i
+allow	cat <<-EOF\n\tbody mentioning /usr/lib\n\tEOF
+
+# PATH lookup on macOS is case-insensitive, so `RM` runs the same binary as `rm`.
+deny	RM -rf /Users/someone/dev
+deny	Rm -RF /Users/someone/dev
 allow	git rev-parse refs/heads/stage/v0.10.0
 allow	git for-each-ref refs/promote --format=%(refname)
 allow	tools/promote.sh build 0.10.2
+
+# Inline interpreter code is judged inside the segment that runs the
+# interpreter, not across the whole command. The wider test refused any command
+# holding both an interpreter and the word rm anywhere — a test payload, a path,
+# an unrelated segment — four times in one day. The holes it existed to close
+# are the four deny lines below and they stay closed.
+allow	python3 - <<'EOF'\nprint("hi")\nEOF\necho "rm -rf /Users/someone/dev"
+allow	jq -n --arg c "rm -rf /Users/someone/dev" '{a:$c}' ; python3 - <<'EOF'\nprint(1)\nEOF
+deny	python3 - <<EOF\nimport shutil\nshutil.rmtree("/Users/someone/dev")\nEOF
+deny	python3 -c "import shutil; shutil.rmtree('/Users/someone/dev')"
+deny	bash <<'EOF'\nrm -rf /Users/someone/dev\nEOF
+deny	node -e "require('fs').rmSync('/Users/someone/dev',{recursive:true})"

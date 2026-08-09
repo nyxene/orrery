@@ -47,6 +47,9 @@ jobs:
         if: steps.guard.outputs.changed == 'true'
         run: ./hooks/guard-test.sh --mutate
 
+      - name: Call log
+        run: ./hooks/call-log.test.sh
+
       - name: Library claims
         run: ./skills/sharpen/check-claims.sh
 

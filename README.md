@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.10.5-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.10.7-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -73,10 +73,11 @@ its moment arrives.
 - **Four agents** — `planner`, `architect`, `critic`, `auditor`: the
   consensus-planning loop and the independent audit that runs before anything
   is committed.
-- **Five hooks** — two guards (a Bash guard with a mutation-tested case corpus,
-  and an agent guard), two loaders for the canon and for scoped rules, and a
-  prompt that catches unfinished work before a context reset takes it.
-- **A deny-list** — 93 deny rules covering system paths, secret files and
+- **Six hooks** — two guards (a Bash guard with a mutation-tested case corpus,
+  and an agent guard), two loaders for the canon and for scoped rules, a prompt
+  that catches unfinished work before a context reset takes it, and an optional
+  recorder that is off until you name a path for it.
+- **A deny-list** — 99 deny rules covering system paths, secret files and
   destructive git, additive to your existing settings and safe on any repo.
 
 ## What makes the rules different
@@ -99,10 +100,23 @@ stays out of the way otherwise. Your own incidents land in your repository's
 
 ## Privacy
 
-Everything runs locally. No telemetry, nothing collected, nothing written
-outside your repository on its own. The lessons `learn` records are yours and
-stay in your repo. Sharing anything with this project — an issue, a PR,
-feedback — is voluntary, explicit, and shown to you before it happens.
+Everything runs locally. Nothing about you or your code is transmitted, and
+nothing is written outside your repository on its own. **No hook makes a network
+call** — the things that run automatically, before every tool call, never leave
+your machine.
+
+One skill does reach the network, only when you run it: `doctor` asks GitHub for
+this plugin's own current commit, to tell you whether your installed copy has
+drifted from the marketplace source. It sends nothing but that request.
+
+One optional feature writes about your usage, and only if you ask for it: set
+`ORRERY_CALL_LOG` and a hook records which tools were called — never a command,
+a prompt, a path or a name, and never anywhere but your own disk. Unset by
+default; see [install/into-project.md](install/into-project.md).
+
+The lessons `learn` records are yours and stay in your repo. Sharing anything
+with this project — an issue, a PR, feedback — is voluntary, explicit, and shown
+to you before it happens.
 
 ## Contributing
 
@@ -126,7 +140,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.10.5 · Canon, thirteen skills, four agents, 19 rules, five hooks
+Version 0.10.7 · Canon, thirteen skills, four agents, 16 rules, six hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

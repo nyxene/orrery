@@ -42,6 +42,26 @@ Everything else, first match wins:
 | `pair` | The approach is known, or has precedent in this codebase | Planner → Critic |
 | `consensus` | The approach is genuinely uncertain | Planner → (Architect ∥ Critic) |
 
+**Uncertainty has a kind, and only one kind is settled by hiring readers.**
+Before choosing between `pair` and `consensus`, ask what the uncertainty is
+*about*.
+
+- **About the present** — what the code does, what precedent exists, what the API
+  returns. A reader settles it, and the table above applies as written.
+- **About the future** — will this hold, what will it cost, does this edge close.
+  No number of readers settles it. §Spike comes first, and the route is decided
+  again afterwards — usually one step lower, because the thing that made it
+  uncertain is now a fact.
+
+A spike costs minutes. `consensus` costs two agents at maximum effort. Reaching
+for the second where the first applies is the most expensive mistake available
+here.
+
+This is not licence to skip the checkers. The spike removes the uncertainty, not
+the review: what remains after it — structure, order, naming, blast radius — is
+exactly what a reader is good at. A plan that spiked and then went unchecked has
+answered the cheap question and skipped the one the route was chosen for.
+
 Look up what decides it: `git log` for precedent, a Grep for the call sites, the
 manifest for what already exists. A route chosen from a guess is the guess that
 costs the most.
@@ -53,12 +73,57 @@ decision to skip the gate at the end.
 
 **`consensus` reached by a risk signal is DELIBERATE.** Reaching it because the
 approach is merely uncertain is not. The difference is what the plan must carry:
-DELIBERATE adds a pre-mortem of three concrete failure scenarios and a test plan
-spanning unit, integration, end-to-end and observability. `--deliberate` forces
-it by hand, for when you know something the signals do not.
+DELIBERATE adds a test plan spanning unit, integration, end-to-end and
+observability. `--deliberate` forces it by hand, for when you know something the
+signals do not.
+
+**The pre-mortem belongs to `consensus`, both modes.** It was DELIBERATE-only,
+which put the one technique we have against *unstated* assumptions behind the
+narrowest gate in the file — available exactly where the most care was already
+being spent, and absent everywhere else. Assuming the plan has already failed
+and saying why is not a check on the entries; it is the only step that goes
+looking for the ones nobody wrote. Three concrete failure scenarios, and each
+names what would have had to be true.
 
 That is the whole vocabulary: three routes, and a mode that is `standard` or
 `deliberate`. No agent re-derives either; every spawn is told which it is.
+
+## Spike what cannot be read
+
+A reviewer reads. So a reviewer can check what the code **is** and cannot check
+what it **will do** — and a plan is mostly the second kind of sentence: this
+stub will serve, this edge will close, these four cases are enough. Those are
+predictions, and no number of readers converts one into a fact.
+
+That is not a hypothetical failure mode. Five plans and ten checker rounds on
+one task produced no code; the same work, built, surfaced four plan defects in a
+single pass, and not one of them was reachable from the existing code. The
+checkers had found real errors — a sign inverted, a cost four times under, a
+term misspelt — all of them statements about the present, all of them a grep
+away.
+
+**So: a question whose answer is a number or an observable behaviour is settled
+by running something, before it is planned around.** Write the smallest thing
+that answers it, run it, and put the result in the plan as a fact. Plan the
+remainder.
+
+Three bounds make a spike a question rather than the start of the work:
+
+- It writes nothing outside the session scratchpad.
+- It reads external services and changes none of them. A rate limit or a bill is
+  a side effect the owner did not authorise by asking for a plan.
+- It is thrown away. What reaches the plan is the result, never the code — a
+  spike kept is a prototype promoted without review.
+
+**What a spike catches that an assumptions list cannot** is the assumption
+nobody wrote down. All four defects above were absences, not wrong entries: a
+behaviour never specified, an edge that does not close, a filter that turns out
+dead. A list of stated assumptions is checked against; a gap announces itself
+only when something refuses to run.
+
+No spike is needed when nothing in the plan turns on an unread number or an
+unobserved behaviour. Say that, in one line, rather than leaving it unsaid —
+the absence of a spike is a claim like any other.
 
 ## The pass
 
@@ -66,12 +131,25 @@ That is the whole vocabulary: three routes, and a mode that is `standard` or
    the mode**, because what it must produce depends on both:
    - Always: steps with acceptance criteria, an **Assumptions** list rated
      VERIFIED / REASONABLE / FRAGILE, and per-step dependencies. The checkers
-     verify that list rather than rebuilding it, which is where the time goes.
+     verify that list rather than rebuilding it, which is where the time goes —
+     and an entry marked VERIFIED with no command beside it is a finding, or the
+     rating is a self-assessment they are auditing instead of the work.
+
+     **VERIFIED means a command was run, its output was read, and the command is
+     written beside the assumption.** Nothing else earns the word. Without one,
+     the entry is REASONABLE at best — a rating applied to a prediction after
+     reading the code is Canon §3 suspended at exactly the point where it decides
+     a design. FRAGILE that the design rests on is the trigger for §Spike, not a
+     label to ship.
    - `consensus` only: principles (3-5), decision drivers (top 3), and options
      (2+, or what invalidated the rest). On `pair` the approach is known by
      definition — demanding alternatives there manufactures the token ones the
      critic is supposed to reject.
-   - DELIBERATE only: the pre-mortem and the expanded test plan.
+   - `consensus` only: a pre-mortem of three concrete failure scenarios.
+   - DELIBERATE only: the expanded test plan.
+   - Always, when §Spike applies: the spike's result as a fact, with the command
+     that produced it. A plan that turns on an unread number and carries no
+     command is returned to the planner rather than checked.
 2. *(--interactive only)* **Stop on the draft and wait.** Put it to the owner with
    `AskUserQuestion` — proceed / request changes — and do not spawn a checker
    until they answer. Displaying the draft and carrying on is not this step: the
@@ -104,9 +182,19 @@ A non-APPROVE verdict revises the plan. It does not restart the pass.
 - A rejection the architect **accepts** ends it. It says so in one line and the
   iteration closes.
 
-**Two iterations, then stop.** If the critic still withholds APPROVE after two,
-the defect is in the brief rather than the plan. Present the best version, name
-what the critic will not pass, and hand it to the owner.
+**Two iterations, then stop** — and the count belongs to the work rather than to
+the document. If the critic still withholds APPROVE after two, the defect is in
+the brief rather than the plan. Present the best version, name what the critic
+will not pass, and hand it to the owner.
+
+**Before drafting, look in the plan directory for a plan already covering this
+work.** If one is there, this is a second attempt and the draft says so. A third
+is not written: two documents for one task means planning is not what the work
+is short of, and the next move is a spike or a build.
+
+Five plans for one task, each of them inside the two-iteration cap, is how ten
+checker rounds produced no code. Every round was within the limit; nothing
+counted the sequence.
 
 ## Ship
 
