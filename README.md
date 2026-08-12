@@ -140,7 +140,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.10.7 · Canon, thirteen skills, four agents, 16 rules, six hooks
+Version 0.10.7 · Canon, thirteen skills, four agents, 15 rules, six hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 
