@@ -55,5 +55,4 @@ unconditionally. Those are invariants, not choice points.
 
 **Related:** Canon §6 is what the exception widens, for the duration of the chain
 and no longer. `rules/process/nothing-goes-outward-without-its-own-command.md`
-extends this along the outward axis, and
-`rules/git/arm-auto-merge-only-when-told.md` is the same law scoped to merges.
+extends this along the outward axis.

@@ -47,8 +47,7 @@ second, and say plainly that external copies may survive the takedown.
 **Related:** Canon §1 owns consent and this expands it along the outward axis —
 consent to *work* and consent to *expose* are different grants, and
 `rules/process/only-an-explicit-go-ahead-starts-work.md` holds the shapes of
-the first. `rules/git/arm-auto-merge-only-when-told.md` is the same law scoped
-to merges. Do not file a build artifact under this rule: a ref that is gated
+the first. Do not file a build artifact under this rule: a ref that is gated
 because a tool owns its contents — a release branch assembled by a promotion
 script — is held by a provenance gate, not a consent one, and writing it by
 hand fails as a second source rather than as exposure.
