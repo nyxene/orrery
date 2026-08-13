@@ -84,9 +84,14 @@ body="$(
         fm == 1 && /^evidence:/ { sub(/^evidence:[[:space:]]*/, ""); gsub(/^"|"$/, ""); e = $0 }
         fm == 1 && /^cost:/     { sub(/^cost:[[:space:]]*/, ""); gsub(/^"|"$/, ""); c = $0 }
         END {
-          if (r == "") next
-          ev = (e != "" ? e : (c != "" ? c : "not recorded"))
-          printf "- %s\n  evidence: %s · %s\n", r, ev, path
+          # Not `next`: it is illegal in an END block, and awk exits 2 rather
+          # than skipping the file. `set -e` then takes the whole loader down,
+          # so one rule missing its `rule:` line silently emptied the entire
+          # scope — every other rule in it included, from both directories.
+          if (r != "") {
+            ev = (e != "" ? e : (c != "" ? c : "not recorded"))
+            printf "- %s\n  evidence: %s · %s\n", r, ev, path
+          }
         }
       ' "$f"
     done
