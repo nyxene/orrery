@@ -77,8 +77,34 @@ its moment arrives.
   and an agent guard), two loaders for the canon and for scoped rules, a prompt
   that catches unfinished work before a context reset takes it, and an optional
   recorder that is off until you name a path for it.
-- **A deny-list** — 99 deny rules covering system paths, secret files and
+- **A deny-list** — 121 deny rules covering system paths, secret files and
   destructive git, additive to your existing settings and safe on any repo.
+
+## Which platforms this holds on
+
+The guards run before every shell call, so what they do — and what they cannot
+do — is platform-specific in a way the rest of this page is not.
+
+| Platform | What holds | What proves it |
+|---|---|---|
+| **macOS** | everything above | a CI matrix, on every push |
+| **Linux** | everything above | the same matrix, and this repository's own CI |
+| **anything else** | **nothing — the Bash guard refuses every command and says why** | a probe the guard's mutation pass scores |
+
+The third row is not a polite way of saying "untested". On a platform the guard
+does not model, no pattern in it can match — and a guard that finds nothing
+looks exactly like a guard that read the command and approved it. So it refuses
+instead, names the platform, and says what would have to change. You do not get
+a degraded guard; you get a stopped one, at the first command rather than after
+the one that mattered.
+
+Windows specifically: the hooks are `.sh` files, the deny-list names POSIX paths
+and is inert there, and whether the hooks execute at all under the shell Claude
+Code uses on Windows has not been verified either way. If they do run, the first
+command will tell you.
+
+Everything else in the plugin — the canon, the rules, the skills, the agents —
+is text loaded into a session and is not platform-specific.
 
 ## What makes the rules different
 
@@ -140,7 +166,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.10.7 · Canon, thirteen skills, four agents, 16 rules, six hooks
+Version 0.10.8 · Canon, thirteen skills, four agents, 15 rules, six hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

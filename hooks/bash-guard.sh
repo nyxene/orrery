@@ -1,11 +1,32 @@
 #!/usr/bin/env bash
 # PreToolUse guard for the Bash tool. Reads the proposed command from stdin
-# (Claude Code hook JSON) and blocks it if it matches one of three banned
-# categories: system-path / working-dir escapes, secret file access, or
-# destructive operations outside the session scratchpad.
+# (Claude Code hook JSON) and refuses it if it names a secret store or deletes
+# outside the session scratchpad.
 #
-# `hooks/cases.tsv` is the corpus that pins this file, and `hooks/guard-test.sh` runs
-# it. Change nothing here without running `hooks/guard-test.sh --mutate` after: a
+# **This is not a security boundary, and nothing here should be written as if it
+# were.** It reasons about a string, and a string can be spelled another way:
+# across every harness surveyed, the layer that keeps failing is the
+# one that reasons about strings, and the layer that has not failed is the
+# kernel. Thirty published advisories against Claude Code include eight pure
+# pre-execution-matching bypasses, every one of them against a command on the
+# *safe* list. Anthropic states the same thing in one clause about its own
+# permission gate: it is a gate, not a sandbox.
+#
+# What this is instead: a nudge delivered at the one moment it can still change
+# the outcome — before the command runs. It stops an accident, not an attacker,
+# and the one thing that makes it worth keeping at all is that a hook's `deny`
+# holds even in bypassPermissions mode, which no allow-list and no setting can
+# say. Spend that on the few commands whose accident is unrecoverable, and
+# nowhere else. Every additional check is another row in a future advisory
+# table and another false refusal today.
+#
+# Against a malicious operator, a compromised plugin, or prompt injection in
+# content the agent reads, this file does nothing at all — those need capability
+# reduction, egress control and process isolation. Say so rather than implying
+# otherwise; a nudge mistaken for a boundary is how the boundary never gets built.
+#
+# `hooks/cases.tsv` is the corpus that pins this file, and `hooks/bash-guard.test.sh` runs
+# it. Change nothing here without running `hooks/bash-guard.test.sh --mutate` after: a
 # mutation pass is what proves the corpus still holds the code, and this guard
 # has now shipped two regressions that a corpus would have caught at the time.
 #
@@ -69,12 +90,23 @@ deny() {
 
 lower="$(tr '[:upper:]' '[:lower:]' <<<"$cmd")"
 project_root="$(pwd -P)"
-# The scratchpad prefix is the one path here that differs per OS.
-if [ "$(uname)" = "Darwin" ]; then
-  scratchpad_root="/private/tmp/claude-$(id -u)"
-else
-  scratchpad_root="/tmp/claude-$(id -u)"
-fi
+# The scratchpad prefix is the one path here that differs per OS — and after
+# section 1b was retired it is the only thing in this file that reads `uname` at
+# all.
+#
+# The `else` used to be every other platform, which meant that on one this guard
+# does not model — a Windows shell, where the delete verbs, the profile
+# variable and the temp root are all spelled differently — nothing matched and
+# everything was allowed, while the plugin still reported as installed. That is
+# the same condition as a missing `jq` above, and it had the opposite answer.
+# Now it refuses, for the same reason and in the same shape.
+case "$(uname)" in
+  Darwin) scratchpad_root="/private/tmp/claude-$(id -u)" ;;
+  Linux)  scratchpad_root="/tmp/claude-$(id -u)" ;;
+  *)
+    deny "The Bash guard does not model this platform ($(uname)), so it cannot say where the session scratchpad is or what a delete looks like here. Refusing rather than checking nothing: on an unmodelled platform every pattern in this file simply fails to match, which reads exactly like a command that was examined and found safe. Orrery supports macOS and Linux. To use it here, the platform has to be taught to this file — the scratchpad root, the delete verbs and the secret paths are what differ — or the hook removed deliberately, which is a decision rather than an accident."
+    ;;
+esac
 
 # Splits a command into segments that each start with their own verb. Beyond the
 # shell operators this also opens command substitutions: `echo $(rm -rf /usr)`
@@ -259,28 +291,18 @@ segments() {
         continue
       }
       # (The heredoc-body branch is handled first, at the top of the loop.)
-      # Redirects split wherever they appear, quoted or not, but the two places
-      # mean different things.
+      # A redirect splits wherever it appears, quoted or not: what follows it is
+      # a filename, and reading that filename as a verb refused
+      # `cat >> hooks/cases.tsv` for leading with a verb called cases.tsv.
       #
-      # Outside quotes a redirect is followed by a filename, never by a command.
-      # Reading that filename as a verb refused `cat >> hooks/cases.tsv` for
-      # leading with a verb called cases.tsv. Those segments are marked with \001
-      # and judged as paths by the sections below: under a system directory the
-      # redirect is a write, anywhere else it is an ordinary output file.
-      #
-      # Inside quotes a redirect is a write performed by an awk or perl program,
-      # and its target keeps being judged as a verb. The corpus case using
-      # awk -v with a system path and a BEGIN block that prints into it rests on
-      # exactly that, and it went green to red the moment redirects were made
-      # quote-aware along with everything else — the corpus doing its job.
+      # Those targets used to be marked with \001 so section 1b could judge them
+      # as paths rather than verbs. Section 1b is gone, and section 3b only ever
+      # stripped the marker again, so it went with it.
       #
       # No apostrophe may appear anywhere in this awk program. One in a comment
       # ends the single-quoted argument, turns the rest into shell words, and the
       # guard stops parsing — which took every Bash call down until it was found.
-      if (c == "<" || c == ">") {
-        out = out "\n" ((inS || inD) ? "" : "\001")
-        continue
-      }
+      if (c == "<" || c == ">") { out = out "\n"; continue }
       if (!inS && !inD && index("(){};&|", c) > 0) { out = out "\n"; continue }
       out = out c
     }
@@ -369,12 +391,27 @@ verb_of() {
 }
 
 # An interpreter handed a file reads it; an interpreter handed inline code can do
-# anything, so the two are judged apart rather than the name being trusted.
-# Sections 1b and 3b both ask this and used to carry a copy of the list each —
-# two sources for one contract, kept in step by nothing but attention.
+# anything, so the two are judged apart rather than the name being trusted. Only
+# section 3b asks this now; sections 1b and 3b used to carry a copy of the list
+# each — two sources for one contract, kept in step by nothing but attention.
 interpreters='node|python|python2|python3|ruby|perl|php|osascript|bash|sh|zsh|deno|bun'
 
-# --- 1. System-path / working-directory escape ---------------------------
+# --- 1. Machine config and credential stores ------------------------------
+#
+# **Sections 1 and 2 look redundant and are not.** Where a filesystem sandbox is
+# switched on, every probe below is already refused by the kernel, from a layer
+# no string can be spelled around — so reading this file there, the obvious
+# conclusion is that these two sections duplicate the platform and should go.
+#
+# They do not duplicate it anywhere the sandbox is off, which is the default and
+# is where most installs run. There, an inline interpreter reading a private key
+# is matched by nothing else: not by the deny rules, which match a command's
+# shape rather than what it opens, and not by section 3, which is about
+# deletion. These sections are the only thing standing between the two.
+#
+# Deleting them on duplication grounds turns no test in this repository red. The
+# corpus asserts the refusal, and the refusal still happens — from a layer the
+# consumer does not have.
 
 # 1a. Secrets and machine config: no access at all, read included — the risk here
 #     is exfiltration, and `cat` is as dangerous as `rm`.
@@ -382,146 +419,39 @@ if grep -qE '(^|[[:space:]"'"'"'=])(/etc|/private/etc|/private/var/root|/var/roo
   deny "Access to a system config directory (/etc, /private/etc, /var/root, /var/db) is not allowed."
 fi
 
-# 1b. System trees: reading them is ordinary work — a PATH entry, a library
-#     lookup, a shebang — and denying that blocks normal commands for nothing.
-#     Writing to them is never wanted.
+# Section 1b lived here: deny-by-default over the system trees, admitting a
+# system path only when the segment's verb was on a list of sixty-nine readers.
+# It was the largest thing in this file — a hundred and forty lines, and most of
+# the reason the segmenter has to resolve heredocs, ANSI-C quotes and arithmetic
+# at all. It was retired by the decision that moved this class of check to the
+# platform, and the reason is worth keeping.
 #
-#     The test is deny-by-default: a system path may be touched only by a command
-#     on the read list. An allowlist of *destructive* verbs cannot be completed —
-#     `touch`, `rsync`, `tar -C`, `ditto`, `find -delete` and `python -c` are all
-#     mutations, and any list of them is one tool short of the next attempt.
+# The list was the attack surface. Of the eight published pre-execution-matching
+# bypasses of Claude Code, every one is against a command on the safe list, and
+# five of those eight — `echo`, `rg`, `find`, `sed`, `cd` — were on ours. A
+# reader list several times longer than the one that produced those CVEs, with a
+# hand-written awk lexer behind it rather than a parser, is not a smaller version
+# of the same defence. It is the same defence with more rows.
 #
-#     The read list is not complete either, and never will be. The difference is
-#     which way each list fails: an unlisted reader costs one refused command,
-#     visible immediately and fixed by adding a word. An unlisted mutator costs a
-#     system directory. That asymmetry is the whole argument, and it is why an
-#     unrecognised verb is refused rather than guessed at.
+# And it was paid for daily. Nine of the entries in this file's own history of
+# false refusals come from this section and the segmenter it required: a commit
+# message with a blank line in it, a directory name read as a command, a shell
+# function definition, `cases.tsv` read as a verb. The asymmetry argument said
+# each miss costs exactly one refused command — true, and it kept being paid,
+# six times in one day, all to the person working on the guard. The last one
+# refused the command that deleted this section, for naming the directories it
+# used to protect.
 #
-#     That argument holds only while the refusal is *visible*. One denial covered
-#     both halves — a write and a word nobody has listed yet — so the reader of a
-#     denial could not tell which it had hit, and the cheap failure looked exactly
-#     like the policy one. An agent that reads "this is forbidden" where the truth
-#     is "this word is missing from a list" does not add the word: it finds another
-#     route or reports the task blocked, and the miss goes unreported forever. So
-#     the two are denied separately, and the list-gap denial names the verb it did
-#     not recognise and says what to do with it.
-#     `/system` and `/library` are macOS; `/bin`, `/lib`, `/lib64` and `/boot`
-#     make the same test hold on Linux. `/opt` stays out deliberately — Homebrew
-#     on ARM macs lives there, and denying `brew` is a false positive, not safety.
-sys_re='(/system|/library|/usr|/sbin|/bin|/lib|/lib64|/boot)'
-
-# Parts of `~/Library` are the user's own working data — application support,
-# caches, logs, preferences, fonts. Ordinary work writes there constantly and
-# none of it is a system tree, so those leave before the match.
+# What replaces it is not nothing. Writes into the system trees are denied for
+# the Edit and Write tools by `hooks/permissions.json`, which is machinery
+# rather than prose; the platform never auto-approves them and prompts on
+# anything it cannot parse; and a filesystem write scope enforced by the kernel
+# is the only form of this that has never been bypassed. Section 1a above still
+# refuses the directories where reading is itself the risk.
 #
-# The rest of `~/Library` does NOT leave, and exempting the whole tree was a
-# defect introduced while removing false positives: it opened `~/Library/
-# Keychains`, `~/Library/Cookies`, `~/Library/Messages` and `~/Library/
-# LaunchAgents` in one line. The first three are secrets that neither 1a nor
-# section 2 covers, and writing the fourth installs something that runs at login.
-# What stays matched keeps the read-only treatment: `ls ~/Library/LaunchAgents`
-# is fine, and writing there is not.
-sys_src="$(sed -E 's@(~|\$home)/library/(application support|application-support|caches|logs|preferences|fonts|saved application state|webkit)@ userlib @g' <<<"$lower")"
-
-# A leading `/usr/bin/python3` is how a command is *run*, not a path it operates
-# on. Reduce it to its basename so the invocation stops reading as a mutation of
-# /usr — `/bin/rm -rf /usr/local/lib` still trips, on its argument.
-sys_src="$(sed -E 's@(^|[;&|`(])[[:space:]]*/(usr/local/bin|usr/bin|bin|usr/sbin|sbin)/@\1@g' <<<"$sys_src")"
-
-# `PATH=/usr/local/bin cmd` mentions a system path without touching it. Only a
-# *leading* assignment is a shell prefix; `awk -v f=/usr/lib/x` is an argument,
-# and stripping that one is what let the indirect redirect through.
-stripped="$(sed -E 's@(^|[;&|`(])[[:space:]]*(([a-z_][a-z0-9_]*=[^[:space:]]*[[:space:]]+)+)@\1@g' <<<"$sys_src")"
-
-if grep -qE "(^|[^a-z0-9_./-])$sys_re(/|[^a-z0-9_-]|\$)" <<<"$stripped"; then
-  # A write this section recognises exactly, as against a verb it does not
-  # recognise at all. Both are refused; they are not the same news.
-  sys_write=0
-  sys_verb=""
-
-  # A redirect into a system path used to be matched here, against the whole
-  # command. The splitter now marks redirect targets and the loop below judges
-  # each one as a path, which is the same decision made where the target is
-  # actually known — so this line stopped being able to fail on its own and the
-  # mutation pass reported it as a survivor. Removed rather than pinned: a check
-  # no case can distinguish from its neighbour is a second source of one answer.
-
-  # Flags that turn a reader into a writer.
-  grep -qE '(^|[[:space:]])--?(delete|exec|execdir|ok)([[:space:]]|$)' <<<"$stripped" && sys_write=1
-  grep -qE '(^|[[:space:]])sed[[:space:]]+(-[a-z]*i|--in-place)' <<<"$stripped" && sys_write=1
-  # An awk program redirecting into a computed name (`awk -v f=/usr/lib/x
-  # 'BEGIN{print "p" > f}'`) needs no rule of its own: `segments()` splits on `>`
-  # too, so the write target becomes a segment and is judged as any other verb.
-  # A heuristic for it was tried here and the mutation pass showed it caught
-  # nothing this did not, while costing a false positive on `awk '$1 > 5'`.
-
-  # `gh` operates on GitHub and `git` writes only under .git and the work tree:
-  # a system path in their arguments is message or issue text, not a write
-  # target. Judging them by verb denied a `gh issue create` and then a
-  # `git commit` whose texts merely mentioned /System — twice in one day.
-  # Everything added here writes nothing at all: it prints to stdout or it prints
-  # nothing. Tools that inspect but can also write on a flag — `lipo -output`,
-  # `pkgutil --expand`, `dtrace -o` — stay off deliberately; they are the ones the
-  # list-gap denial below is for.
-  readers='ls|cat|head|tail|less|more|grep|egrep|fgrep|rg|ag|fd|find|file|stat|readlink|realpath|which|type|wc|diff|du|df|awk|sed|sort|uniq|cut|tr|echo|printf|test|dirname|basename|strings|nm|otool|ldd|codesign|shasum|md5|pwd|xxd|od|tree|jq|export|cd|source|open|man|column|gh|git|lsof|ps|hexdump|objdump|readelf|dwarfdump|nl|comm|paste|rev|fold|cksum|md5sum|sha1sum|sha256sum'
-
-  while IFS= read -r seg; do
-    # A segment the splitter marked as a redirect target: a path, never a verb.
-    # Under a system directory it is a write; anywhere else it is an ordinary
-    # output file and there is nothing here to judge.
-    if [ "${seg:0:1}" = $'\001' ]; then
-      grep -qE "(^|[^a-z0-9_-])$sys_re/" <<<"${seg:1}" && sys_write=1
-      continue
-    fi
-    verb="$(verb_of "$seg")"
-    [ -z "$verb" ] && continue
-    grep -qxE "$readers" <<<"$verb" && continue
-    if grep -qxE "$interpreters" <<<"$verb"; then
-      # `-c` and `-e` are not the only ways to hand an interpreter a program.
-      # `python3 - <<PY` is inline code too, and it used to be refused only by
-      # accident: the body's lines each became a segment and the first word of
-      # one of them was an unrecognised verb. Once the body correctly stops being
-      # segmented, that accident stops happening — so the heredoc has to be named
-      # for what it is.
-      grep -qE '(^|[[:space:]])-[a-z]*[ce]([[:space:]]|$)' <<<"$seg" && sys_write=1
-      grep -q '<<' <<<"$seg" && sys_write=1
-      continue
-    fi
-    # Verbs whose whole job is to write. Without this they reach the list-gap
-    # denial, which asks the reader to consider adding the verb to the reader
-    # list — the right repair for `pkgutil` and the wrong one for `touch`. Both
-    # answers are still deny, so no case can pin this line; it decides which of
-    # the two denials is told, and telling an agent to allowlist `tar` is how a
-    # message meant to close a hole opens one.
-    case "$verb" in
-      touch|tar|rsync|ln|tee|mv|install|dd|mkdir|chmod|chown|chgrp|chflags|xattr|patch|truncate|unzip|cpio|rm|rmdir|unlink|shred|srm)
-        sys_write=1; continue ;;
-    esac
-    # `cp` reads its sources and writes exactly one destination: the last word.
-    # Not anchored to the start: a destination can be reached through a prefix
-    # (`~/Library/LaunchAgents/`), and anchoring is what let that one past.
-    if [ "$verb" = "cp" ] || [ "$verb" = "ditto" ]; then
-      grep -qE "(^|[^a-z0-9_-])$sys_re/" <<<"$(awk '{print $NF}' <<<"$seg")" && sys_write=1
-      continue
-    fi
-    sys_verb="${sys_verb:-$verb}"
-    # Segmented from `sys_src`, not from `stripped`. The leading-assignment strip
-    # that produces `stripped` exists for the trigger tests above — it stops
-    # `PATH=/usr/local/bin cmd` from reading as a write — but its value pattern
-    # runs to the next space, so `n=$(jq -r ...)` had `n=$(jq` removed as a
-    # prefix and the verb went with it: the next token, a quoted jq filter, was
-    # reported as an unrecognised command. Nothing is lost by using `sys_src`
-    # here, because `verb_of` already skips assignment tokens itself, and
-    # `segments` opens `$(` so the substitution becomes its own segment with its
-    # real verb at the head.
-  done < <(segments "$sys_src")
-
-  if [ "$sys_write" -eq 1 ]; then
-    deny "Only reading is allowed under a system directory (/System, /Library, /usr, /sbin, /bin), and this command writes there: it leads with a verb whose job is writing (touch, tar, mv, ln, ...), redirects into a system path, carries a flag that turns a reader into a writer (-delete, -exec, sed -i), runs inline interpreter code, or copies to a destination under one. This is the policy and not a gap in a list, so there is no spelling of it that passes. If the write is genuinely required, that is the user's call to make, not something to route around."
-  elif [ -n "$sys_verb" ]; then
-    deny "Refused by a list, not by a policy: '$sys_verb' is not on the reader list in section 1b of hooks/bash-guard.sh, and a verb this guard does not recognise is refused rather than guessed at when a system path (/System, /Library, /usr, /sbin, /bin) is in the command. Reading under those paths is allowed and ordinary — that list is incomplete by construction and always will be, and every miss is designed to cost exactly one refused command and nothing more. So if '$sys_verb' only reads: add it to the readers list in hooks/bash-guard.sh, with a case in hooks/cases.tsv, or say out loud that the guard is missing '$sys_verb' and let the user decide. Do NOT reach for another way to run it, and do NOT report the task as blocked — a refusal that gets quietly routed around is the one failure this message exists to prevent, because it turns a one-word fix into a hole nobody hears about. If '$sys_verb' can write anywhere under those paths, the refusal stands and is correct."
-  fi
-fi
+# The `cd` check went with it, four lines lower: refusing an absolute `cd`
+# outside the project only ever mattered as a way of reaching the trees 1b
+# guarded, and `cd` bypasses are their own CVE row.
 
 # Credential and personal-data stores under the home folder: no access at all,
 # read included. The `~/Library` entries are as sensitive as `~/.ssh` and are
@@ -532,15 +462,6 @@ if grep -qE '(^|[[:space:]])(~|\$HOME)/\.(ssh|aws|gnupg|kube|docker|npmrc|netrc|
   deny "Access to a credential or personal-data store under the home folder (~/.ssh, ~/.aws, ~/Library/Keychains, ~/Library/Cookies, ~/Library/Messages, ...) is not allowed."
 fi
 
-if grep -qE '(^|[;&|[:space:]])cd[[:space:]]+"?(/[^[:space:]"]*)"?' <<<"$cmd"; then
-  target="$(grep -oE 'cd[[:space:]]+"?/[^[:space:]"]*' <<<"$cmd" | head -1 | sed -E 's/^cd[[:space:]]+"?//')"
-  if [ -n "$target" ] \
-    && [[ "$target" != "$project_root"* ]] \
-    && [[ "$target" != "$scratchpad_root"* ]]; then
-    deny "cd to an absolute path outside the project ($project_root) or the session scratchpad is not allowed: $target"
-  fi
-fi
-
 # --- 2. Secrets: read/print .env, credentials, keys, tokens, certs -------
 secret_pattern='(^|[/[:space:]"'"'"'])((\.env(\.[a-zA-Z0-9_-]+)?)|credentials\.json|id_rsa|id_ed25519|id_ecdsa|\.pem|\.p12|\.pfx|\.jks|\.keystore|\.npmrc|\.netrc|\.git-credentials)([/[:space:]"'"'"']|$)'
 if grep -qE "$secret_pattern" <<<"$lower" \
@@ -549,24 +470,47 @@ if grep -qE "$secret_pattern" <<<"$lower" \
 fi
 
 # --- 3. Destructive operations --------------------------------------------
-# 3a. Never allowed, no exceptions (not scoped to a single file/temp dir).
+# 3a. The destructive git verbs — behind a global option, and only there.
 #
-# Every pattern below reads the subcommand as the word after `git`, and git's
-# global options sit exactly there: `git -C ~/dev clean -fdx` is `git clean` with
-# a target, and it walked past all of them. So the option run is folded into the
-# patterns rather than the subcommand being matched anywhere in the line —
-# matching it anywhere would deny `git commit -m "clean up -f"`.
-gitpre='git([[:space:]]+(-c[[:space:]]*[^[:space:]]+|-C[[:space:]]*[^[:space:]]+|--git-dir[= ][^[:space:]]+|--work-tree[= ][^[:space:]]+|--no-pager|--paginate|--bare))*'
+# This section used to repeat the deny-list: every one of these verbs, matched
+# against the whole command. That cost more than it bought.
+# `hooks/permissions.json` already refuses each of them, and a deny rule applies
+# in **every** permission mode, including bypassPermissions — this file claimed
+# the opposite for months, and the claim was load-bearing until it was checked
+# against the platform's own documentation.
+#
+# What a deny rule cannot do is match a subcommand sitting behind git's global
+# options, because permission rules match by prefix: `git -C <path> reset --hard`
+# does not begin with `git reset`. Measured, not assumed — that form is refused
+# here and by nothing else. So that form is what stays, and the plain one goes
+# back to the layer that already had it.
+#
+# What the duplication cost: three false refusals in a single day, each a command
+# whose *text* named a destructive verb — a commit message, a pull-request title,
+# and a search across this repository's own files. Requiring the option run
+# removes nearly all of that, because prose does not spell `git -C <path>`.
+#
+# `+` rather than `*` is the entire change, and it is worth reading twice: with
+# `*` the option run was optional, which is what made this match the plain form.
+gitpre='git([[:space:]]+(-c[[:space:]]*[^[:space:]]+|-C[[:space:]]*[^[:space:]]+|--git-dir[= ][^[:space:]]+|--work-tree[= ][^[:space:]]+|--no-pager|--paginate|--bare))+'
 if grep -qE "$gitpre"'[[:space:]]+reset[[:space:]]+.*--hard' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+push[[:space:]]+.*(--force([^-]|$)|--force-with-lease|-f([[:space:]]|$))' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+clean[[:space:]]+.*-[a-z]*f' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+filter-branch' <<<"$lower" \
-  || grep -qE "$gitpre"'[[:space:]]+(checkout|restore)[[:space:]]+([^|;&]*[[:space:]])?\.([[:space:]]|$)' <<<"$lower" \
+  || grep -qE "$gitpre"'[[:space:]]+(checkout|restore)[[:space:]]+([^|;&]*[[:space:]])?\.\.?/*([[:space:]]|$)' <<<"$lower" \
   || grep -qE "$gitpre"'[[:space:]]+branch[[:space:]]+([^|;&]*[[:space:]])?-[a-zA-Z]*D' <<<"$cmd" \
-  || grep -qE "$gitpre"'[[:space:]]+(update-ref|symbolic-ref)[[:space:]]+([^|;&]*[[:space:]])?(-d([[:space:]]|$)|--delete)' <<<"$lower" \
-  || grep -qE '\bdrop[[:space:]]+(table|database|schema)\b' <<<"$lower" \
+  || grep -qE "$gitpre"'[[:space:]]+(update-ref|symbolic-ref)[[:space:]]+([^|;&]*[[:space:]])?(-d([[:space:]]|$)|--delete)' <<<"$lower"; then
+  deny "A destructive git verb behind a global option (git -C, --git-dir, --work-tree, ...). The deny-list matches by command prefix and cannot see this form, so it is refused here. The plain spelling is refused by the deny-list instead."
+fi
+
+# 3a-bis. DROP and TRUNCATE stay whole-line, because no other layer carries them
+# at all: there is no deny rule for SQL and the sandbox does not read statements.
+# They keep the same false-refusal shape — prose naming them is refused as one —
+# and that is the remainder of this defect rather than its fix. Sections 1 and 2
+# have it too.
+if grep -qE '\bdrop[[:space:]]+(table|database|schema)\b' <<<"$lower" \
   || grep -qE '\btruncate[[:space:]]+table\b' <<<"$lower"; then
-  deny "Destructive git/DB operation (reset --hard, push --force, clean -f, checkout/restore ., branch -D, update-ref -d, DROP/TRUNCATE, ...) is always denied."
+  deny "Destructive SQL (DROP TABLE/DATABASE/SCHEMA, TRUNCATE TABLE) is always denied."
 fi
 
 # `update-ref` and `symbolic-ref` are plumbing: they remove a ref with none of
@@ -596,15 +540,17 @@ fi
 # 3b. Deletion: allowed ONLY if every path it names resolves under the session
 #     scratchpad root.
 #
-#     Unlike 1b this stays a list of destructive verbs, and the asymmetry is
-#     deliberate rather than the other half of an unfinished fix. 1b can demand a
-#     known reader because its trigger is a system path, where reading is the
-#     whole of the legitimate use. Here the trigger would have to be the project
-#     and the home directory — everywhere real work happens — and deny-by-default
-#     across those refuses nearly everything. So an incomplete list is accepted
-#     here, and kept honest by looking for the verb *anywhere* in a segment
-#     rather than only at its head: that is what let `bash -c "rm -rf ~/dev"`,
-#     `xargs rm` and `perl -e 'unlink ...'` walk past the old check.
+#     This is a list of destructive verbs, and 1b was retired for being a list.
+#     The difference is which way each one fails. 1b's list decided whether a
+#     command could *run at all*, so every word missing from it was a refusal of
+#     ordinary work, and it kept collecting them. This list only decides whether
+#     to look harder at where a deletion points: a word missing from it costs a
+#     warning nobody got, and a word on it costs nothing. A list that fails
+#     towards silence can be incomplete; one that fails towards refusal cannot.
+#
+#     Kept honest by looking for the verb *anywhere* in a segment rather than
+#     only at its head: that is what let `bash -c "rm -rf ~/dev"`, `xargs rm` and
+#     `perl -e 'unlink ...'` walk past the old check.
 #
 #     A list of verbs is not a boundary, and this one is still not closed — see
 #     the last paragraph. What was closed is everything that made the list not
@@ -626,9 +572,6 @@ delete_words='(^|[^a-z0-9_-])(rm|rmdir|unlink|shred|srm|rmtree|remove_tree|remov
 # `rsync --delete`, whose second dash the old pattern did not allow).
 hits=""
 while IFS= read -r seg; do
-  # The splitter marks redirect targets; here they are just filenames, and the
-  # marker must not become part of one.
-  seg="${seg#$'\001'}"
   [ -z "${seg// /}" ] && continue
   v="$(verb_of "$seg")"
   # `git rm` stages a removal and keeps the history that makes it recoverable;
@@ -659,7 +602,6 @@ done < <(segments "$cmd")
 # the word `rm` anywhere — a test payload, a path, another segment entirely —
 # was refused. Four times in one day, to the author of the check.
 while IFS= read -r seg; do
-  seg="${seg#$'\001'}"
   [ -z "${seg// /}" ] && continue
   v="$(verb_of "$seg")"
   grep -qxE "$interpreters" <<<"$v" || continue

@@ -4,8 +4,8 @@
 # Named `<script>.test.sh` per the convention decided in the testing umbrella
 # issue: a test is named after what it tests and sits beside it, so the pairing
 # is visible in a directory listing and a test can never be mistaken for a tool.
-# `guard-test.sh` and `promote-test.sh` predate that decision and are renamed
-# separately.
+# The two older suites predated that decision and were renamed to match, so the
+# repository now runs one convention rather than two.
 #
 # What is worth testing here is not that a line gets written. It is the two
 # properties that make this recorder allowed to exist at all: it records no

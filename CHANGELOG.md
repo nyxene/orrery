@@ -9,6 +9,87 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.10.8
+
+A loader that stopped loading, two guards that now have tests, and a smaller
+guard with a larger deny list behind it.
+
+### One malformed rule file silenced a whole scope
+
+`hooks/rules-loader.sh` closed its frontmatter reader with `next` inside an awk
+`END` block. That is illegal there: awk exits non-zero instead of skipping the
+file, `set -e` takes the loader down with it, and every rule in that scope stops
+arriving — not just the one that was malformed.
+
+Nothing reported it. A loader that emits nothing looks exactly like a scope with
+no applicable rules, so the failure was a session quietly working without the
+layer it was supposed to be carrying.
+
+Fixed, and pinned by the suite that found it.
+
+### Every hook that runs in your session now has a test
+
+Four of them had none: the Agent guard, the two loaders and the compaction
+prompt. The Agent guard runs before every subagent spawn and had a single
+assertion — that it refuses when it cannot parse its own input — while three
+documents said it had a corpus.
+
+Each now has one, beside the file it tests, and the two guards have a mutation
+pass that proves the corpus still pins the code rather than merely running next
+to it. `hooks/guard-test-lib.sh` holds the loops both guard suites use; what
+each states for itself is the payload shape, the fail-closed probes and which of
+its own lines are decisions worth mutating.
+
+The Agent guard's accepted limit is now written as a case rather than left to be
+rediscovered: a brief that mentions `SendMessage` without meaning it passes, and
+no grep can tell the two apart.
+
+### The Bash guard is smaller, and the platform carries the rest
+
+The section that reasoned about system trees is gone — it was the largest thing
+in the file, and it defended by matching strings against a list of readers,
+which is the layer that keeps failing across every harness surveyed. The deny
+rules take that over: file reads and edits are matched by Claude Code itself,
+which the guard cannot be talked around.
+
+The destructive git verbs went the same way. The guard now refuses only their
+global-option form, because the deny list already carries the plain ones — and a
+check now fails if a rule the corpus defers to has been dropped from
+`hooks/permissions.json`, so that hand-off cannot rot into a comment.
+
+What stays in the guard is what no other layer does: deletion outside the
+session scratchpad, and access to credential stores and machine config from
+inline interpreters. Those two sections carry a note saying why they are not the
+duplication they look like where a sandbox is switched on.
+
+`hooks/permissions.json` grows to 121 deny rules and gains an `allow` block.
+That block is Orrery's own gate scripts by path — in your project those rules
+match nothing, and `install/into-project.md` now says so rather than leaving you
+to merge a list that does nothing for you.
+
+### Hook matchers are anchored
+
+`Agent|Task|Edit|Write|NotebookEdit|Bash` matched any tool name containing one
+of those words, not the tool itself. They are anchored now, `Task` is gone, and
+the two guard timeouts are raised to fit the work they actually do.
+
+### The shipped bytes stopped carrying workshop provenance
+
+Files that ship verbatim were carrying tracker references and dated incident
+narratives — a pointer to an issue in a repository you cannot open. The incident
+stays, since a guard's comments are where the reason for each line lives; the
+date and the number are gone, and the publication scan now refuses both classes.
+
+### One rule retired
+
+`arm-auto-merge-only-when-told` required an explicit instruction before arming
+auto-merge. Where the standing instruction is the opposite, the rule fires
+against the person whose incident produced it. Retired rather than inverted, and
+its two cross-references go with it.
+
+Pre-1.0: skill names and layout may still move between releases. `jq` must be
+on `PATH` before any hook fires.
+
 ## 0.10.7
 
 A guard that stopped refusing ordinary work, a planning skill that has to run

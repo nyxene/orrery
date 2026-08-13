@@ -1,0 +1,45 @@
+# Case corpus for hooks/agent-guard.sh. One case per line, three fields:
+# expectation TAB agent name TAB brief.
+#
+# `deny` means the guard must refuse the spawn; `allow` means it must pass
+# through. An empty name field is a case rather than a blank line — a spawn with
+# no name is the shape the guard is required to let past, and it is what the
+# payload builder in `hooks/agent-guard.test.sh` omits from the JSON entirely.
+#
+# Run it with `hooks/agent-guard.test.sh`, and `--mutate` to check the corpus
+# still pins the guard. The guard's whole decision is: a *named* spawn whose
+# brief does not tell the agent to send its deliverable back to "main" is
+# refused. Everything below is one arm of that or a near-miss of one.
+
+# --- an unnamed spawn is never the failure this guard exists for -------------
+# Its final text is returned as the tool result, so nothing can be lost.
+allow		Review the diff and report every correctness problem you find.
+allow		Finish by calling SendMessage({to: "main"}) with the full report.
+
+# --- a named spawn that is told to send, in each spelling the guard accepts --
+allow	reviewer	Audit this change. Finish by calling SendMessage({to: "main", body: ...}) with the FULL deliverable.
+allow	reviewer	Audit this change. Use SendMessage when you are done, and send it back to main.
+allow	reviewer	Audit this change. Call SendMessage at the end; the report returns to main.
+allow	auditor	Check the corpus. End with SendMessage({to:"main"}).
+allow	auditor	Check the corpus. End with SendMessage({to: main}).
+allow	scout	map the tree. sendmessage to: main when finished.
+allow	scout	MAP THE TREE. SENDMESSAGE TO: MAIN WHEN FINISHED.
+
+# --- a named spawn with no instruction to send: the four-lost-reports case ---
+deny	reviewer	Review the diff and report every correctness problem you find.
+deny	reviewer	Review the diff. Write your findings up as a numbered list.
+deny	reviewer
+
+# --- named, and near-misses that must still refuse --------------------------
+# The tool named without the one recipient that does not dead-letter.
+deny	reviewer	Audit this change. Finish by calling SendMessage({to: "team-lead"}) with the report.
+deny	auditor	Check the corpus. Use SendMessage at the end.
+deny	scout	Map the tree, then send your findings to the team lead via SendMessage.
+# The recipient named without the tool: a brief that says where but not how.
+deny	reviewer	Audit this change and report back to main when you are done.
+
+# --- the accepted limit, written down so it is a decision and not a surprise -
+# The threat here is forgetting, not sabotage: a brief that mentions the call
+# without meaning it passes, and no grep can tell the two apart. This case
+# exists to pin that the limit is where the guard's comment says it is.
+allow	reviewer	Run the SendMessage tests, then rebase back to main.

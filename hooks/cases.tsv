@@ -1,7 +1,8 @@
-# Case corpus for the guards. One case per line: expectation TAB command.
+# Case corpus for hooks/bash-guard.sh. One case per line: expectation TAB
+# command. The Agent guard has its own corpus, `hooks/agent-cases.tsv`.
 # `deny` means the guard must refuse it; `allow` means it must pass through.
 #
-# Run it with `hooks/guard-test.sh`. Run `hooks/guard-test.sh --mutate` to check the corpus
+# Run it with `hooks/bash-guard.test.sh`. Run `hooks/bash-guard.test.sh --mutate` to check the corpus
 # still pins the guard: that run blanks one decision line at a time and reports
 # any mutant the corpus fails to kill. Every case below marked with a mutant
 # number was added because a surviving mutant showed nothing was holding it.
@@ -16,91 +17,108 @@ deny	cat /private/etc/shadow
 deny	ls /var/db/
 deny	cd /var/root
 
-# --- 1b. system trees: read yes, touch no -----------------------------------
+# --- 1b lived here: system trees, read yes / touch no. Retired along
+# --- with the section itself — see the tombstone in bash-guard.sh. Everything
+# --- below was never really about 1b: a delete is a delete wherever it points,
+# --- and these point outside the scratchpad, so 3b still refuses them.
 deny	rm -rf /usr/local/lib
 deny	/bin/rm -rf /usr/local/lib
-deny	touch /usr/local/lib/x
-deny	rsync -a . /usr/local/lib/
 deny	find /usr/local/lib -delete
 deny	find /usr/local/lib -exec rm {} +
-deny	cat evil > /usr/local/lib/x
-deny	echo x>/usr/local/lib/y
-# a redirect whose target basename is itself a reader: only the redirect check
-# catches these, and nothing held it until a surviving mutant said so
-deny	echo pwn > /usr/local/bin/cat
-deny	cat a >> /usr/lib/find
-deny	cp x /usr/local/lib/y
-deny	sed -i s/a/b/ /usr/local/lib/x
 deny	python3 -c "import shutil; shutil.rmtree('/usr/local/lib')"
 deny	sudo rm -rf /usr/local/lib
-deny	ln -sf /dev/null /usr/local/lib/x
-deny	tee /usr/local/lib/x < in
-deny	cat x | tee /usr/local/lib/y
-deny	tar -xzf x.tgz -C /usr/local
-allow	ls -la /usr/local/bin
-allow	cat /usr/local/lib/x
-allow	grep -r foo /usr/include
-allow	du -sh /usr/local
-allow	otool -L /usr/lib/libSystem.dylib
-allow	diff /usr/share/a /usr/share/b
-allow	ls /usr/local/lib | head -20
-allow	export PATH=/usr/local/bin:$PATH
-allow	PATH=/usr/bin:$PATH make
-
-# bypasses found adversarially in audit round 3
 deny	echo $(rm -rf /usr/local/lib)
 deny	echo `rm -rf /usr/local/lib`
 deny	env rm -rf /usr/local/lib
 deny	command rm -rf /usr/local/lib
-deny	sed --in-place s/a/b/ /usr/local/lib/x
-deny	awk -v f=/usr/local/lib/x 'BEGIN{print "pwn" > f}'
 
-# false positives measured in audit round 3: reading and running are not writing
+# Writing under a system tree is now the platform's business and the kernel's,
+# not this file's. These four are here as a floor rather than as a policy: they
+# say out loud what the retirement gave up, so that giving it back is a visible
+# change to this corpus rather than a quiet one.
+allow	touch /usr/local/lib/x
+allow	cp x /usr/local/lib/y
+allow	sed -i s/a/b/ /usr/local/lib/x
+allow	cat evil > /usr/local/lib/x
+
+# Reading and running under one was always ordinary. It cost sixty-nine verbs to
+# say so; now it costs nothing, and the guard has no opinion at all.
+allow	ls -la /usr/local/bin
+allow	cat /usr/local/lib/x
 allow	/usr/bin/python3 script.py
-allow	/usr/bin/env node build.js
 allow	node /usr/local/lib/node_modules/x/bin.js
-allow	cp /usr/share/dict/words .
-allow	codesign -dv /usr/local/bin/tool
-# readers that write nothing at all, refused until the list was widened (#4)
-allow	lsof /usr/lib/libSystem.B.dylib
-allow	hexdump -C /usr/lib/dyld
-allow	objdump -d /usr/bin/true
-allow	nl /usr/share/dict/words
-# the value of a wrapper flag is not the verb: this was judged on the word `root`
 allow	sudo -u root cat /usr/local/lib/x
-# gh talks to GitHub and git writes only under .git: system paths in their
-# arguments are text, and the destructive git verbs are 3a's job
 allow	gh issue create --body "the guard protects /System and /Library"
 allow	git commit -m "docs: cover /usr and /lib in the guard"
-# ~/Library is the user's own data, not a system tree
 allow	mkdir -p ~/Library/Application-Support/myapp
-allow	open ~/Library/Logs
-allow	ls ~/Library/Caches
 
 # --- 1c. credential directories under home ----------------------------------
 deny	cat ~/.ssh/id_rsa
 deny	ls ~/.aws/	# mutant L88
-
-# --- 1d. cd outside the project ---------------------------------------------
-deny	cd /Users/someoneelse/project	# mutant L96
-allow	cd {ROOT}/skills
 
 # --- 2. secret files ---------------------------------------------------------
 deny	cat .env
 deny	cat config/credentials.json
 allow	cat .env.example
 
-# --- 3a. destructive git and DB ----------------------------------------------
-deny	git reset --hard HEAD~1
-deny	git push --force origin main
-deny	git clean -fdx
-deny	git branch -D main
-deny	git filter-branch --tree-filter x HEAD	# mutant L112
-deny	git checkout .	# mutant L113
-# git's global options sit where every pattern here reads the subcommand
+# --- 3a. destructive git behind a global option -------------------------------
+# THE ONLY FORM THIS SECTION STILL JUDGES. The plain spellings below are marked
+# `allow` on purpose: they are refused by `hooks/permissions.json`, and a deny
+# rule applies in every permission mode. Duplicating them here bought nothing
+# and cost three false refusals in one day, each a command whose *text* named a
+# destructive verb.
+#
+# A deny rule matches by command prefix, so `git -C <path> reset --hard` does not
+# begin with `git reset` and is matched by no rule. That gap is what this section
+# is now for, and it is the whole of what it is for.
 deny	git -C /Users/someone/dev clean -fdx
 deny	git -C /Users/someone/dev reset --hard HEAD~5
 deny	git --no-pager branch -D main
+deny	git --git-dir=/Users/someone/dev/.git checkout .
+deny	git -C /Users/someone/dev update-ref -d refs/heads/x
+deny	git -C /Users/someone/dev push --force origin main
+deny	git -C /Users/someone/dev filter-branch --tree-filter x HEAD
+#
+# The plain forms. `allow` here means "this section does not judge it", never
+# "this is safe to run" — each line names the rule that refuses it instead.
+# If any of these rules is ever removed from hooks/permissions.json, the verb
+# stops being refused anywhere, and nothing in this file will notice.
+allow	git reset --hard HEAD~1	# Bash(git reset --hard*)
+allow	git push --force origin main	# Bash(git push --force*)
+allow	git clean -fdx	# Bash(git clean -f*)
+allow	git branch -D main	# Bash(git branch -D*)
+allow	git filter-branch --tree-filter x HEAD	# Bash(git filter-branch*)
+allow	git checkout .	# Bash(git checkout .)
+allow	git checkout ./	# Bash(git checkout ./)
+allow	git checkout ..	# Bash(git checkout ..)
+allow	git checkout ../	# Bash(git checkout ../)
+allow	git checkout -- ./	# Bash(git checkout -- ./)
+allow	git restore ./	# Bash(git restore ./)
+allow	git restore --staged --worktree ./	# Bash(git restore --staged --worktree ./)
+allow	git update-ref -d refs/heads/some-feature	# Bash(git update-ref -d*)
+allow	git update-ref --delete refs/heads/stage/v0.10.0	# Bash(git update-ref --delete*)
+allow	git symbolic-ref --delete HEAD	# Bash(git symbolic-ref --delete*)
+#
+# Prose. Every one of these was refused before the shrink, and each is a command
+# that writes text rather than one that destroys anything. This is the defect
+# this change exists to remove, so these are the cases that pin it.
+allow	git commit -m "docs: explain why git reset --hard is denied"
+allow	git commit -m "fix: git checkout ./ slipped both layers"
+allow	gh pr create --title "the dot family, not just the dot"
+allow	grep -rn "git push --force" docs/
+#
+# A path that merely starts with a dot is a path, not the whole tree. This
+# direction is pinned because over-blocking it is what caused the last
+# regression here.
+allow	git checkout .gitignore
+allow	git checkout ./src
+allow	git restore .github/workflows/gates.yml
+#
+# --- 3a-bis. destructive SQL, still whole-line --------------------------------
+# No other layer carries these: no deny rule, and the sandbox does not read
+# statements. They keep the whole-line shape, and with it the false-refusal
+# problem — prose naming them is still refused. That is the remainder of the
+# defect, not its fix.
 deny	psql -c "DROP TABLE users"	# mutant L115
 deny	psql -c "TRUNCATE TABLE users"	# mutant L116
 allow	git status
@@ -139,7 +157,7 @@ deny	find ~/dev -name '*.md' -delete
 deny	perl -e 'unlink glob "/Users/someone/dev/*"'
 deny	echo x | xargs -I{} rm -rf {}
 
-# bypasses found adversarially against the round-3 version (#5). Each of the
+# bypasses found adversarially against the round-3 version. Each of the
 # first three let every verb on the list through at once, which is worth more
 # than any word added to it: a `git` at the head exempted the whole command,
 # `segments()` cut inline interpreter code into pieces before it was read, and a
@@ -171,24 +189,31 @@ allow	git push --delete origin feature-x
 allow	node methodology/build.mjs
 
 # ~/Library is not one thing. Exempting the whole tree to fix a false positive
-# opened its secret stores and its login-item directory in a single line.
+# opened its secret stores in a single line, and those stay refused: reading one
+# is the whole of the damage, which is what section 1a is for.
+#
+# Its login-item directory left with 1b. `echo plist > ~/Library/LaunchAgents/x`
+# is allowed here now and is denied for the Edit and Write tools by
+# hooks/permissions.json — machinery rather than a string match, and the only
+# half of that pair anyone could rely on.
 deny	cat ~/Library/Keychains/login.keychain-db
 deny	cp ~/Library/Cookies/Cookies.binarycookies /tmp/x
 deny	cat ~/Library/Messages/chat.db
 deny	ls ~/Library/Mail/
 deny	cat ~/Library/Safari/History.db
-deny	echo plist > ~/Library/LaunchAgents/com.evil.plist
-deny	cp agent.plist ~/Library/LaunchAgents/
+allow	echo plist > ~/Library/LaunchAgents/com.evil.plist
 allow	ls ~/Library/LaunchAgents
 allow	cat ~/Library/Preferences/com.apple.dock.plist
 
 # Plumbing removal of a ref: `update-ref` and `symbolic-ref` apply none of the
-# checks porcelain does, so `-d` there is refused whatever it names.
-deny	git update-ref -d refs/heads/some-feature
-deny	git update-ref --delete refs/heads/stage/v0.10.0
-deny	git symbolic-ref --delete HEAD
+# checks porcelain does, so `-d` there is refused whatever it names. The plain
+# spellings moved to section 3a above and are marked `allow` there, with the
+# deny rule that carries each one; only the global-option form is judged here.
 deny	git -C /tmp/x update-ref -d refs/heads/stage/v0.10.0
-deny	git status && git update-ref -d refs/heads/stage/v0.10.0
+# A compound. The deny-list matches each subcommand independently, so the second
+# half is refused by Bash(git update-ref -d*) even though the line starts with a
+# read-only verb. That is why this section no longer needs to see it.
+allow	git status && git update-ref -d refs/heads/stage/v0.10.0
 # Porcelain keeps its own safety net, and a ref that a tool owns is that tool's
 # business rather than this file's — see the note in bash-guard.sh where a
 # section enforcing that used to be.
@@ -208,10 +233,9 @@ allow	n=$(jq -r ".permissions.deny[]" {ROOT}/hooks/permissions.json | grep -cE "
 allow	d={ROOT}/hooks; ls "$d" && grep -c usr "$d/permissions.json"
 allow	PATH=/usr/local/bin ls /usr/lib
 allow	cat {ROOT}/README.md >> {SCRATCH}/notes.md
-# A redirect inside quotes still splits and its target is still judged as a verb:
-# there `>` is a write performed by an awk program. Outside quotes the target is
-# a filename and is judged as a path instead.
-deny	awk -v f=/usr/local/lib/x 'BEGIN{print "pwn" > f}'
+# A redirect splits wherever it appears, inside quotes or out. It used to matter
+# which: outside, the target was a filename, inside, it was a write performed by
+# an awk program, and 1b judged the two differently. Nothing asks any more.
 allow	awk '$2 ~ /\/usr/ {print $1}' {ROOT}/README.md
 
 # Shell keywords are syntax, not verbs. `then`, `do` and `else` were skipped from
@@ -229,8 +253,6 @@ allow	libdir=/usr/local/lib; ls "$libdir"
 # code exactly as `-c` does, and is judged on the same terms.
 allow	cat <<'EOF' > {SCRATCH}/notes.md\nsee /usr/lib and /System\nEOF
 allow	cat <<EOF\nhello\nEOF
-deny	python3 - <<PY\nimport shutil\nshutil.rmtree("/usr/lib")\nPY
-deny	python3 - <<PY\nopen("/usr/local/x","w").write("p")\nPY
 deny	bash <<'EOF'\nrm -rf /Users/someone/dev\nEOF
 deny	python3 - <<PY\nimport shutil\nshutil.rmtree("/Users/someone/dev")\nPY
 
@@ -252,7 +274,6 @@ allow	rm -rf {SCRATCH}/nested/dir
 # itself being read — both holes below were denied before and still are.
 allow	git commit -m "$(cat <<'EOF'\na message mentioning /usr/lib and /System\nEOF\n)"
 deny	echo "$(rm -rf /Users/someone/dev)"
-deny	echo "$(touch /usr/local/evil)"
 allow	echo "$(grep -c usr {ROOT}/hooks/permissions.json)"
 # Prose inside a heredoc is prose. A commit message beginning `fix(guard):`
 # closed a substitution that was still open, split the body, and put a word from
@@ -263,7 +284,7 @@ allow	git commit -q -m "$(cat <<'EOF'\nfix(guard): three findings, and /usr/lib 
 deny	git commit -q -m "$(cat <<EOF\nnote: $(rm -rf /Users/someone/dev)\nEOF\n)"
 
 # Anything mistaken for an open heredoc swallows the rest of the command and
-# hides it from sections 1b and 3b. An independent audit found four ways to open
+# hides it from section 3b. An independent audit found four ways to open
 # one by accident, two of them shipped by the rewrite that was meant to make this
 # splitter safer. Every case below was ALLOW at that point and is DENY again.
 #
@@ -271,7 +292,6 @@ deny	git commit -q -m "$(cat <<EOF\nnote: $(rm -rf /Users/someone/dev)\nEOF\n)"
 # terminator must actually appear ahead in the input. Both are checked before the
 # body is trusted to end.
 deny	grep -q pat <<< "$var" ; rm -rf /Users/someone/dev
-deny	tr a b <<< x ; rsync -a /tmp/y /usr/lib/
 deny	tr a b <<< x && sudo rm -rf /Users/someone/dev
 deny	tr a b <<< x\nrm -rf /Users/someone/dev
 deny	n=2 ; i=$((1<<n)) ; rm -rf /Users/someone/dev

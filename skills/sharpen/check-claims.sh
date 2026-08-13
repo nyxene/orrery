@@ -38,9 +38,18 @@ SCOPE=(CANON.md README.md CLAUDE.md CHANGELOG.md .githooks
 COUNT_SCOPE=()
 for s in "${SCOPE[@]}"; do [ "$s" = CHANGELOG.md ] || COUNT_SCOPE+=("$s"); done
 
+# A test file's text is fixtures, not claims. A corpus names paths precisely
+# because they must not resolve, and a suite builds a tree under mktemp and then
+# asserts on paths and counts inside it. Resolving either against this
+# repository fails on a *passing* test, so every suite and every corpus is
+# excluded from both checks below.
+#
+# Do not write an example of a fixture path or a fixture count in this file. The
+# exclusion is by filename and this file is not excluded from itself, so the
+# example becomes the only place still asserting it.
+FIXTURES=(--exclude='*.test.sh' --exclude=cases.tsv --exclude=agent-cases.tsv)
+
 # --- 1. Every path the library names exists ---------------------------------
-# Paths inside the guard corpus are test inputs, not references — a case file
-# names paths precisely because they must not resolve, so it is excluded by name.
 #
 # The pattern is anchored to directory names on purpose. Matching any path with
 # an extension was tried and reverted: it reads `$HOME/.claude/settings.json`
@@ -50,7 +59,7 @@ for s in "${SCOPE[@]}"; do [ "$s" = CHANGELOG.md ] || COUNT_SCOPE+=("$s"); done
 missing=""
 while read -r p; do
   [ -e "$p" ] || missing="$missing $p"
-done < <(grep -rhoE --exclude=cases.tsv '(skills|agents|rules|hooks|install)/[A-Za-z0-9_./-]+\.(md|sh|json|tsv)' \
+done < <(grep -rhoE "${FIXTURES[@]}" '(skills|agents|rules|hooks|install)/[A-Za-z0-9_./-]+\.(md|sh|json|tsv)' \
            "${SCOPE[@]}" 2>/dev/null | sort -u)
 if [ -z "$missing" ]; then ok "every named path resolves"
 else bad "dangling paths"; for p in $missing; do note "$p"; done; fi
@@ -79,7 +88,7 @@ word() { case "$1" in
 # number: the checker failed on its own explanation of why not to fail on it.
 check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated number
   local stated
-  stated=$(grep -rhoE "$3" "${COUNT_SCOPE[@]}" 2>/dev/null | grep -oE '[0-9]+|four|five|six|ten|eleven|twelve|thirteen' | sort -u | tr '\n' ' ')
+  stated=$(grep -rhoE "${FIXTURES[@]}" "$3" "${COUNT_SCOPE[@]}" 2>/dev/null | grep -oE '[0-9]+|four|five|six|ten|eleven|twelve|thirteen' | sort -u | tr '\n' ' ')
   if [ -z "$stated" ]; then note "$1: nothing states it ($2 on disk)"; return; fi
   for s in $stated; do
     if [ "$s" != "$2" ] && [ "$s" != "$(word "$2")" ]; then
@@ -141,8 +150,19 @@ else bad "rules carrying provenance that sanitization should have stripped"; for
 # A label nobody created returns an empty list, not an error — and an empty list
 # is indistinguishable from a clean backlog. This is the failure
 # rules/craft/library-skills-declare-taxonomy-rather-than-hardcode-it.md is about.
-if command -v gh >/dev/null 2>&1 && gh repo view >/dev/null 2>&1; then
-  have=$(gh label list --limit 100 2>/dev/null | cut -f1)
+#
+# The probe is the payload. A guard verb in front of the call that matters can
+# fail for reasons the real call would not have, and then the check announces
+# the tracker is unreachable when it is not. Nothing is sent to /dev/null
+# either: whichever of "no gh", "no token" or "the network is down" happened,
+# the line a person reads should carry what gh actually said.
+if ! command -v gh >/dev/null 2>&1; then
+  printf '\033[33m–\033[0m label check skipped: gh is not on PATH\n'
+elif ! gh_out=$(gh label list --limit 100 2>&1); then
+  printf '\033[33m–\033[0m label check skipped: gh could not list labels\n'
+  printf '%s\n' "$gh_out" | sed 's/^/    /'
+else
+  have=$(cut -f1 <<<"$gh_out")
   absent=""
   for l in $(grep -oE '`(type|area|priority)/[a-z|\\]+`' CLAUDE.md | tr -d '`' \
                | awk -F/ '{n=split($2,v,/[\\|]+/); for(i=1;i<=n;i++) if(v[i]!="") print $1"/"v[i]}'); do
@@ -151,8 +171,6 @@ if command -v gh >/dev/null 2>&1 && gh repo view >/dev/null 2>&1; then
   done
   if [ -z "$absent" ]; then ok "declared labels exist in the tracker"
   else bad "labels declared in CLAUDE.md that the tracker does not have"; for l in $absent; do note "$l"; done; fi
-else
-  printf '\033[33m–\033[0m tracker not reachable; label check skipped\n'
 fi
 
 # --- 7. plugin.json doesn't redeclare an auto-discovered path ---------------
@@ -165,6 +183,29 @@ if jq -e '.hooks | strings | endswith("hooks.json")' .claude-plugin/plugin.json 
   bad "plugin.json redeclares a hooks path — Claude Code auto-discovers hooks/hooks.json; remove the key"
 else
   ok "plugin.json doesn't redeclare the auto-discovered hooks path"
+fi
+
+# --- 8. A case that defers to a deny rule names one that exists -------------
+# The Bash guard does not refuse the plain destructive git verbs, because the
+# deny list carries them — so each of those verbs is refused in exactly one
+# place. The corpus records which rule took over, beside the `allow` it
+# justifies, as a comment. Drop that rule from `hooks/permissions.json` and the
+# verb stops being refused anywhere, with the corpus still green and still
+# asserting that letting it through is correct.
+#
+# This says nothing about whether the rule is right — only that the thing the
+# corpus points at is still there. A rule contains spaces, so misses are
+# collected one per line and read back with field splitting off.
+absent=""
+while IFS= read -r rule; do
+  [ -n "$rule" ] || continue
+  jq -e --arg r "$rule" '.permissions.deny | index($r)' hooks/permissions.json >/dev/null 2>&1 \
+    || absent="$absent$rule"$'\n'
+done < <(grep -oE '#[[:space:]]*Bash\([^)]*\)' hooks/cases.tsv | sed 's/^#[[:space:]]*//' | sort -u)
+if [ -z "$absent" ]; then ok "every deny rule the corpus defers to still exists"
+else
+  bad "the corpus defers to deny rules that are not in permissions.json"
+  while IFS= read -r r; do [ -n "$r" ] && note "$r"; done <<<"$absent"
 fi
 
 echo

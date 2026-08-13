@@ -93,9 +93,39 @@ local layer, not in a library that installs into all of them.
 
 ## Merge the deny-list
 
-`hooks/permissions.json` holds 99 deny rules — system paths, secret files,
+`hooks/permissions.json` holds 121 deny rules — system paths, secret files,
 destructive git. Merge its `permissions.deny` array into the project's
 `.claude/settings.json`. It is additive and safe to apply to any repository.
+
+**Only that array.** The same file also carries an `allow` block, and it is not
+yours: it names Orrery's own gate scripts by path, so in your project those
+rules match nothing. Your allow list is your own quality gates, written the same
+way.
+
+There are no `Write(...)` rules in it, and adding one back does nothing: file
+permission checks are matched by `Edit(...)` alone, which covers every
+file-editing tool including `Write`. Claude Code says so on every config run,
+once per rule.
+
+## What stays your responsibility
+
+Everything this plugin enforces arrives through two doors: the hooks, which see
+Bash commands and agent spawns, and the deny-list above, which Claude Code
+applies to file reads and edits. Both doors are about the shell and the
+filesystem.
+
+**MCP servers and plugins pass through neither.** A tool an MCP server exposes is
+not a Bash command and not a file edit, so no hook sees it, no deny rule matches
+it, and nothing here constrains what it does or where it sends what it read.
+Which servers a session carries is your configuration — a different project
+carries a different set, and a plugin that installs into all of them cannot know
+yours.
+
+So the line is: this plugin covers what a session does through the shell and the
+filesystem. It does not cover what a connected server does on the session's
+behalf, and it does not cover a plugin you install beside it. **That second list
+is not a roadmap.** Those choices are yours, they stay yours after this is
+installed, and saying so is the difference between a boundary and a promise.
 
 ## What must never be copied into the library
 

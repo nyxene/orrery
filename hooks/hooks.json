@@ -26,7 +26,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Agent|Task|Edit|Write|NotebookEdit|Bash",
+        "matcher": "^(Agent|Edit|Write|NotebookEdit|Bash)$",
         "hooks": [
           {
             "type": "command",
@@ -43,23 +43,23 @@
         ]
       },
       {
-        "matcher": "Bash",
+        "matcher": "^Bash$",
         "hooks": [
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/bash-guard.sh\"",
-            "timeout": 5,
+            "timeout": 15,
             "statusMessage": "Checking command against security policy..."
           }
         ]
       },
       {
-        "matcher": "Agent",
+        "matcher": "^Agent$",
         "hooks": [
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-guard.sh\"",
-            "timeout": 5,
+            "timeout": 10,
             "statusMessage": "Checking the agent spawn returns its report..."
           }
         ]

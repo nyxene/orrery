@@ -14,9 +14,10 @@ Ground rules for any session here:
 
 - A change without a version bump in `.claude-plugin/plugin.json` reaches
   nobody; the bump is part of the change, not an afterthought.
-- The quality gates are `claude plugin validate . --strict`,
-  `hooks/guard-test.sh` and `skills/sharpen/check-claims.sh`, and
-  `.githooks/pre-commit` runs all three. Enable it per clone:
+- The quality gates are `claude plugin validate . --strict`, a suite beside each
+  hook that has one — the two guards, the call log, the two loaders and the
+  handoff prompt — and `skills/sharpen/check-claims.sh`. `.githooks/pre-commit`
+  runs them; count them there rather than here. Enable it per clone:
   `git config core.hooksPath .githooks`. A gate named here that this repository
   cannot run is a defect, not a formality — every command in that hook has to
   resolve against the files this repository actually holds.

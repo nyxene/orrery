@@ -24,15 +24,23 @@ run() { # $1 = name, rest = command
 }
 
 run "plugin schema"  claude plugin validate . --strict
-run "guard corpus"   ./hooks/guard-test.sh
+run "guard corpus"   ./hooks/bash-guard.test.sh
+# The Agent guard's whole pass — corpus, probes and mutants — takes about two
+# seconds, so it needs no trigger.
+run "agent guard"    ./hooks/agent-guard.test.sh --mutate
 run "call log"       ./hooks/call-log.test.sh
+# The three hooks that emit rather than decide. Their failure is silence, so
+# nothing but these would report it.
+run "canon loader"   ./hooks/canon-loader.test.sh
+run "rules loader"   ./hooks/rules-loader.test.sh
+run "handoff prompt" ./hooks/handoff-prompt.test.sh
 run "library claims" ./skills/sharpen/check-claims.sh
 
 # The mutation pass takes minutes, so it runs only when the thing it pins is
 # being changed.
-if git diff --cached --name-only | grep -qE '^hooks/(bash-guard\.sh|cases\.tsv)$'; then
+if git diff --cached --name-only | grep -qE '^hooks/(bash-guard\.sh|bash-guard\.test\.sh|cases\.tsv|guard-test-lib\.sh)$'; then
   printf '  … guard changed, running the mutation pass (minutes)\n'
-  run "guard mutation" ./hooks/guard-test.sh --mutate
+  run "guard mutation" ./hooks/bash-guard.test.sh --mutate
 fi
 
 if [ "$fail" -ne 0 ]; then

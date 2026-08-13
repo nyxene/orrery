@@ -19,9 +19,11 @@ will be credited in the release notes.
 ## Gates
 
 - [ ] `claude plugin validate . --strict`
-- [ ] `./hooks/guard-test.sh`
+- [ ] `./hooks/bash-guard.test.sh`
+- [ ] `./hooks/agent-guard.test.sh --mutate`
+- [ ] `./hooks/canon-loader.test.sh`, `./hooks/rules-loader.test.sh`, `./hooks/handoff-prompt.test.sh`
 - [ ] `./skills/sharpen/check-claims.sh`
-- [ ] `./hooks/guard-test.sh --mutate` — only if `hooks/bash-guard.sh` or `hooks/cases.tsv` changed
+- [ ] `./hooks/bash-guard.test.sh --mutate` — only if `hooks/bash-guard.sh`, `hooks/cases.tsv` or `hooks/guard-test-lib.sh` changed
 
 ## Checks
 

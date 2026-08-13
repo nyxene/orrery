@@ -49,16 +49,22 @@ Then make sure they pass:
 
 ```bash
 claude plugin validate . --strict
-./hooks/guard-test.sh
+./hooks/bash-guard.test.sh
+./hooks/agent-guard.test.sh --mutate
+./hooks/canon-loader.test.sh
+./hooks/rules-loader.test.sh
+./hooks/handoff-prompt.test.sh
 ./skills/sharpen/check-claims.sh
 ```
 
-If you changed `hooks/bash-guard.sh` or `hooks/cases.tsv`, also run the
-mutation pass. It takes minutes, and it is the only thing that proves the
-corpus still pins the guard rather than merely running beside it:
+The Agent guard's mutation pass is in that list because it costs seconds. The
+Bash guard's does not: if you changed `hooks/bash-guard.sh`, `hooks/cases.tsv`
+or the shared `hooks/guard-test-lib.sh`, run it too. It takes minutes, and it is
+the only thing that proves the corpus still pins the guard rather than merely
+running beside it:
 
 ```bash
-./hooks/guard-test.sh --mutate
+./hooks/bash-guard.test.sh --mutate
 ```
 
 `jq` must be on `PATH` before any hook fires.

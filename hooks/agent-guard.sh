@@ -5,8 +5,8 @@
 # A named agent is created as an in-process teammate: it communicates only via
 # SendMessage, and its final text is NOT returned as the tool result. The report
 # is written, sent, and never arrives — indistinguishable from a hang. This cost
-# four consecutive lost audit reports on 2026-07-29, and four more
-# in the session that added this guard, to an author who had the rule open.
+# four consecutive lost audit reports in one session, and four more in the
+# session that added this guard, to an author who had the rule open.
 #
 # That is the argument for a guard over a sixth copy of the rule: the instruction
 # was present, correct and prominent, and was still not applied.
