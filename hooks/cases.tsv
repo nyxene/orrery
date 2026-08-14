@@ -107,6 +107,20 @@ allow	git commit -m "fix: git checkout ./ slipped both layers"
 allow	gh pr create --title "the dot family, not just the dot"
 allow	grep -rn "git push --force" docs/
 #
+# The same prose over more than one line. Every case above is a single line, and
+# that is exactly why the defect below lived here unnoticed: a newline surviving
+# inside a segment split it at the reader, so the quoted line was judged as a
+# command about to run. It refused a commit body, an issue body, and three
+# attempts to document the guard itself in one session.
+#
+# The deny direction is the half that matters. A newline outside quotes really
+# does end a command, and the fix must not turn a multi-line script into one
+# harmless-looking blob.
+allow	gh issue comment 1 --body 'note\nrm -rf /Users/someone/dev\nend'
+allow	git commit -m "why this is refused:\nrm -rf /Users/someone/dev\nand that is the point"
+deny	ls -la\nrm -rf /Users/someone/dev
+deny	gh issue comment 1 --body 'x\ny' ; rm -rf /Users/someone/dev
+#
 # A path that merely starts with a dot is a path, not the whole tree. This
 # direction is pinned because over-blocking it is what caused the last
 # regression here.
@@ -114,13 +128,36 @@ allow	git checkout .gitignore
 allow	git checkout ./src
 allow	git restore .github/workflows/gates.yml
 #
-# --- 3a-bis. destructive SQL, still whole-line --------------------------------
+# --- 3a-bis. destructive SQL, judged where it could execute -------------------
 # No other layer carries these: no deny rule, and the sandbox does not read
-# statements. They keep the whole-line shape, and with it the false-refusal
-# problem — prose naming them is still refused. That is the remainder of the
-# defect, not its fix.
+# statements. This matched the whole command line until it was measured, and the
+# defect 3a was shrunk to remove had simply moved here — in one session it
+# refused a search of this repository, a batch of these very cases, and the
+# command filing the issue about it.
+#
+# Now the segment has to be running a database client, which is the same shape
+# 3a settled on. It composes with the container unwrapping, so a client behind
+# `docker exec` is still judged.
 deny	psql -c "DROP TABLE users"	# mutant L115
 deny	psql -c "TRUNCATE TABLE users"	# mutant L116
+deny	mysql -e "DROP DATABASE app"
+deny	sqlite3 app.db "DROP TABLE users"
+deny	docker exec pg psql -c "DROP TABLE users"
+allow	psql -c "select count(*) from users"
+#
+# The prose direction — the whole point of the change. Each of these was refused
+# before it, and each writes text rather than executing anything.
+allow	git commit -m "docs: why DROP TABLE is denied"
+allow	grep -rn "DROP TABLE" hooks/
+allow	gh issue create --body 'the rule refuses DROP TABLE anywhere'
+allow	gh issue create --body 'note\nDROP TABLE users\nend'
+#
+# And the silence this trades for, written down rather than discovered: the
+# statement and the client in different segments, and a statement in a file the
+# guard cannot read. Both reach a database; neither is visible to a rule that
+# reads one segment at a time.
+allow	echo "DROP TABLE users" | psql
+allow	cat schema.sql | psql
 allow	git status
 allow	git rm rules/x.md
 allow	git checkout main
@@ -164,6 +201,87 @@ deny	echo x | xargs -I{} rm -rf {}
 # wrapper flag's value was read as the verb.
 deny	git status && rm -rf ~/dev
 deny	git log --oneline && rm -rf /Users/someone/dev
+
+# The verb, spelled the ways bash accepts and this used to compare literally.
+# `rm -rf ~/dev` was refused and `\rm -rf ~/dev` was not — and a backslash is
+# what people type to step around an `rm -i` alias, so the delete boundary was
+# one keystroke deep. The quoted forms are the same defect, and `${IFS}` is a
+# fourth: the whole thing is one whitespace-free token, whose basename was `dev`.
+deny	\rm -rf /Users/someone/dev
+deny	'rm' -rf /Users/someone/dev
+deny	"rm" -rf /Users/someone/dev
+deny	r""m -rf /Users/someone/dev
+deny	rm${IFS}-rf${IFS}/Users/someone/dev
+# The limit that stays: until the shell expands it, the verb is genuinely
+# unknown, and guessing which command a variable holds is not something a string
+# matcher can do. Written down here rather than discovered by the next person.
+allow	r=rm; $r -rf /Users/someone/dev
+
+# Container execution is a wrapper with one extra word. Reported by a host
+# project that walked around its own hook this way; `rm -rf` was refused and
+# `docker exec pg rm -rf` was not, which took every rule in the file with it
+# rather than the delete boundary alone.
+deny	docker exec pg rm -rf /Users/someone/dev
+deny	docker exec -it pg rm -rf /Users/someone/dev
+deny	podman exec c1 rm -rf /Users/someone/dev
+deny	kubectl exec pod -- rm -rf /Users/someone/dev
+deny	docker compose exec web rm -rf /Users/someone/dev
+deny	nerdctl exec c1 rm -rf /Users/someone/dev
+# And the other direction, which is what stops the fix from becoming "refuse
+# every container command". The name after `exec` is skipped once and only after
+# `exec`, so ordinary subcommands still read as themselves.
+allow	docker exec pg psql -f /tmp/q.sql
+allow	docker ps -a
+allow	docker build -t thing .
+allow	kubectl get pods
+# `docker run` with a bind mount is not covered, and that is a decision rather
+# than an omission. Three things would have to be true to cover it, and the
+# third cannot be.
+#
+# One: parse the mount grammar. A bind mount is spelled at least eight ways —
+# `-v /h:/c`, `-v /h:/c:ro`, `--volume=/h:/c`, `--mount type=bind,source=/h,
+# target=/c`, the same keys as src/dst, in any order — and two of the spellings
+# threaten nothing (`-v name:/c` is a named volume, `-v /c` is anonymous), so
+# telling them apart is part of the job.
+#
+# Two: map the container path back. Knowing `/x` is `/Users/someone` is what
+# makes `rm -rf /x/dev` the refusable thing, and that means modelling the
+# container filesystem rather than matching a string. This guard also reads the
+# command before the shell expands it, so `-v $PWD:/app` is four literal
+# characters here and the shell alone knows where they point.
+#
+# Three, and this is the one that ends it: the command need not be in the line
+# at all. See the second case below. What an image does on start is known only
+# to the image.
+#
+# The cheap heuristic — a bind mount plus the word `rm` somewhere — dies on
+# `--rm`, which is the most common flag `docker run` takes and appears in
+# almost every real invocation. A guard that refuses `docker run --rm -v
+# $PWD:/app node npm test` teaches people to work around it everywhere else.
+allow	docker run --rm -v /Users/someone:/x alpine rm -rf /x/dev
+# No verb anywhere in the line. Nothing a string matcher can reach: the deletion
+# is inside the image. This case is here so the limit is a claim in the corpus
+# rather than a silence, the way `$r -rf` above is.
+allow	docker run -v /Users/someone:/x my-cleaner-image
+
+# A package manager running a command is the same wrapper, from the same report.
+# After `docker exec` comes a container name; after `pnpm exec` comes the command
+# itself, which is why the two cannot share a branch.
+deny	pnpm exec rm -rf /Users/someone/dev
+deny	yarn exec rm -rf /Users/someone/dev
+deny	npm exec -- rm -rf /Users/someone/dev
+# `npx -c` is inline shell, exactly like `sh -c`, so it goes on the interpreter
+# list rather than into the wrapper branch.
+deny	npx -c "rm -rf /Users/someone/dev"
+# A manager is only a wrapper when the next word says so. `npm run build` has to
+# keep reading as `npm`, and it did become `run` in the first draft of this.
+allow	npm run build
+allow	yarn install
+allow	pnpm exec eslint --fix src/
+allow	npx tsc --noEmit
+# `dlx` runs a package, and what a package does is not in the command line — the
+# same limit written down for `docker run <image>` above.
+allow	pnpm dlx some-tool --out /Users/someone/dev
 deny	python3 -c "import shutil; shutil.rmtree('/Users/someone/dev')"
 deny	python3 -c "import os; os.remove('/Users/someone/dev/x')"
 deny	node -e "require('fs').rmSync('/Users/someone/dev',{recursive:true})"
@@ -320,3 +438,14 @@ deny	python3 - <<EOF\nimport shutil\nshutil.rmtree("/Users/someone/dev")\nEOF
 deny	python3 -c "import shutil; shutil.rmtree('/Users/someone/dev')"
 deny	bash <<'EOF'\nrm -rf /Users/someone/dev\nEOF
 deny	node -e "require('fs').rmSync('/Users/someone/dev',{recursive:true})"
+
+# The segment cap. Every segment costs three processes — verb_of is an awk and
+# two greps follow it — so the guard's runtime follows the segment count and not
+# the byte count: a flat 18 KB command checks in 0.4s, while 3 KB carrying 500
+# substitutions took 23s against a 15-second hook timeout. A guard killed by
+# SIGTERM runs neither its checks nor its EXIT trap, so past that size every rule
+# in the file silently stopped applying. Both sides are pinned here, because a
+# cap that only ever refuses is indistinguishable from a guard that refuses
+# everything.
+allow	:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:
+deny	:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:

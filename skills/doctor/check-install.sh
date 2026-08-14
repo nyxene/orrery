@@ -28,6 +28,29 @@ warn() { printf '\033[33m–\033[0m %s\n' "$1"; }
 declare -a ROW_NAME=() ROW_RESULT=()
 row() { ROW_NAME+=("$1"); ROW_RESULT+=("$2"); }
 
+# Per-project state: the run log at the bottom, and the cache baseline check 6
+# compares against. Both live under your home directory rather than beside this
+# script, which runs from inside a version-pinned cache directory that is
+# replaced on every update — state kept there would reset silently.
+#
+# `~/.claude/orrery/` is one directory for everything orrery keeps on a
+# machine, with a per-purpose level under it.
+STATE_DIR="$HOME/.claude/orrery"
+LOG_DIR="$STATE_DIR/doctor"
+slug=$(echo "$PROJECT" | sed 's#^/##; s#[/ ]#-#g')
+LOG="$LOG_DIR/$slug.md"
+DIGEST_FILE="$LOG_DIR/$slug.cache-digest"
+
+# One-time move from the previous `orrery-doctor-log/`. The run history would
+# only be orphaned, but a missing cache baseline is worse than untidy: check 6
+# would re-record silently and report the next run as its first, which is the
+# same state an edited install produces.
+OLD_LOG_DIR="$HOME/.claude/orrery-doctor-log"
+if [ -d "$OLD_LOG_DIR" ] && [ ! -d "$LOG_DIR" ]; then
+  mkdir -p "$STATE_DIR" 2>/dev/null && mv "$OLD_LOG_DIR" "$LOG_DIR" 2>/dev/null \
+    && warn "moved previous state from $OLD_LOG_DIR to $LOG_DIR"
+fi
+
 echo "orrery doctor — $PROJECT"
 echo
 
@@ -221,17 +244,63 @@ if [ "$have_jq" -eq 1 ]; then
   fi
 fi
 
+# --- 6. the loaded cache is still the bytes that were installed --------------
+# Check 4 asks whether a different revision was installed than the source now
+# holds. It cannot see the other way you end up running something nobody is
+# looking at: a file edited in place inside the install. The recorded commit sha
+# does not move when that happens, so check 4 reports the cache fresh while the
+# loaded hooks and skills are something else. Reproducing a problem by poking at
+# an installed copy is exactly when this happens.
+#
+# The baseline is trust-on-first-use, and the limit that follows is worth
+# knowing: an edit made before this check ever ran here is recorded *as* the
+# baseline and will not be reported. Every edit after that is.
+#
+# Keyed by install path, so upgrading re-records instead of crying wolf — a new
+# install having different bytes is the reason for installing it.
+if [ "$have_jq" -eq 1 ] && [ -n "${install_path:-}" ] && [ -d "$install_path" ]; then
+  sum=""
+  command -v shasum    >/dev/null 2>&1 && sum="shasum -a 256"
+  [ -n "$sum" ] || { command -v sha256sum >/dev/null 2>&1 && sum="sha256sum"; }
+
+  if [ -z "$sum" ]; then
+    warn "no shasum or sha256sum on PATH — cannot check whether the cache was edited"
+    row "cache unedited" "n/a (no hashing tool)"
+  else
+    # `.in_use` is written into the cache by Claude Code and moves on its own.
+    # Hashing it would report every session as a tampered install.
+    now=$(find "$install_path" -type f ! -name '.in_use' -print0 2>/dev/null \
+            | LC_ALL=C sort -z | xargs -0 $sum 2>/dev/null | $sum | cut -d' ' -f1)
+    mkdir -p "$LOG_DIR" 2>/dev/null
+    recorded=$(cat "$DIGEST_FILE" 2>/dev/null)
+    rec_path="${recorded%%	*}"
+    rec_digest="${recorded##*	}"
+
+    if [ -z "$recorded" ]; then
+      printf '%s\t%s\n' "$install_path" "$now" > "$DIGEST_FILE"
+      warn "cache baseline recorded ($install_path) — first run here, so there is nothing to compare against yet"
+      row "cache unedited" "baseline recorded"
+    elif [ "$rec_path" != "$install_path" ]; then
+      printf '%s\t%s\n' "$install_path" "$now" > "$DIGEST_FILE"
+      ok "install path changed since last check — new baseline recorded for $install_path"
+      row "cache unedited" "re-baselined (new install)"
+    elif [ "$rec_digest" = "$now" ]; then
+      ok "cache contents unchanged since the last check"
+      row "cache unedited" "yes"
+    else
+      bad "cache contents changed at the same install path — a file inside $install_path was edited after installation; reinstall with: claude plugin update orrery@orrery"
+      row "cache unedited" "no — edited in place"
+    fi
+  fi
+elif [ "$have_jq" -eq 1 ]; then
+  row "cache unedited" "n/a (no install path)"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then echo "doctor: clean"; else echo "doctor: $fail area(s) need attention"; fi
 
 # --- append a compact row to the per-project log for trend-analysis ---------
-# Lives under the user's home directory, not next to this script: installed as
-# a plugin, this script runs from inside a version-pinned cache directory that
-# gets replaced on every update, which would silently reset the history.
-LOG_DIR="$HOME/.claude/orrery-doctor-log"
 mkdir -p "$LOG_DIR" 2>/dev/null
-slug=$(echo "$PROJECT" | sed 's#^/##; s#[/ ]#-#g')
-LOG="$LOG_DIR/$slug.md"
 [ -f "$LOG" ] || printf '# orrery doctor log — %s\n\nOldest run at top, newest at the bottom — check the tail for the latest.\n\n---\n' "$PROJECT" > "$LOG"
 {
   echo

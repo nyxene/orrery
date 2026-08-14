@@ -72,6 +72,30 @@ done
 if [ -z "$leak" ]; then ok "no command, prompt, path or agent name reaches the log"
 else bad "no command, prompt, path or agent name reaches the log" "leaked:$leak"; fi
 
+# --- one call is one line, whatever the caller supplies ---------------------
+# `subagent_type` is free text the model chooses, and the record's separators are
+# a tab and a newline. A newline in that field used to end the record early and
+# begin another: one Agent spawn wrote two lines, the second a complete forgery
+# with a chosen timestamp, a chosen fingerprint and a chosen tool. A log that the
+# subject of the log can write into is not evidence about the subject.
+#
+# The forged first field is a marker rather than a date. A real timestamp here
+# reads as a dated incident narrative to `tools/sanitize-scan.sh`, which refused
+# the release that shipped this file — and the assertion never needed a date: it
+# checks that the caller could not choose the field, whatever was put in it.
+forge_log="$tmp/forge.log"
+forged_payload="$(jq -nc --arg a "$(printf 'critic\nFORGED-STAMP\tdeadbeef\tBash\t-\tno')" \
+  '{tool_name:"Agent", session_id:"abc-123", tool_input:{subagent_type:$a}}')"
+run "$forge_log" "$forged_payload"
+lines="$(grep -c . "$forge_log" 2>/dev/null || echo 0)"
+if [ "$lines" -ne 1 ]; then
+  bad "one call writes exactly one line" "wrote $lines lines: $(cat "$forge_log")"
+elif [ "$(cut -f1 < "$forge_log")" = "FORGED-STAMP" ]; then
+  bad "one call writes exactly one line" "the caller chose the timestamp field"
+else
+  ok "one call writes exactly one line, and the caller cannot choose a field"
+fi
+
 # --- the session id is fingerprinted, not stored ---------------------------
 if grep -qF 'abc-123' "$log" 2>/dev/null; then
   bad "the session id is hashed rather than written" "the raw session id is in the file"

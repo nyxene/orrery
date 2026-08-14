@@ -116,10 +116,23 @@ else bad "manifest and skills/ disagree"; diff <(echo "$declared") <(echo "$ondi
 # human. There is no package.json here: this repository is a plugin, not an npm
 # package, and reading one produced a jq error and an empty half of a comparison
 # that then reported a split which did not exist.
+#
+# Every version-shaped string in the README, not the first one. This read only
+# the prose form, `Version 0.10.9`, which matched the sentence in the footer and
+# stopped — while the shields.io badge at the top, written `version-0.10.7`, sat
+# two releases behind and was never looked at. A checker that reads one of the
+# two places a fact is written certifies that the other one is wrong.
 v_plugin=$(jq -r '.version' .claude-plugin/plugin.json)
-v_readme=$(grep -oE 'Version [0-9]+\.[0-9]+\.[0-9]+' README.md | head -1 | awk '{print $2}')
-if [ "$v_plugin" = "$v_readme" ]; then ok "version $v_plugin, consistent"
-else bad "version split: plugin=$v_plugin readme=$v_readme"; fail=1; fi
+stated=$(grep -ohE '(Version |version-)[0-9]+\.[0-9]+\.[0-9]+' README.md \
+           | sed -E 's/^(Version |version-)//' | sort -u)
+if [ -z "$stated" ]; then
+  note "version: README states none ($v_plugin in plugin.json)"
+elif [ "$stated" = "$v_plugin" ]; then
+  ok "version $v_plugin, and every place the README states it agrees"
+else
+  bad "version split: plugin.json=$v_plugin, README states: $(tr '\n' ' ' <<<"$stated")"
+  fail=1
+fi
 
 # --- 5. Every rule carries what the loader reads ----------------------------
 # `rules-loader.sh` emits `rule` and `evidence`; a rule missing either reaches a
@@ -179,8 +192,13 @@ fi
 # file detected" — `claude plugin validate --strict` passed it anyway. Caught
 # once by hand; a mechanical check on the exact shape belongs here so it
 # cannot ship a second time unnoticed.
+#
+# `bad` prints and `note` is what moves the counter, so this branch reported the
+# defect and exited 0 for as long as it existed — a red line in a run that
+# passed. Evidence: a mutation suite over the equivalent check.
 if jq -e '.hooks | strings | endswith("hooks.json")' .claude-plugin/plugin.json >/dev/null 2>&1; then
   bad "plugin.json redeclares a hooks path — Claude Code auto-discovers hooks/hooks.json; remove the key"
+  fail=1
 else
   ok "plugin.json doesn't redeclare the auto-discovered hooks path"
 fi

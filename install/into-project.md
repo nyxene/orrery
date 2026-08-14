@@ -55,6 +55,11 @@ neighbours and identifies nothing beyond the machine that wrote it.
 { "env": { "ORRERY_CALL_LOG": ".claude/orrery-calls.tsv" } }
 ```
 
+**Add that path to `.gitignore` too.** The file grows by a line on every tool
+call and is trimmed from the head once it reaches the cap, so committing it puts
+a conflict in front of everyone who runs a session in your repository — and the
+hashed session id it carries tells a second reader nothing they can use.
+
 Remove that line and it stops. The log is capped — 256 KB by default,
 `ORRERY_CALL_LOG_MAX` to change it — and `hooks/call-log.sh --purge` empties it.
 
