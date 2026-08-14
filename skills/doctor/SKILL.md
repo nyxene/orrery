@@ -47,7 +47,7 @@ version-string match alone misses a source change that forgot a version bump)
 · the loaded cache's `plugin.json` doesn't redeclare a hooks path (a manifest
 shape that loads nothing while passing validation).
 
-Each run appends one row to `~/.claude/orrery-doctor-log/<project-slug>.md` —
+Each run appends one row to `~/.claude/orrery/doctor/<project-slug>.md` —
 one file per host project, deliberately outside any plugin cache, since
 installed-as-a-plugin this script runs from a version-pinned cache directory
 that gets replaced on every update and would otherwise reset its own history.

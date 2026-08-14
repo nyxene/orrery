@@ -67,8 +67,11 @@ tool="$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null || true)"
 [ -n "$tool" ] || exit 0
 
 session="$(jq -r '.session_id // "nosession"' <<<"$input" 2>/dev/null || true)"
-# Whichever of the two is present; neither is a personal identifier and both are
-# fixed vocabulary chosen by the caller, not free text.
+# Whichever of the two is present. Neither is a personal identifier, and both are
+# **caller-supplied free text** — `subagent_type` is whatever string the model
+# passes on a spawn, not a value from a fixed list. The comment here claimed the
+# opposite for as long as it existed, and that claim is why nothing sanitized the
+# field; see the `clean` call below.
 agent="$(jq -r '.tool_input.subagent_type // .tool_input.agentType // "-"' <<<"$input" 2>/dev/null || true)"
 # Whether a name was given, never the name itself.
 named=no
@@ -85,6 +88,23 @@ elif command -v sha256sum >/dev/null 2>&1; then
   fp="$(printf '%s' "$session" | sha256sum 2>/dev/null | cut -c1-8 || true)"
 fi
 [ -n "${fp:-}" ] || fp=nohash
+
+# One call must be one line, and two of these fields are supplied by the caller
+# rather than by the harness. A newline inside `subagent_type` used to end the
+# record early and start a second one: a single Agent spawn wrote two lines, the
+# second a complete forgery with a chosen timestamp, a chosen fingerprint and a
+# chosen tool name. This log exists because a session that ignores its own
+# instructions cannot be trusted to report that it did — so a session that can
+# also write whatever it likes into the record leaves nothing behind worth
+# reading.
+#
+# Tabs matter for the same reason, one field over instead of one line down, and
+# control characters because the text form of `tools/report.sh` prints tool names
+# straight to a terminal.
+clean() { LC_ALL=C tr -d '\000-\037\177' <<<"$1"; }
+tool="$(clean "$tool")"
+agent="$(clean "$agent")"
+fp="$(clean "$fp")"
 
 mkdir -p "$(dirname "$log")" 2>/dev/null || exit 0
 printf '%s\t%s\t%s\t%s\t%s\n' \

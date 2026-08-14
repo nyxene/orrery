@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.10.7-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.11.0-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -89,19 +89,37 @@ do — is platform-specific in a way the rest of this page is not.
 |---|---|---|
 | **macOS** | everything above | a CI matrix, on every push |
 | **Linux** | everything above | the same matrix, and this repository's own CI |
+| **Windows** | **nothing yet — support is planned, see below** | — |
 | **anything else** | **nothing — the Bash guard refuses every command and says why** | a probe the guard's mutation pass scores |
 
-The third row is not a polite way of saying "untested". On a platform the guard
+The last row is not a polite way of saying "untested". On a platform the guard
 does not model, no pattern in it can match — and a guard that finds nothing
 looks exactly like a guard that read the command and approved it. So it refuses
 instead, names the platform, and says what would have to change. You do not get
 a degraded guard; you get a stopped one, at the first command rather than after
 the one that mattered.
 
-Windows specifically: the hooks are `.sh` files, the deny-list names POSIX paths
-and is inert there, and whether the hooks execute at all under the shell Claude
-Code uses on Windows has not been verified either way. If they do run, the first
-command will tell you.
+### Windows support is planned
+
+It is not built, and this section says so rather than leaving you to find out at
+the first command. What stands in the way is specific, which is the reason it is
+worth stating as a plan and not as an aspiration:
+
+- The hooks are `.sh` files. Whether they execute at all under the shell Claude
+  Code uses on Windows has not been verified either way.
+- The deny-list names POSIX paths, so it is inert there — the rules exist and
+  match nothing.
+- The Bash guard reads one `uname` and knows two answers. A third needs the
+  scratchpad root, the delete verbs and the secret-store paths in their Windows
+  spellings, and a CI runner to hold them, since a guard proven on one platform
+  says nothing about another.
+
+Until that lands the guard refuses every command on Windows and names the
+platform in the refusal. That is deliberate: a stopped guard is legible, a
+silent one is not.
+
+If you want this, say so through the friction form linked below — what a
+consumer actually runs there decides which of the three bullets gets done first.
 
 Everything else in the plugin — the canon, the rules, the skills, the agents —
 is text loaded into a session and is not platform-specific.
@@ -166,7 +184,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.10.8 · Canon, thirteen skills, four agents, 15 rules, six hooks
+Version 0.11.0 · Canon, thirteen skills, four agents, 15 rules, six hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

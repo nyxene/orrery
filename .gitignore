@@ -3,9 +3,14 @@
 # promote.sh's own trap; ignored because a crash between the two leaves it.
 .promote-plan.*
 
+# Empty files the sandboxed shell leaves behind — one per here-document, every
+# session. Nothing here creates them and nothing reads them.
+sh-thd-*
+
 .DS_Store
 *.local.json
 .claude/settings.local.json
+.claude/orrery-calls.tsv
 node_modules/
 
 # Editor state — machine-specific, never shared

@@ -25,6 +25,20 @@
 # reduction, egress control and process isolation. Say so rather than implying
 # otherwise; a nudge mistaken for a boundary is how the boundary never gets built.
 #
+# **A container is where this guard and the sandbox both end.** `docker exec` is
+# unwrapped below like `sudo`, so the verb inside it is judged — but `docker run`
+# with a bind mount is not, and cannot usefully be: the container path has to be
+# mapped back to the host path to mean anything, and an image can delete on start
+# with no command in the line at all. Both cases are `allow` entries in the
+# corpus so the limit is a claim rather than a silence.
+#
+# What makes that worth saying here rather than only there: the sandbox does not
+# cover it either. Seatbelt confines *this* process, and `docker` is a client
+# handing work to a daemon that lives outside it — so the usual "the guard is a
+# nudge, the kernel is the boundary" does not apply. Behind a container there is
+# no second layer. Anyone reasoning about what happens when this file misses
+# something should know that this is the one place where the answer is nothing.
+#
 # `hooks/cases.tsv` is the corpus that pins this file, and `hooks/bash-guard.test.sh` runs
 # it. Change nothing here without running `hooks/bash-guard.test.sh --mutate` after: a
 # mutation pass is what proves the corpus still holds the code, and this guard
@@ -304,6 +318,20 @@ segments() {
       # guard stops parsing — which took every Bash call down until it was found.
       if (c == "<" || c == ">") { out = out "\n"; continue }
       if (!inS && !inD && index("(){};&|", c) > 0) { out = out "\n"; continue }
+      # A newline separates segments in this output, so one that survives inside
+      # a segment splits it later: both readers take segments back with `read -r`
+      # a line at a time, and a segment containing a newline is indistinguishable
+      # from two segments. Outside quotes that is right — the shell ends a command
+      # there too. Inside quotes it is text, and it made the guard refuse its own
+      # documentation: a multi-line commit message or issue body quoting a command
+      # had that line judged as if it were about to run. Four refusals in one
+      # session, three of them blamed on the wrong rule.
+      #
+      # A space, not a marker: what the sections downstream want from a segment is
+      # its verb and its paths, and neither changes when the line breaks become
+      # spaces. The separator is what must not occur in the data, and now it does
+      # not.
+      if (c == "\n") { out = out (inS || inD ? " " : "\n"); continue }
       out = out c
     }
     print out
@@ -343,6 +371,23 @@ verb_of() {
       # leading with it. The line below was always meant to skip assignments; it
       # only ever saw the ones whose value had no slash in it.
       if (t ~ /^[a-z_][a-z0-9_]*=/) continue
+      # Quoting and escaping are how bash spells the same verb, and this compared
+      # the raw token: `rm -rf ~/dev` was refused while `\rm -rf ~/dev` was not,
+      # and neither were the quoted forms — a backslash is what people type to
+      # step around an `rm -i` alias, so this was one keystroke from the whole
+      # delete boundary. Bash removes these before deciding what to run; so does
+      # this now, and for the same reason. (No apostrophe below: \047 is one.)
+      gsub(/\\/, "", t)
+      gsub(/\042/, "", t)
+      gsub(/\047/, "", t)
+      # A parameter expansion inside the word hides the verb from a splitter that
+      # only knows whitespace: `rm${IFS}-rf${IFS}~/dev` is a single token whose
+      # basename was `dev`. What runs is whatever precedes the first expansion,
+      # so that is what gets read. When nothing precedes it — `$r -rf ~/dev` —
+      # the prefix is empty and this falls through to the checks below, which is
+      # correct: the verb is genuinely unknown until the shell expands it, and
+      # that case stays a written-down limit rather than a silent pass.
+      if (t ~ /\$/) sub(/\$.*/, "", t)
       sub(".*/", "", t)
       # Punctuation is not a command. A closing quote left over from a command
       # substitution arrived here as the verb `"` and was refused for not being
@@ -357,6 +402,48 @@ verb_of() {
       if (t ~ /^-/) continue
       if (skip) { skip = 0; continue }
       if (t ~ /^[0-9]+$/) continue
+      # A container runner is a wrapper like the ones below, with one extra word
+      # to step over. Reported by a host project after its own hook was walked
+      # around this way, and it is the same defect as the quoting one: what bash
+      # runs and what this reads had drifted apart. `rm -rf ~/dev` was refused
+      # while `docker exec pg rm -rf ~/dev` was not, and every rule in the file
+      # went with it — not the delete boundary alone.
+      #
+      # Ahead of the wrapper list on purpose. `exec` is already a wrapper there,
+      # so with this below it the container branch was unreachable: the plain
+      # `exec` arm consumed the word, the marker was never set, and the verb came
+      # back as the container name.
+      #
+      # Only `exec` here. `docker run` puts flags, their values and an image name
+      # before the command, so finding the verb there means parsing the flag
+      # grammar, and a bind mount moves the target outside every path check
+      # anyway. That is a different fix and is filed as one, rather than being
+      # half-done under cover of this line.
+      # A package manager running a command is the same wrapper shape, found in
+      # the same report: `pnpm exec rm -rf ~` walked past everything, exactly as
+      # the container form did. One difference decides the code — after
+      # `docker exec` comes a container name, after `pnpm exec` comes the command
+      # itself — so this cannot reuse the skip-one-word branch below.
+      #
+      # The manager is held rather than consumed, because only the next word says
+      # whether it is wrapping anything. `npm run build` must still read as `npm`,
+      # and it would have become `run` if the name were dropped on sight.
+      #
+      # `dlx` and `npx <pkg>` are deliberately not here: what they run is a
+      # package whose behaviour is not in the command line, which is the limit
+      # already written down for `docker run <image>`. Corpus says so.
+      if (pmpending) {
+        pmpending = 0
+        if (t == "exec") continue
+        print pmname; exit
+      }
+      if (t == "pnpm" || t == "yarn" || t == "npm") { pmpending = 1; pmname = t; continue }
+      if (t == "docker" || t == "podman" || t == "nerdctl" || t == "kubectl") { ctr = 1; continue }
+      if (ctr && t == "compose") continue
+      if (ctr && t == "exec") { ctrexec = 1; continue }
+      # The container or pod name. Only skipped once, and only after `exec`, so
+      # `docker ps` still reads as `ps` rather than vanishing.
+      if (ctrexec) { ctrexec = 0; ctr = 0; continue }
       if (t == "env" || t == "command" || t == "sudo" || t == "doas" ||
           t == "nohup" || t == "time" || t == "nice" || t == "ionice" ||
           t == "exec" || t == "builtin" || t == "xargs" || t == "stdbuf" ||
@@ -394,7 +481,11 @@ verb_of() {
 # anything, so the two are judged apart rather than the name being trusted. Only
 # section 3b asks this now; sections 1b and 3b used to carry a copy of the list
 # each — two sources for one contract, kept in step by nothing but attention.
-interpreters='node|python|python2|python3|ruby|perl|php|osascript|bash|sh|zsh|deno|bun'
+# `npx` takes `-c`, which is inline shell exactly like `sh -c`, so it belongs on
+# this list for the same reason `sh` does. The wrapper forms — `pnpm exec` and
+# its neighbours — are handled in verb_of instead, because there the command is
+# a word in the line rather than a string to be read.
+interpreters='node|python|python2|python3|ruby|perl|php|osascript|bash|sh|zsh|deno|bun|npx'
 
 # --- 1. Machine config and credential stores ------------------------------
 #
@@ -503,14 +594,39 @@ if grep -qE "$gitpre"'[[:space:]]+reset[[:space:]]+.*--hard' <<<"$lower" \
   deny "A destructive git verb behind a global option (git -C, --git-dir, --work-tree, ...). The deny-list matches by command prefix and cannot see this form, so it is refused here. The plain spelling is refused by the deny-list instead."
 fi
 
-# 3a-bis. DROP and TRUNCATE stay whole-line, because no other layer carries them
-# at all: there is no deny rule for SQL and the sandbox does not read statements.
-# They keep the same false-refusal shape — prose naming them is refused as one —
-# and that is the remainder of this defect rather than its fix. Sections 1 and 2
-# have it too.
-if grep -qE '\bdrop[[:space:]]+(table|database|schema)\b' <<<"$lower" \
-  || grep -qE '\btruncate[[:space:]]+table\b' <<<"$lower"; then
-  deny "Destructive SQL (DROP TABLE/DATABASE/SCHEMA, TRUNCATE TABLE) is always denied."
+# 3a-bis. Destructive SQL, judged where something could execute it. No other
+# layer carries these at all: there is no deny rule for SQL and the sandbox does
+# not read statements.
+#
+# This matched the whole command line until it was measured, and the same defect
+# 3a was shrunk to remove had simply moved here: a statement is a statement to a
+# regex whether it sits behind a client or inside a sentence about the rule. In
+# one session it refused a search of this repository, a batch of the guard's own
+# test cases, and the command filing the issue that describes it — three
+# refusals of the guard documenting itself.
+#
+# So the same shape as 3a: the segment has to be running a client. The list is
+# the clients a person actually pipes a statement into, and it composes with the
+# container unwrapping above, so `docker exec pg psql -c ...` is judged as
+# `psql`.
+#
+# The silence this trades for: a statement reaching a client the list does not
+# name, and `echo "..." | psql`, where the statement and the client are in
+# different segments. Both are in the corpus as allow cases, so they are claims
+# rather than gaps somebody discovers.
+sql_clients='psql|mysql|mariadb|sqlite3|mongo|mongosh|redis-cli|clickhouse-client|cockroach|pgcli|mycli|usql'
+sql_hits=""
+while IFS= read -r seg; do
+  [ -z "${seg// /}" ] && continue
+  grep -qxE "$sql_clients" <<<"$(verb_of "$seg")" || continue
+  seg_lower="$(tr '[:upper:]' '[:lower:]' <<<"$seg")"
+  grep -qE '\bdrop[[:space:]]+(table|database|schema)\b' <<<"$seg_lower" \
+    || grep -qE '\btruncate[[:space:]]+table\b' <<<"$seg_lower" \
+    || continue
+  sql_hits=yes
+done < <(segments "$cmd")
+if [ -n "$sql_hits" ]; then
+  deny "Destructive SQL (DROP TABLE/DATABASE/SCHEMA, TRUNCATE TABLE) handed to a database client is always denied."
 fi
 
 # `update-ref` and `symbolic-ref` are plumbing: they remove a ref with none of
@@ -570,6 +686,25 @@ delete_words='(^|[^a-z0-9_-])(rm|rmdir|unlink|shred|srm|rmtree|remove_tree|remov
 # at the head of a segment misses `bash -c "rm -rf ~/dev"`. So: the segment's
 # verb is a delete, or it carries a flag that deletes (`find -delete`, and
 # `rsync --delete`, whose second dash the old pattern did not allow).
+# Refusing rather than letting the clock decide. Every segment costs three
+# processes — `verb_of` is an awk, and two greps follow it — so the cost is per
+# segment and not per byte: a flat 18 KB command checks in 0.4s, while 3 KB
+# carrying 500 substitutions takes 23s. The hook's timeout is 15 seconds, and a
+# guard killed by SIGTERM runs neither its checks nor its EXIT trap, so above
+# roughly 300 segments every rule in this file silently stopped applying.
+#
+# 100 is two orders of magnitude above real work — `ls -la` is one segment, a
+# pipeline with a substitution is four, the largest thing measured here was six —
+# and it leaves the whole check an order of magnitude inside the timeout on a
+# machine slower than the one this was measured on. A command past it is a
+# generated payload, and the answer to one is to refuse and let a person split
+# it, not to check half of it and report success.
+MAX_SEGMENTS=100
+seg_count="$(segments "$cmd" | grep -c . || true)"
+if [ "${seg_count:-0}" -gt "$MAX_SEGMENTS" ]; then
+  deny "This command holds $seg_count separate segments and the guard checks at most $MAX_SEGMENTS. Past that it cannot finish inside its own timeout, and a guard that runs out of time does not deny — it stops applying entirely. Split the command, or write it to a script and run that."
+fi
+
 hits=""
 while IFS= read -r seg; do
   [ -z "${seg// /}" ] && continue
