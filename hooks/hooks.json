@@ -10,6 +10,17 @@
             "statusMessage": "Loading the canon..."
           }
         ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/permissions-check.sh\" \"${CLAUDE_PROJECT_DIR}\"",
+            "timeout": 5,
+            "statusMessage": "Checking the deny-list against this project..."
+          }
+        ]
       }
     ],
     "PreCompact": [

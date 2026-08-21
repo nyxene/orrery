@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.11.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.12.0-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -73,10 +73,12 @@ its moment arrives.
 - **Four agents** — `planner`, `architect`, `critic`, `auditor`: the
   consensus-planning loop and the independent audit that runs before anything
   is committed.
-- **Six hooks** — two guards (a Bash guard with a mutation-tested case corpus,
+- **Seven hooks** — two guards (a Bash guard with a mutation-tested case corpus,
   and an agent guard), two loaders for the canon and for scoped rules, a prompt
-  that catches unfinished work before a context reset takes it, and an optional
-  recorder that is off until you name a path for it.
+  that catches unfinished work before a context reset takes it, a reporter that
+  tells you when your project's copy of the deny-list has fallen behind the one
+  shipped here, and an optional recorder that is off until you name a path for
+  it.
 - **A deny-list** — 121 deny rules covering system paths, secret files and
   destructive git, additive to your existing settings and safe on any repo.
 
@@ -87,8 +89,8 @@ do — is platform-specific in a way the rest of this page is not.
 
 | Platform | What holds | What proves it |
 |---|---|---|
-| **macOS** | everything above | a CI matrix, on every push |
-| **Linux** | everything above | the same matrix, and this repository's own CI |
+| **macOS** | everything above | the maintainer's pre-commit hook, on the machine this is written on |
+| **Linux** | everything above | CI, on every push |
 | **Windows** | **nothing yet — support is planned, see below** | — |
 | **anything else** | **nothing — the Bash guard refuses every command and says why** | a probe the guard's mutation pass scores |
 
@@ -184,7 +186,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.11.0 · Canon, thirteen skills, four agents, 15 rules, six hooks
+Version 0.12.0 · Canon, thirteen skills, four agents, 15 rules, seven hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

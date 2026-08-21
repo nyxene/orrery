@@ -73,8 +73,8 @@ n_deny=$(jq '.permissions.deny | length' hooks/permissions.json)
 
 # Written-out numbers are how these sentences read; digits are how they are kept.
 word() { case "$1" in
-  4) echo four;; 5) echo five;; 6) echo six;; 10) echo ten;; 11) echo eleven;; 12) echo twelve;;
-  13) echo thirteen;;
+  4) echo four;; 5) echo five;; 6) echo six;; 7) echo seven;; 10) echo ten;; 11) echo eleven;;
+  12) echo twelve;; 13) echo thirteen;;
   *) echo "$1";; esac; }
 
 # The host's sharpen log records what each pass changed, and a logged
@@ -85,10 +85,20 @@ word() { case "$1" in
 #
 # Do not write an example of such a count in this comment. One was written here,
 # and this file was then the only place in the repository still asserting the old
-# number: the checker failed on its own explanation of why not to fail on it.
+# number: the checker failed on its own explanation of why not to fail on it. The
+# same holds for a count spelled out beside its noun anywhere else in this file.
+#
+# Both greps are case-insensitive, and neither was until a count sentence on this
+# repository's own front page turned out to be capitalised at the head of a list
+# item — where no case-sensitive match could ever see it. The lower-case
+# sentences were kept current, this check printed a tick, and the stale one was
+# the first thing a reader saw. The extraction is lowered rather than matched
+# twice, because the comparison below is against the lower-case word form.
 check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated number
   local stated
-  stated=$(grep -rhoE "${FIXTURES[@]}" "$3" "${COUNT_SCOPE[@]}" 2>/dev/null | grep -oE '[0-9]+|four|five|six|ten|eleven|twelve|thirteen' | sort -u | tr '\n' ' ')
+  stated=$(grep -rhoiE "${FIXTURES[@]}" "$3" "${COUNT_SCOPE[@]}" 2>/dev/null \
+             | grep -oiE '[0-9]+|four|five|six|seven|ten|eleven|twelve|thirteen' \
+             | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')
   if [ -z "$stated" ]; then note "$1: nothing states it ($2 on disk)"; return; fi
   for s in $stated; do
     if [ "$s" != "$2" ] && [ "$s" != "$(word "$2")" ]; then
@@ -100,7 +110,7 @@ check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated numb
 check_count "skills"     "$n_skills" '(eleven|ten|twelve|thirteen|[0-9]+) skills'
 check_count "rules"      "$n_rules"  '[0-9]+ rules'
 check_count "agents"     "$n_agents" '(four|five|[0-9]+) agents'
-check_count "hooks"      "$n_hooks"  '(four|five|six|[0-9]+) hooks'
+check_count "hooks"      "$n_hooks"  '(four|five|six|seven|[0-9]+) hooks'
 check_count "deny rules" "$n_deny"   '[0-9]+ deny rules'
 
 # --- 3. The manifest ships every skill --------------------------------------
@@ -225,6 +235,46 @@ else
   bad "the corpus defers to deny rules that are not in permissions.json"
   while IFS= read -r r; do [ -n "$r" ] && note "$r"; done <<<"$absent"
 fi
+
+# --- 9. A hook exists, is registered, and its suite is run ------------------
+# A script sitting in `hooks/` that `hooks/hooks.json` never names is a hook
+# that was written, tested and shipped without ever firing — indistinguishable
+# from one that works. Three arms, because that silence arrives from three
+# directions: a script nothing registers, a suite no gate runs, and a
+# registration whose path resolves to nothing. The last one is what catches an
+# assembly that omitted a file the manifest still points at.
+#
+# `guard-test-lib.sh` is excluded by name: the guard suites source it and
+# Claude Code never runs it, so it is a library that happens to live in `hooks/`.
+#
+# The first token of a command, not the whole string — a registration may carry
+# arguments, and reading one as part of the path invents two defects at once: a
+# script nothing registers, and a registration with no script.
+#
+# Every arm reports through `note`, which is what moves the counter; `bad` only
+# prints. Check 7 above is what forgetting that costs.
+cmds=$(jq -r '[.hooks[][].hooks[].command] | .[]' hooks/hooks.json | awk '{print $1}' | tr -d '"')
+scripts=$(ls hooks/*.sh | sed 's#hooks/##' | grep -v '\.test\.sh$' | grep -v '^guard-test-lib\.sh$' | sort)
+registered=$(printf '%s\n' "$cmds" | sed 's#.*/hooks/##' | sort -u)
+if [ "$scripts" = "$registered" ]; then ok "every hook script is registered in hooks.json"
+else bad "hooks/ and hooks.json name different scripts"
+     note "on disk:    $(printf '%s' "$scripts" | tr '\n' ' ')"
+     note "registered: $(printf '%s' "$registered" | tr '\n' ' ')"; fi
+
+unrun=""
+for f in hooks/*.test.sh; do
+  grep -qF "$f" .githooks/pre-commit || unrun="$unrun $f"
+done
+if [ -z "$unrun" ]; then ok "every hook suite is run by the pre-commit gate"
+else bad "hook suites that no gate runs"; for f in $unrun; do note "$f"; done; fi
+
+dangling=""
+while IFS= read -r p; do
+  [ -f "$p" ] || dangling="$dangling $p"
+done < <(printf '%s\n' "$cmds" | sed 's#[$]{CLAUDE_PLUGIN_ROOT}#.#' | sort -u)
+if [ -z "$dangling" ]; then ok "every registered hook command resolves to a file"
+else bad "hooks.json registers commands with no script behind them"
+     for p in $dangling; do note "$p"; done; fi
 
 echo
 [ "$fail" -eq 0 ] && echo "claims check: clean" || echo "claims check: $fail area(s) need attention"

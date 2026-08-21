@@ -10,7 +10,7 @@ Skills become available as `orrery:frame`, `orrery:plan`, `orrery:build`,
 `orrery:debt`, `orrery:doctor`, `orrery:feedback`, `orrery:handoff`,
 `orrery:learn`,
 `orrery:sharpen`. Agents (`planner`, `architect`, `critic`, `auditor`) resolve
-by name. All six hooks start firing immediately — including the one that stops
+by name. All seven hooks start firing immediately — including the one that stops
 the first compaction of a session to ask whether there is unfinished work to
 hand off.
 
@@ -111,6 +111,61 @@ There are no `Write(...)` rules in it, and adding one back does nothing: file
 permission checks are matched by `Edit(...)` alone, which covers every
 file-editing tool including `Write`. Claude Code says so on every config run,
 once per rule.
+
+**Then merge it again after an update.** This is not a step you finish. Every
+release that adds a deny rule adds it to the file you copied by hand — the plugin
+updates itself, your copy does not. Your install can sit a release or more behind
+the shipped list with every health check green, and the rules likeliest to be
+missing are the ones a release moved here out of the Bash guard, which was shrunk
+because this list had picked them up. It had, in the plugin. In a settings file
+nobody re-merged, it had not.
+
+**How you hear about it.** One line at session start, and only when the answer
+changes: the first startup after a rule goes missing tells you, and you are not
+told again until the finding is different. Merge the rules and it stops. Change
+nothing and it stays quiet — a signal, not a nag. The line gives you a count;
+`orrery:doctor` prints the rules themselves. Anything you already have at user or
+managed scope counts as merged: the check reads your project's two settings
+files, your own user settings and any managed policy — not just the project one.
+
+**If you diverged on purpose.** You may have narrowed one of these rules, or
+decided one does not apply to you. Say so once:
+
+```bash
+<plugin root>/hooks/permissions-check.sh --reconcile <project>
+```
+
+That root is a version-pinned cache directory that moves every time the plugin
+updates, so a copy you keep in a note goes stale — `orrery:doctor` prints the
+command with the path already resolved, and that is the one to run.
+
+Running it states that you read the missing rules and declined them, which is why
+nothing runs it for you. It writes `<project>/.claude/orrery-deny.json` with the
+set that was missing at that moment, and those rules stop appearing — in the
+startup line and in the doctor's list alike. **Commit that file.** It is your
+team's decision rather than your laptop's: committed, it holds for everyone in
+the repository and it turns up in a pull request where someone can push back on
+it, which is the only review a deliberately widened gap gets. To un-decline a
+rule, edit the file and commit that. If you would rather keep the decision to
+your own machine, add the path to `.gitignore` in the same edit — nothing else
+will, exactly as with the call-log path above.
+
+**Why we do not merge it for you.** `.claude/settings.json` carries every deny
+decision in your project, and a plugin that edits it is a plugin that can quietly
+widen what it is allowed to do. So this check reads that file and never writes
+it, and no skill here will merge on your behalf. `orrery-deny.json` is the only
+file it writes, and it is a different kind of thing: no permission rules, no
+grants, read by this check alone, and written only when you type the command
+above.
+
+**The comparison is by exact rule text.** A rule you narrowed —
+`Read(/Users/someone/**/*.key)` where we ship `Read(**/*.key)` — or re-spelled —
+`Bash(git checkout:*)` for our `Bash(git checkout .)` — is reported missing even
+though you have it in effect. That is deliberate, not an oversight: telling those
+two apart means reimplementing Claude Code's own permission matcher and keeping
+it in step with it, a second copy of the thing being defended that would be wrong
+without saying so. Use `--reconcile` instead — one command, and the difference is
+on the record as your decision.
 
 ## What stays your responsibility
 

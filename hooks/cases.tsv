@@ -449,3 +449,49 @@ deny	node -e "require('fs').rmSync('/Users/someone/dev',{recursive:true})"
 # everything.
 allow	:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:
 deny	:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:;:
+
+# --- 4. the reconcile command belongs to the person, not to the session -------
+# `permissions-check.sh --reconcile` records every deny rule this project is
+# currently missing as one it declined on purpose, and permanently silences the
+# startup warning about them. `orrery:doctor` prints it fully resolved, into a
+# channel a model reads by construction — so what kept it a human's was one
+# sentence in a skill file, and an audit deleted that sentence with a mutant
+# while every suite stayed green.
+#
+# The guard is the layer that fits the rule exactly: this hook fires on the
+# agent's Bash tool and nowhere else, so a person typing the same line in their
+# own terminal is never judged by it. Section 3c's tombstone in bash-guard.sh is
+# what the other layer would have cost.
+deny	hooks/permissions-check.sh --reconcile .
+deny	/Users/someone/.claude/plugins/cache/orrery@orrery/0.12.0/hooks/permissions-check.sh --reconcile /Users/someone/proj
+deny	\permissions-check.sh --reconcile .
+deny	'permissions-check.sh' --reconcile .
+deny	"permissions-check.sh" --reconcile .
+deny	sudo hooks/permissions-check.sh --reconcile /Users/someone/proj
+deny	git status && hooks/permissions-check.sh --reconcile .
+# An interpreter runs it whether it is handed the file or the same line as
+# inline code, and neither spelling leaves the script in the verb position.
+deny	bash hooks/permissions-check.sh --reconcile .
+deny	bash -c "hooks/permissions-check.sh --reconcile ."
+# The read-only modes are what `orrery:doctor` delegates to and what a session is
+# meant to run. Refusing these would be refusing the check itself, and a check
+# nobody may run reports nothing.
+allow	hooks/permissions-check.sh --report .
+allow	/Users/someone/.claude/plugins/cache/orrery@orrery/0.12.0/hooks/permissions-check.sh --report /Users/someone/proj
+allow	hooks/permissions-check.sh /Users/someone/proj
+allow	bash hooks/permissions-check.sh --report .
+# Prose naming the command is not the command — the defect 3a and 3a-bis were
+# both shrunk to remove, and this rule is written about in far more files than
+# it is ever run in. Every line below was a refusal waiting to happen.
+allow	git commit -m "guard: refuse permissions-check.sh --reconcile from a session"
+allow	grep -rn "permissions-check.sh --reconcile" hooks/
+allow	gh issue create --body 'the guard refuses permissions-check.sh --reconcile'
+allow	grep -n reconcile hooks/permissions-check.sh
+# And the cost, kept as a claim rather than a silence. An interpreter segment is
+# judged by the script's name appearing anywhere in it, and a `\` continuation
+# starts a new segment — so a *quoted* argument that merely begins with an
+# interpreter is read as one. That is how appending these very cases from a shell
+# was refused while they were being written. Section 3b has carried the identical
+# cost since its interpreter arm was added; an editor writes the file instead and
+# nothing is lost.
+deny	printf %s \\n'bash -c "hooks/permissions-check.sh --reconcile ."'
