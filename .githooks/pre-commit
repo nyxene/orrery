@@ -34,6 +34,9 @@ run "call log"       ./hooks/call-log.test.sh
 run "canon loader"   ./hooks/canon-loader.test.sh
 run "rules loader"   ./hooks/rules-loader.test.sh
 run "handoff prompt" ./hooks/handoff-prompt.test.sh
+# The deny-list reporter's failure is silence too: a detector that stops
+# noticing drift looks identical to a project with nothing missing.
+run "permissions check" ./hooks/permissions-check.test.sh
 run "library claims" ./skills/sharpen/check-claims.sh
 
 # The mutation pass takes minutes, so it runs only when the thing it pins is

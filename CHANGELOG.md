@@ -9,6 +9,117 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.12.1
+
+## 0.12.1
+
+Nothing changes for a project that installs this plugin. The release exists so
+that the next one can be made by merging a pull request instead of running a
+command.
+
+### What you need to do
+
+Nothing. No skill, hook, rule or deny rule moved, and no behaviour in a session
+is different. Update at your convenience or wait for the next release that
+carries something for you.
+
+### What is in it
+
+One file: `.github/workflows/release.yml`. It fires when a release pull request
+is merged here, reads the version out of the branch name, refuses unless the
+manifest agrees with it and the release notes exist, then tags the merge commit
+and publishes those notes as the page.
+
+It matters because the last step of publishing used to be a command somebody had
+to remember to run, on a machine, after the merge. A tag that nobody applies is a
+release consumers never see — and the gap between "merged" and "tagged" is
+exactly where that is easy to forget.
+
+## 0.12.0
+
+### What you need to do
+
+Nothing, unless this release or an earlier one added a deny rule you have not
+merged. `hooks/permissions.json` is copied into your project's
+`.claude/settings.json` by hand at install, and nothing has ever told you when
+that copy fell behind. From this release something does: one line at session
+start, and only when the answer changes — merge the rules and it stops; change
+nothing and it stays quiet until the answer is different. `orrery:doctor` lists
+exactly which rules are missing, and prints the `--reconcile` command with its
+path already filled in. If you declined some on purpose, record that once with
+that command; it writes `.claude/orrery-deny.json` in your
+repository, so the decision is committed, reviewable, and true for everyone on
+the team rather than for one laptop.
+
+The match is by exact rule text. If you narrowed a rule rather than copying it —
+`Read(/Users/someone/**/*.key)` for our `Read(**/*.key)` — it reads as missing,
+and `--reconcile` is the right answer.
+
+Worth checking now even if you have never seen the message: release 0.10.8 moved
+nine classes of rule out of the Bash guard and into the deny-list — `git
+checkout .` in all its spellings, `gh auth token`, `~/.claude/**`, `**/*.key`,
+`~/.config/gh`, `~/.config/gcloud`, `~/.azure`, `/boot`, `/lib`. If your copy
+predates that release, the guard stopped refusing them and nothing took over.
+
+### Why it took a release to notice
+
+An install was found sitting 28 rules behind the shipped deny-list, more than a
+month after the release that added them, with every check in `orrery:doctor`
+green. The missing ones were exactly the rules that release had handed over from
+the Bash guard: the guard was shrunk *because* the deny-list had picked them up,
+and in the plugin it had — in a settings file nobody re-merged, it had not. No
+part of the system was in a position to say so, because nothing had ever
+compared the two lists.
+
+### The check
+
+`hooks/permissions-check.sh`, a `SessionStart` hook with the `startup` matcher:
+once when a session begins, and not again on `/clear` or a resume.
+
+It compares as a **subset**. Rules you hold that this plugin does not ship are
+never mentioned and never counted, and the `allow` block is not compared at all —
+those rules name this plugin's own scripts by path and are none of your
+project's business. It reads your project settings, your project-local settings,
+your own user settings and any managed policy, so a rule you keep at user scope
+counts as merged.
+
+**It never writes a settings file, at any scope.** The finding is emitted as a
+`systemMessage`, which reaches you and not the model, so nothing here can decide
+to widen your permissions on your behalf. The one file it writes is the decline
+record, and only when you type `--reconcile`.
+
+**A comparison that could not be made is said out loud.** No `jq`, a settings
+file that will not parse, a shipped list that cannot be read: each of those
+prints what happened rather than nothing. Silence would read as all-clear, and
+that reading is the whole of the failure above.
+
+Its suite ships beside it — 36 cases, run by the same gate that runs the other
+hook suites.
+
+### `orrery:doctor` gained a seventh check
+
+It calls `--report` rather than repeating the comparison, so there is one
+implementation and one answer. Three outcomes are kept apart: **current**,
+**behind** — the missing rules printed underneath, and below them the
+`--reconcile` command with the plugin root resolved, because that path moves on
+every update and no document can carry it — and **could not be compared**, which
+is not a drift finding and says so in those words. `--report`
+prints how many rules you have on record as declined on every run, clean ones
+included, so a `--reconcile` typed in error cannot become invisible.
+
+### The install page says the merge recurs
+
+`install/into-project.md` told you to merge the deny-list once, at install. It
+now says the part that was missing: every release that adds a rule adds it to the
+file you copied by hand, so this is a step that comes back rather than one you
+finish. It also documents `--reconcile`, why that record belongs in the
+repository rather than on one machine, and why nothing here merges the list for
+you.
+
+Pre-1.0: skill names and layout may still move between releases. `jq` must be on
+`PATH` before any hook fires — without it this check reports that it could not
+run, which is the one thing it must never do silently.
+
 ## 0.11.0
 
 Four ways past the Bash guard, closed. Three commands it refused that it should

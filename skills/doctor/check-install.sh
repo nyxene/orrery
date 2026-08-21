@@ -15,6 +15,11 @@
 # bump still registers; and the log lives outside the plugin cache, which is
 # version-pinned and replaced on every update.
 #
+# Check 7 hands the deny-list comparison to hooks/permissions-check.sh rather
+# than repeating it, and one limit follows: `--report` compares the rules of the
+# copy that is running, not the rules of whatever version the inspected project
+# has cached. Run as the plugin — the normal case — those are the same thing.
+#
 # Usage: check-install.sh [project-dir]   (default: $CLAUDE_PROJECT_DIR or cwd)
 set -uo pipefail
 
@@ -294,6 +299,44 @@ if [ "$have_jq" -eq 1 ] && [ -n "${install_path:-}" ] && [ -d "$install_path" ];
   fi
 elif [ "$have_jq" -eq 1 ]; then
   row "cache unedited" "n/a (no install path)"
+fi
+
+# --- 7. this project's copy of the deny-list is current ----------------------
+# The deny rules this plugin ships are merged into your project's settings by
+# hand. The plugin updates itself; that copy does not, and until this check
+# existed nothing reported the gap — an install can sit dozens of rules behind
+# with every other check here green.
+#
+# The comparison itself lives in hooks/permissions-check.sh and this calls it.
+# Its three exit codes are kept apart on purpose: a comparison that could not be
+# made is not drift, and reporting it as drift would make the finding worthless.
+if [ "$have_jq" -eq 1 ]; then
+  check="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/hooks/permissions-check.sh"
+  if [ ! -x "$check" ]; then
+    warn "permissions-check.sh not found beside this install ($check)"
+    row "deny-list" "n/a"
+  else
+    out=$("$check" --report "$PROJECT" 2>&1); rc=$?
+    case "$rc" in
+      0) ok "deny-list current"; row "deny-list" "current" ;;
+      1) bad "deny rules missing from this project's settings"
+         printf '%s\n' "$out" | sed 's/^/    /'
+         # The only copy with both operands resolved: the session-start hook
+         # prints the path too, but leaves the project to default. The plugin
+         # root is a version-pinned cache directory that moves on every update,
+         # so a copy kept in a note goes stale. The sentence above it says whose
+         # command it is, and `%q` keeps the line pasteable when a directory
+         # along either path contains a space.
+         warn "declined on purpose? that is recorded once, by the person at the keyboard, and never on their behalf:"
+         printf '    %q --reconcile %q\n' "$check" "$PROJECT"
+         row "deny-list" "behind" ;;
+      *) warn "deny-list could not be compared — this is NOT a drift finding"
+         printf '%s\n' "$out" | sed 's/^/    /'
+         row "deny-list" "unknown" ;;
+    esac
+  fi
+else
+  row "deny-list" "n/a"
 fi
 
 echo

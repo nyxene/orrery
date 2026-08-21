@@ -45,7 +45,17 @@ project scope are *both* enabling orrery at once, which double-fires every
 hook · the cached git SHA matches the marketplace source's current HEAD (a
 version-string match alone misses a source change that forgot a version bump)
 · the loaded cache's `plugin.json` doesn't redeclare a hooks path (a manifest
-shape that loads nothing while passing validation).
+shape that loads nothing while passing validation) · whether this project's
+copy of the deny-list still matches the one the plugin ships.
+
+That last one calls `hooks/permissions-check.sh --report` rather than repeating
+the comparison; the same script runs as a `SessionStart` hook and says it once
+per session. It exists because the deny rules in `hooks/permissions.json` are
+merged into your project's settings **by hand**: the plugin updates itself,
+that copy does not, and nothing else reports the gap — an install can sit
+dozens of rules behind with every other check here green. `--report` compares
+the rules of the copy that is running, not the rules of whatever version the
+inspected project has cached.
 
 Each run appends one row to `~/.claude/orrery/doctor/<project-slug>.md` —
 one file per host project, deliberately outside any plugin cache, since
@@ -74,6 +84,20 @@ news.
   project-scope entry, is not a conflict — that's just a global install.)
 - **Manifest shape: buggy** — the cached `plugin.json` redeclares a hooks
   path. Fix the source, `claude plugin update`, restart.
+- **Deny-list: behind** — the rules printed underneath are shipped by this
+  plugin and absent, by exact text, from this project's settings. Report the
+  missing rules to the user and stop. Do not edit their
+  `.claude/settings.json` — merging the deny-list is their edit to make. Do not
+  run `--reconcile`: it records that a human looked at these rules and declined
+  them, and running it on their behalf makes that record false and silences the
+  warning permanently. The doctor prints that command underneath, with its path
+  resolved, because the plugin root moves on every update and no document can
+  carry it — **it is printed for you to hand over, not to run.** Pass it on
+  exactly as printed.
+- **Deny-list: unknown** — the comparison could not be made: a settings file
+  that will not parse, an unreadable shipped list, no `jq`. The message says
+  which. This is **not** a drift finding and must not be repeated as one — fix
+  what it names and run the doctor again.
 
 ## What this does not check
 

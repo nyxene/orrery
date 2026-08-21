@@ -804,4 +804,46 @@ fi
 # which is why the three fixes above were structural instead, closing the paths
 # that skipped the check entirely rather than adding more words to it.
 
+# --- 4. The one operation this library reserves for a person -----------------
+#
+# `permissions-check.sh --reconcile` records every deny rule a project is
+# currently missing as one it declined on purpose, and the startup warning about
+# them then stops — for good, and quietly. Nothing else reachable from here
+# removes a warning instead of leaving a mess somebody can see, and the reporter
+# it silences was built so a model cannot even read the finding (`systemMessage`
+# only, never `additionalContext`) for exactly that reason.
+#
+# Then `orrery:doctor` began printing that command fully resolved, into output a
+# model reads by construction. What kept it a human's after that was one
+# sentence in a skill file: an audit deleted the sentence with a mutant and
+# every suite stayed green.
+#
+# The guard is the right layer here and the deny-list is not. A deny rule
+# matches by prefix, and this command arrives at a version-pinned absolute path
+# that changes on every plugin update. More than that, section 3c's tombstone
+# above says what a hook costs when it enforces an instruction the owner gave —
+# it refuses the owner too. Not here: this hook fires on the agent's Bash tool
+# and on nothing else, so a person typing the same line in their own terminal
+# never reaches it. The rule is "never on the user's behalf", and "through this
+# hook" is precisely that set.
+#
+# Judged at the verb, the way 3a and 3a-bis both had to be. This rule is written
+# about in this repository far more often than it is ever run, and a match
+# against the whole line refuses the sentence describing it. `--report` and the
+# plain hook mode are read-only, are what the doctor delegates to, and are not
+# judged at all.
+while IFS= read -r seg; do
+  # The flag first: it is one cheap match and almost never present, so `verb_of`
+  # — an awk process per segment — runs only where it could change an answer.
+  grep -qE '(^|[[:space:]])--reconcile([[:space:]]|$)' <<<"$seg" || continue
+  v="$(verb_of "$seg")"
+  # An interpreter is asked separately, and without the `-c` test section 3b
+  # uses: `bash script.sh` and `bash -c "script.sh"` both run it, and neither
+  # leaves the script in the verb position.
+  grep -qxF permissions-check.sh <<<"$v" \
+    || { grep -qxE "$interpreters" <<<"$v" && grep -qF permissions-check.sh <<<"$seg"; } \
+    || continue
+  deny "permissions-check.sh --reconcile records every deny rule this project is currently missing as one it declined on purpose, and permanently silences the startup warning about them. That is a decision about the project's own permissions, so it is typed by the person whose project it is, in their own terminal — never run on their behalf. This hook only ever sees the agent's Bash tool, so reaching it here is the one spelling that cannot have been theirs. Print the command for them if that is what was asked. The read-only modes are refused by nothing: --report lists the same rules, and the plain hook mode is what runs at startup."
+done < <(segments "$cmd")
+
 exit 0

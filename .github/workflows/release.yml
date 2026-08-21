@@ -1,0 +1,102 @@
+name: release
+
+# Tags a release and puts its page up, the moment the release pull request is
+# merged. Nothing to run by hand: merging is the decision, and this is what the
+# decision means.
+#
+# The pull request arrives from the workshop's promotion door on a branch named
+# `release/vX.Y.Z`, carrying the whole product tree. By the time it merges, every
+# gate has already run — in the workshop before it was sent, and again here on
+# the pull request itself. So this workflow checks two things only: that the
+# version in the branch name matches the manifest, and that the release notes
+# for it exist. Then it tags the merge commit and publishes the notes as the
+# release body.
+#
+# It uses the repository's own token. Nothing here reaches another repository,
+# so nothing here needs a stored credential.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Merged, not just closed — a release branch that was abandoned must leave no
+    # tag behind. And only release branches: every other merge into main is
+    # ordinary work.
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge commit, not the branch tip: the tag has to name what is on
+          # main, which is what was reviewed.
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Read the version out of the branch name
+        id: v
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          version="${HEAD_REF#release/v}"
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "::error::branch $HEAD_REF does not name a version"; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Two claims the merge itself cannot make. The manifest is what decides
+      # whether an installed plugin sees an update, so a tag that disagrees with
+      # it would announce a version nobody receives. The notes are the release
+      # page's body — absent, the page publishes blank, and what a consumer
+      # received becomes something they have to reconstruct from a diff.
+      - name: The manifest and the notes have to agree with the tag
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          declared="$(jq -r '.version' .claude-plugin/plugin.json)"
+          [ "$declared" = "$VERSION" ] || {
+            echo "::error::plugin.json declares $declared, the branch says $VERSION"
+            exit 1
+          }
+          [ -s "changelog/$VERSION.md" ] || {
+            echo "::error::changelog/$VERSION.md is missing or empty, and it is the"
+            echo "::error::release page's body — publishing would put up a blank page."
+            exit 1
+          }
+
+      - name: Tag it
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION is already tagged; leaving it alone"
+            exit 0
+          fi
+          # Under the merging user's identity, which is who decided this.
+          git config user.name  "${{ github.event.pull_request.merged_by.login }}"
+          git config user.email "${{ github.event.pull_request.merged_by.id }}+${{ github.event.pull_request.merged_by.login }}@users.noreply.github.com"
+          git tag -a "v$VERSION" "$SHA" -m "orrery v$VERSION"
+          git push origin "refs/tags/v$VERSION"
+
+      - name: Put the page up
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "the release page for v$VERSION already exists; leaving it alone"
+            exit 0
+          fi
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --notes-file "changelog/$VERSION.md"
