@@ -1,5 +1,30 @@
 {
   "_comment": "Reusable permission rules. Merge into a project's .claude/settings.json permissions block. deny is what may never happen; allow is this repository's own gates, which otherwise depend on the auto-mode classifier deciding the same command the same way twice. No allow rule here may match an invocation that writes: the two generators are named at their --check form exactly, because a trailing wildcard — with or without a space before it — also matches the bare command, and the bare command is the writing one.",
+  "_classes_comment": "Severity classes for the drift report, most severe first. Read by hooks/permissions-check.sh and by nothing else; not part of the settings schema, and not merged into a project. `match` holds literal prefixes of a rule's own text — this classifies strings in the list below, it never matches a command, so it is not a second copy of the platform's permission matcher and cannot drift into one. A rule matching no class is still reported, last, under `other`: the ranking exists to raise what matters and must never be able to hide anything. The classes earned their order from a real install that carried the three `gh` rules missing while the report emitted 67 entries flat, whose first thirty were enumerated `git checkout` path variants.",
+  "_classes": [
+    {
+      "name": "credentials",
+      "line": "expose a credential",
+      "match": [
+        "Bash(gh auth token", "Read(**/*.", "Read(**/.env", "Read(**/.git-credentials",
+        "Read(**/.netrc", "Read(**/.npmrc", "Read(**/credentials.json", "Read(**/id_",
+        "Read(~/.", "Edit(~/.aws/", "Edit(~/.azure/", "Edit(~/.config/",
+        "Edit(~/.docker/", "Edit(~/.gnupg/", "Edit(~/.kube/", "Edit(~/.ssh/"
+      ]
+    },
+    {
+      "name": "control plane",
+      "line": "let a session rewrite its own guard rails",
+      "match": [
+        "Edit(~/.claude", "Bash(gh alias", "Bash(gh extension", "Edit(~/Library/LaunchAgents/"
+      ]
+    },
+    {
+      "name": "data loss",
+      "line": "discard work with no way back",
+      "match": ["Bash(git "]
+    }
+  ],
   "permissions": {
     "allow": [
       "Bash(./hooks/bash-guard.test.sh *)",

@@ -3,8 +3,19 @@
 # promote.sh's own trap; ignored because a crash between the two leaves it.
 .promote-plan.*
 
-# Empty files the sandboxed shell leaves behind — one per here-document, every
-# session. Nothing here creates them and nothing reads them.
+# Empty files named for a unix timestamp, which appeared in the root across four
+# consecutive days and stopped. Nothing here creates them and nothing reads them.
+#
+# This line used to say "one per here-document, every session". That is wrong,
+# and it is recorded rather than quietly replaced, because it is why nobody
+# looked further for months: five here-document forms — redirected, captured,
+# into a read loop, a herestring, into an interpreter — were each run sandboxed
+# and unsandboxed and produced none.
+#
+# So the cause is unknown, and the pattern stays as a trap rather than an
+# explanation. **If these reappear, write down when** — one span plus a confident
+# wrong sentence identified nothing, and two spans would name what runs between
+# them.
 sh-thd-*
 
 .DS_Store

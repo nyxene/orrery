@@ -558,5 +558,52 @@ else
   ok "36 an unreadable decline record is reported as unreadable, never as zero declined"
 fi
 
+# --- ranking ----------------------------------------------------------------
+# The classes live in the shipped file, so a fixture root has none until this
+# plants them — which is itself case 39: a checker meeting a file without
+# `_classes` must say exactly what it said before ranking existed.
+withclasses() { # $1 = root
+  jq '._classes = [
+        {name:"credentials", line:"expose a credential", match:["Bash(orrery-cred"]},
+        {name:"data loss",   line:"discard work with no way back", match:["Bash(orrery-loss"]}
+      ]' "$1/hooks/permissions.json" > "$1/hooks/p.x" \
+    && mv "$1/hooks/p.x" "$1/hooks/permissions.json"
+}
+cred='Bash(orrery-cred-one:*)'; loss='Bash(orrery-loss-one:*)'; plain='Bash(orrery-plain-one:*)'
+
+# 37 — planted in the order plain, loss, cred so that lexical order and class
+#      order disagree; a report that merely sorted would fail this.
+scenario "$plain" "$loss" "$cred"
+withclasses "$root"
+rep="$(run "$root" "$home" "$proj" --report)"
+order="$(grep -E '^  [A-Z]' <<<"$rep" | tr -d ' ' | tr '\n' ' ')"
+if [ "$order" != "CREDENTIALS DATALOSS OTHER " ]; then
+  bad "37 groups run worst first" "got: $order"
+elif ! has "$rep" "$plain"; then
+  bad "37 a rule matching no class is still printed" "got: $rep"
+else
+  ok "37 the report groups by class, worst first, and hides nothing"
+fi
+
+# 38 — the count alone cannot say which of the missing rules matter.
+out="$(run "$root" "$home" "$proj")"
+if ! has "$(msg "$out")" 'including 1 that expose a credential'; then
+  bad "38 the hook line names the worst class and its count" "got: $(msg "$out")"
+else
+  ok "38 the hook line names the worst class present and how many are in it"
+fi
+
+# 39 — no classes: every rule still reported, and no class clause invented.
+scenario "$plain" "$loss" "$cred"
+out="$(run "$root" "$home" "$proj")"
+rep="$(run "$root" "$home" "$proj" --report)"
+if has "$(msg "$out")" 'including'; then
+  bad "39 a shipped file with no classes names no class" "got: $(msg "$out")"
+elif ! has "$rep" "$cred" || ! has "$rep" "$loss" || ! has "$rep" "$plain"; then
+  bad "39 every rule is reported when there are no classes" "got: $rep"
+else
+  ok "39 a shipped file without _classes reports every rule and names no class"
+fi
+
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]

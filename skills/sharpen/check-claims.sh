@@ -68,7 +68,16 @@ else bad "dangling paths"; for p in $missing; do note "$p"; done; fi
 n_skills=$(find skills -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
 n_rules=$(find rules -name '*.md' | wc -l | tr -d ' ')
 n_agents=$(find agents -name '*.md' | wc -l | tr -d ' ')
-n_hooks=$(jq -r '[.hooks[][].hooks[]] | length' hooks/hooks.json)
+# Distinct commands, not registration entries. Every sentence this is checked
+# against counts hook *scripts*, and the two numbers were equal only by
+# coincidence until one script was registered on a second event — the call log,
+# which now records a call and its outcome. Counting entries then reports one
+# more than there are files and blames the prose.
+#
+# `unique` on the command string, so a script registered twice collapses. Two
+# registrations spelling the same path differently would not, and that is a
+# limit rather than a bug: the same script under two spellings is worth a look.
+n_hooks=$(jq -r '[.hooks[][].hooks[].command] | unique | length' hooks/hooks.json)
 n_deny=$(jq '.permissions.deny | length' hooks/permissions.json)
 
 # Written-out numbers are how these sentences read; digits are how they are kept.

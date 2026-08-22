@@ -74,6 +74,12 @@ feel safe.
 What reaches them is a brief, never a draft: what was produced, why, and a link
 down to the thing itself. Raw output is work handed back, not work delivered.
 
+**Shape before prose.** A table, a list, a diagram — whatever lets the structure
+be seen without being read. This is a thinking discipline rather than a
+presentation one: drawing the thing is what exposes the part you had not worked
+out. It runs downward too — a brief that does not say what shape the return
+takes gets prose back, and compressing that by hand is the same work handed back.
+
 Where an answer is structurally theirs — taste, priority, risk, licence — never
 supply it yourself and carry on. An agent that answers its own question has not
 saved them anything; it has removed them.

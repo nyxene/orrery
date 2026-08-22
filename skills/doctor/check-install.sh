@@ -339,6 +339,40 @@ else
   row "deny-list" "n/a"
 fi
 
+# --- 8. whether the platform sandbox is switched on here ---------------------
+# The defence has five layers and installing this plugin gives you three. Layers
+# 4 and 5 are a `sandbox` block in settings.json, and **a plugin cannot write
+# that file** — for the same reason it never merges the deny-list on your
+# behalf: the file carrying every deny decision is not one a plugin may edit.
+#
+# So the sandbox never arrives with an install, and until this check existed
+# nothing said so. A project could merge the deny-list, read a green doctor, and
+# have no way to learn that two of the layers it had read about were not there.
+#
+# Reported, never failed. Whether to sandbox is your decision, and a doctor that
+# goes red on a deliberate choice is a doctor people stop running — after which
+# the deny-list findings above go unread too.
+if [ "$have_jq" -eq 1 ]; then
+  sb=""
+  for f in "$PROJECT/.claude/settings.json" "$PROJECT/.claude/settings.local.json"; do
+    [ -f "$f" ] || continue
+    # `select(. != null)` and not `// empty`: jq's alternative operator treats
+    # `false` as empty, so a sandbox switched off deliberately would have read
+    # as one never configured — the two states this check exists to tell apart.
+    v=$(jq -r '.sandbox.enabled | select(. != null) | tostring' "$f" 2>/dev/null) || continue
+    [ -n "$v" ] && sb="$v"
+  done
+  case "$sb" in
+    true)  ok "platform sandbox enabled (layers 4 and 5)"; row "sandbox" "on" ;;
+    false) warn "platform sandbox is configured here but switched off"; row "sandbox" "off" ;;
+    *)     warn "no platform sandbox here — layers 4 and 5 do not arrive with the plugin, and are yours to switch on"
+           printf '    see "Optional: switch on the sandbox" in the install guide\n'
+           row "sandbox" "absent" ;;
+  esac
+else
+  row "sandbox" "n/a"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then echo "doctor: clean"; else echo "doctor: $fail area(s) need attention"; fi
 

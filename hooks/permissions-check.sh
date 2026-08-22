@@ -155,6 +155,35 @@ absent_n="$(jq -r 'length' "$tmp/absent.json")"
 reported_n="$(jq -r 'length' "$tmp/reported.json")"
 declined_n="$(jq -r 'length' "$tmp/declined.json")"
 
+# --- ranking ----------------------------------------------------------------
+# A flat set is a set nobody finishes reading. One real install carried the three
+# rules that deny `gh auth token`, `gh alias` and `gh extension` while this check
+# emitted 67 entries in lexical order, the first thirty of which were enumerated
+# `git checkout` path variants — the report was correct and unreadable, which in
+# a security check is the same as absent.
+#
+# `_classes` in the shipped file holds the order and the wording. It matches
+# literal prefixes of a rule's own text, so it classifies strings this repository
+# wrote, never a command — it is not a second copy of the platform's permission
+# matcher and cannot become one. A rule matching nothing falls to `other` and is
+# still printed: ranking must be able to raise, never to hide.
+jq -c '(._classes // [])' "$shipped" > "$tmp/classes.json" 2>/dev/null \
+  || printf '[]\n' > "$tmp/classes.json"
+
+# "<order>\t<class>\t<rule>", sorted so the worst class comes first. Unclassified
+# sorts last on 999 rather than on the class count, which would collide with a
+# real class the day one is added.
+rank() {
+  jq -r --slurpfile c "$tmp/classes.json" '
+    ($c[0] // []) as $cls
+    | .[]
+    | . as $r
+    | ([$cls | to_entries[]
+        | select(.value.match | any(. as $m | $r | startswith($m)))] | first) as $hit
+    | "\($hit.key // 999)\t\($hit.value.name // "other")\t\($r)"
+  ' "$1" 2>/dev/null | sort -n -k1,1
+}
+
 case "$mode" in
 report)
   if [ "$reported_n" -eq 0 ] && [ "$absent_n" -eq 0 ]; then
@@ -166,7 +195,12 @@ report)
     emit "every one of the $ours_n deny rules this plugin ships ($version) is either present in this project's settings or recorded below as declined."
   else
     emit "$reported_n of the $ours_n deny rules this plugin ships ($version) are not present, by exact text, in this project's settings:"
-    jq -r '.[]' "$tmp/reported.json" | sed 's/^/  /'
+    # Grouped by class, worst first, with a heading per group. The heading is
+    # what carries the meaning: a reader who stops after the first group has
+    # still seen the rules that matter most, which a lexical list cannot offer.
+    rank "$tmp/reported.json" | awk -F'\t' '
+      $2 != seen { printf "\n  %s\n", toupper($2); seen = $2 }
+      { printf "    %s\n", $3 }'
   fi
   # Printed on a clean run too. A wrong `--reconcile` records the whole absent
   # set as deliberate and the hook then goes quiet — this number and this path
@@ -246,7 +280,20 @@ if [ -z "$sha" ] || ! mkdir -p "$state_dir" 2>/dev/null || [ ! -w "$state_dir" ]
 fi
 
 if [ "$reported_n" -eq 1 ]; then noun="deny rule"; verb="is"; else noun="deny rules"; verb="are"; fi
-msg="orrery $version: $reported_n $noun this plugin ships $verb not present, by exact text, in this project's settings. \`orrery:doctor\` lists them. If you declined them on purpose, record that once — it commits to the project and we stop asking: $self --reconcile"
+
+# The count alone is what a reader weighs, and a count cannot say that three of
+# the rules behind it are the difference between a token in a keyring and a token
+# in a transcript. Name the worst class present and how many are in it; the whole
+# list stays one command away. Empty when nothing classified, so the sentence
+# reads the same as before for a project missing only system paths.
+worst="$(rank "$tmp/reported.json" | awk -F'\t' 'NR==1 {c=$2} $2==c {n++} END {if (c && c != "other") print n "\t" c}')"
+sting=""
+if [ -n "$worst" ]; then
+  wn="${worst%%	*}"; wc_name="${worst#*	}"
+  line="$(jq -r --arg n "$wc_name" '.[] | select(.name == $n) | .line' "$tmp/classes.json" 2>/dev/null)"
+  [ -n "$line" ] && sting=", including $wn that $line"
+fi
+msg="orrery $version: $reported_n $noun this plugin ships $verb not present, by exact text, in this project's settings$sting. \`orrery:doctor\` lists them. If you declined them on purpose, record that once — it commits to the project and we stop asking: $self --reconcile"
 if [ "$record_state" = broken ]; then
   msg="$msg
 The decline record could not be read, so this project is treated as having declined nothing: $record"
