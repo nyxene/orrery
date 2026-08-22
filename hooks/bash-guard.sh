@@ -444,9 +444,16 @@ verb_of() {
       # The container or pod name. Only skipped once, and only after `exec`, so
       # `docker ps` still reads as `ps` rather than vanishing.
       if (ctrexec) { ctrexec = 0; ctr = 0; continue }
+      # `source` is the same builtin as `.`, and the two spellings had different
+      # verdicts for months. `.` has no letter in it, so the punctuation line
+      # above drops it and the script lands in the verb position; `source` is a
+      # word nobody had listed, so it *was* the verb and every rule judged at the
+      # verb stopped at it. That is not a second wrapper list — it is this one,
+      # missing the half of a builtin that happens to be spelled with letters.
       if (t == "env" || t == "command" || t == "sudo" || t == "doas" ||
           t == "nohup" || t == "time" || t == "nice" || t == "ionice" ||
-          t == "exec" || t == "builtin" || t == "xargs" || t == "stdbuf" ||
+          t == "exec" || t == "builtin" || t == "source" ||
+          t == "xargs" || t == "stdbuf" ||
           t == "then" || t == "do" || t == "else") continue
       # Shell keywords are syntax, not commands. `then`, `do` and `else` were
       # here from the start and the rest were not, so a loop or a conditional put

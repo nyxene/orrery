@@ -473,6 +473,17 @@ deny	git status && hooks/permissions-check.sh --reconcile .
 # inline code, and neither spelling leaves the script in the verb position.
 deny	bash hooks/permissions-check.sh --reconcile .
 deny	bash -c "hooks/permissions-check.sh --reconcile ."
+# Sourcing runs it too, and the two spellings of one builtin disagreed: `.` is
+# punctuation, so it was dropped and the script became the verb, while `source`
+# is a word and became the verb itself. Both are stripped now, so both are here
+# — the second is the case that was failing.
+deny	. hooks/permissions-check.sh --reconcile .
+deny	source hooks/permissions-check.sh --reconcile .
+# The collateral this could have caused, pinned in the other direction: sourcing
+# is how a shell is set up, and reading the script rather than the builtin must
+# not turn an environment activation into an unlisted verb.
+allow	source .venv/bin/activate && python -m pytest
+allow	source hooks/permissions-check.sh --report .
 # The read-only modes are what `orrery:doctor` delegates to and what a session is
 # meant to run. Refusing these would be refusing the check itself, and a check
 # nobody may run reports nothing.

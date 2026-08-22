@@ -23,6 +23,22 @@ note() { printf '  %s\n' "$1"; fail=1; }
 ok()   { printf '\033[32m✓\033[0m %s\n' "$1"; }
 bad()  { printf '\033[31m✗\033[0m %s\n' "$1"; }
 
+# Shows how two newline-separated lists differ, for a check that has already
+# decided they do. Not `diff <(echo "$a") <(echo "$b")`: with the platform
+# sandbox on, an external tool cannot open the descriptors process substitution
+# hands it, so the explanation of a real failure would itself fail. The verdict
+# here never depended on diff — string equality decides it — but a failure
+# nobody can read is a failure nobody acts on.
+show_difference() { # $1 = expected, $2 = actual
+  local a b
+  a="$(mktemp "${TMPDIR:-/tmp}/claims.XXXXXX")"
+  b="$(mktemp "${TMPDIR:-/tmp}/claims.XXXXXX")"
+  printf '%s\n' "$1" > "$a"
+  printf '%s\n' "$2" > "$b"
+  diff "$a" "$b" | sed 's/^/  /'
+  rm -f "$a" "$b"
+}
+
 # Everything this repository holds that makes a claim about itself. `.githooks`
 # is in the list because the hook names the gates it runs, and a gate whose
 # files are not here is red on the first commit rather than on some later one.
@@ -127,7 +143,7 @@ check_count "deny rules" "$n_deny"   '[0-9]+ deny rules'
 declared=$(jq -r '.skills[]' .claude-plugin/plugin.json | sed 's|^\./||' | sort)
 ondisk=$(find skills -maxdepth 1 -mindepth 1 -type d | sort)
 if [ "$declared" = "$ondisk" ]; then ok "plugin manifest lists every skill"
-else bad "manifest and skills/ disagree"; diff <(echo "$declared") <(echo "$ondisk") | sed 's/^/  /'; fail=1; fi
+else bad "manifest and skills/ disagree"; show_difference "$declared" "$ondisk"; fail=1; fi
 
 # --- 4. One version, stated in both places ----------------------------------
 # The version lives in the plugin manifest, because that is what Claude Code
