@@ -1,5 +1,17 @@
 {
   "hooks": {
+    "PostToolUse": [
+      {
+        "_comment": "The second half of the call log. PostToolUse fires only when a tool succeeds and carries the same tool_use_id as its PreToolUse event, so a `call` line with no matching `ran` line is a call that did not run — guard, classifier, person or interrupt, all by the same absence. Same matcher as the PreToolUse registration on purpose: a pair can only be formed if both halves watch the same tools. This costs one hook invocation per successful call, which is the price of the log meaning anything about outcomes; before it, a refused call and a completed one were byte-identical rows.",
+        "matcher": "^(Agent|Edit|Write|NotebookEdit|Bash)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/call-log.sh\""
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

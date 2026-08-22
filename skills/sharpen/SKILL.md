@@ -16,17 +16,32 @@ friction is still legible.
 ## What this looks at
 
 1. **This conversation** — corrections, friction, things repeated.
-2. **Recent session transcripts** — `~/.claude/projects/<project>/*.jsonl`.
+2. **Session transcripts — all of them** — `~/.claude/projects/<project>/*.jsonl`.
    Extract **user messages only**; assistant output and tool results are noise
    here and enormous. Filter for feedback signals: corrections ("no", "don't",
    "actually", "wrong", "instead"), friction ("again", "I already said"),
    explicit asks ("next time", "I wish", "should"), and approval ("exactly",
    "yes, that"). Approval matters — it tells you what to protect.
+
+   **Every file, or say how many you read.** This step said "recent" once and
+   named no number: a pass took the newest six of nineteen, and every count it
+   produced was low by roughly a factor of three — enough to change the ranking
+   and to miss the strongest evidence in the corpus. Nothing had escalated; the
+   corpus was older than the reader. Step 3's bar is a count, and a count from
+   an unstated denominator is not a measurement. If the whole set is genuinely
+   too large, that is a number to report, not a decision to make quietly.
 3. **The call log, where the project keeps one.** `ORRERY_CALL_LOG` names a file
-   of one line per tool call — timestamp, session fingerprint, tool, subagent
-   type, whether the spawn was named — written by `hooks/call-log.sh` and holding
-   no content at all. Absent means the project did not ask for it; that is not a
-   finding.
+   written by `hooks/call-log.sh`, holding no content at all: timestamp, session
+   fingerprint, tool, subagent type, whether the spawn was named, the event —
+   `call` or `ran` — and the harness's id for the call. Absent means the project
+   did not ask for it; that is not a finding.
+
+   **Read the pair, not the row.** `ran` is written only when a tool succeeds, so
+   a `call` with no `ran` under the same id did not run — refused by a guard, by
+   the permission classifier or by the person, or errored, or interrupted, and
+   the log cannot tell those apart. Count rows and every number doubles. Lines
+   written before the event field arrived have five fields and no event; read an
+   empty sixth field as `call`.
 
    It answers what a transcript answers badly and what a skill cannot answer
    about itself. Group by the session fingerprint and read the shape:
@@ -157,6 +172,20 @@ leaves is now believed to be covered.
 the user changed their mind, or the situation was unusual. **The same friction
 twice is a candidate.** Say how many times each was seen; that count is what
 makes the proposal arguable rather than a matter of taste.
+
+**And a candidate is not a finding until the other side is read.** Step 2 takes
+user messages only, which is right for *detecting* friction and not enough to
+*establish* it: a complaint is what the owner perceived, not proof of what the
+agent did. Before ranking a candidate, open the assistant turns around at least
+two of its occurrences and confirm they are what the complaint says. The reading
+is targeted at known timestamps, not a second sweep.
+
+The one finding that ever got this treatment lost four of its six. Two were the
+owner misremembering, one was a question that had genuinely never been answered,
+and one rested on a premise that was false — leaving a single occurrence, which
+this same bar calls noise. An unaudited count carries the authority of a
+measurement and the content of an impression, and it is spent on the scarcest
+thing there is.
 
 This bar is about *behaviour*, and it does not apply to a health pass. A
 dangling reference seen once is not noise, it is a defect — the six checks

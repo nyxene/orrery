@@ -51,12 +51,14 @@ run "$log" "$bash_payload"
 line="$(head -1 "$log" 2>/dev/null || true)"
 if [ -z "$line" ]; then
   bad "a Bash call is recorded" "nothing was written to $log"
-elif [ "$(awk -F'\t' '{print NF}' <<<"$line")" -ne 5 ]; then
-  bad "a Bash call is recorded" "expected 5 tab-separated fields, got: $line"
+elif [ "$(awk -F'\t' '{print NF}' <<<"$line")" -ne 7 ]; then
+  bad "a Bash call is recorded" "expected 7 tab-separated fields, got: $line"
 elif [ "$(cut -f3 <<<"$line")" != "Bash" ]; then
   bad "a Bash call is recorded" "tool field is not Bash: $line"
+elif [ "$(cut -f6 <<<"$line")" != "call" ]; then
+  bad "a Bash call is recorded" "event field is not 'call': $line"
 else
-  ok "a Bash call is recorded, five fields"
+  ok "a Bash call is recorded, seven fields"
 fi
 
 # --- the content is NOT recorded -------------------------------------------
@@ -159,6 +161,120 @@ if [ -f "$log" ] && [ ! -s "$log" ] && grep -q 'purged' <<<"$msg"; then
   ok "--purge empties the log and reports what it removed"
 else
   bad "--purge empties the log and reports what it removed" "msg=$msg size=$(wc -c < "$log" 2>/dev/null)"
+fi
+
+# --- the pair, which is the only thing that says a call ran ----------------
+# Before this the log recorded intent and never outcome: a refused call and a
+# completed one were byte-identical rows. PostToolUse fires only on success and
+# carries the same tool_use_id, so a `call` with no `ran` did not run — and that
+# holds for every cause at once, with no list of causes to leave something off.
+
+pre='{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"tu_777","tool_input":{"command":"ls"}}'
+post='{"session_id":"s1","hook_event_name":"PostToolUse","tool_name":"Bash","tool_use_id":"tu_777","tool_input":{"command":"ls"}}'
+
+log="$tmp/pair.log"
+run "$log" "$pre"
+run "$log" "$post"
+ev="$(cut -f6 "$log" | tr '\n' ' ')"
+ids="$(cut -f7 "$log" | sort -u | tr '\n' ' ')"
+if [ "$ev" != "call ran " ]; then
+  bad "a completed call writes call then ran" "events: $ev"
+elif [ "$ids" != "tu_777 " ]; then
+  bad "both halves carry the same tool_use_id" "ids: $ids"
+else
+  ok "a completed call writes call then ran, both under one tool_use_id"
+fi
+
+# A refused call is the pre with no post, which is the state this whole change
+# exists to make visible. Asserted as the absence, because that is how it will
+# be read.
+log="$tmp/refused.log"
+run "$log" "$pre"
+if [ "$(wc -l < "$log" | tr -d ' ')" -eq 1 ] && [ "$(cut -f6 "$log")" = call ]; then
+  ok "a call that never completes leaves one unpaired call line"
+else
+  bad "a call that never completes leaves one unpaired call line" "$(cat "$log")"
+fi
+
+# --- the two ways the event field can be wrong ------------------------------
+
+# Absent: this hook fails open, the field is newer than the log, and going
+# silent because one key moved is worse than mislabelling.
+log="$tmp/noevent.log"
+run "$log" '{"session_id":"s2","tool_name":"Bash","tool_input":{"command":"ls"}}'
+if [ "$(cut -f6 "$log" 2>/dev/null)" = call ]; then
+  ok "a payload with no hook_event_name is still recorded, as a call"
+else
+  bad "a payload with no hook_event_name is still recorded" "$(cat "$log" 2>/dev/null)"
+fi
+
+# Present and unrecognised: someone registered a third event and did not teach
+# this file. Recording it unlabelled would have every reader count it as a call.
+log="$tmp/unknown.log"
+run "$log" '{"session_id":"s3","hook_event_name":"Nonesuch","tool_name":"Bash","tool_input":{"command":"ls"}}'
+if [ ! -s "$log" ]; then
+  ok "an unrecognised hook event records nothing rather than an unlabelled row"
+else
+  bad "an unrecognised hook event records nothing" "$(cat "$log")"
+fi
+
+# --- the id cannot break the line either ------------------------------------
+# The forgery case, one field further right. `subagent_type` already has its own
+# case; this is the same law applied to a field nobody expects to be hostile,
+# because "harness-supplied" is an assumption and the property is not.
+log="$tmp/forge-id.log"
+run "$log" "$(jq -nc '{session_id:"s4",hook_event_name:"PreToolUse",tool_name:"Bash",
+                       tool_use_id:"tu_1\nFORGED\tx\ty\tz\tcall\ttu_2",tool_input:{command:"ls"}}')"
+if [ "$(wc -l < "$log" | tr -d ' ')" -eq 1 ] && ! grep -q FORGED <<<"$(cut -f1 "$log")"; then
+  ok "a newline inside tool_use_id cannot write a second line"
+else
+  bad "a newline inside tool_use_id cannot write a second line" "$(cat "$log")"
+fi
+
+# --- a relative path belongs to the project, not to the working directory ---
+# The defect this file was written to prevent a repeat of. Every install sets a
+# relative path, because the install guide recommends one, and this hook used to
+# resolve it against whatever directory the tool call ran in — so every `cd` into
+# a subdirectory started a new log there. One host project accumulated twenty,
+# and a `.gitignore` line anchored to the repository root did not cover them.
+
+proj="$tmp/proj"; mkdir -p "$proj/sub/deeper"
+rel='.claude/orrery-calls.tsv'
+evt='{"session_id":"r1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"r_1","tool_input":{"command":"ls"}}'
+
+for d in "$proj" "$proj/sub" "$proj/sub/deeper"; do
+  ( cd "$d" && env ORRERY_CALL_LOG="$rel" CLAUDE_PROJECT_DIR="$proj" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
+done
+found="$(cd "$proj" && find . -name orrery-calls.tsv | sort | tr '\n' ' ')"
+if [ "$found" != "./.claude/orrery-calls.tsv " ]; then
+  bad "a relative path resolves against the project, from any working directory" "found: $found"
+elif [ "$(wc -l < "$proj/.claude/orrery-calls.tsv" | tr -d ' ')" -ne 3 ]; then
+  bad "all three calls land in the one file" "$(cat "$proj/.claude/orrery-calls.tsv")"
+else
+  ok "three calls from three directories write one file at the project root"
+fi
+
+# Nothing to resolve against: record nothing rather than somewhere. This hook
+# fails open everywhere else, and deliberately does not here — a missing line
+# costs a line, a file in someone's source tree is damage they have to find.
+lost="$tmp/lost"; mkdir -p "$lost/sub"
+( cd "$lost/sub" && env -u CLAUDE_PROJECT_DIR ORRERY_CALL_LOG="$rel" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
+rc=$?
+if [ -n "$(find "$lost" -name orrery-calls.tsv 2>/dev/null)" ]; then
+  bad "a relative path with no project root writes nothing" "$(find "$lost" -name orrery-calls.tsv)"
+elif [ "$rc" -ne 0 ]; then
+  bad "and still exits 0, blocking nothing" "exit $rc"
+else
+  ok "a relative path with no CLAUDE_PROJECT_DIR writes nothing, and blocks nothing"
+fi
+
+# An absolute path was never the broken case and must stay untouched by cwd.
+abspath="$tmp/abs.log"
+( cd "$tmp" && env ORRERY_CALL_LOG="$abspath" CLAUDE_PROJECT_DIR="$proj" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
+if [ -f "$abspath" ] && [ ! -e "$proj/$abspath" ]; then
+  ok "an absolute path is used as given, not appended to the project root"
+else
+  bad "an absolute path is used as given" "abs exists: $([ -f "$abspath" ] && echo yes || echo no)"
 fi
 
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"

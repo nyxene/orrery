@@ -43,9 +43,18 @@ Orrery holds the method. The project holds its own facts, declared in its
 ## Optional: record which tools get called
 
 Nothing is recorded unless you ask for it. Set `ORRERY_CALL_LOG` to a path in
-your project's `.claude/settings.json` and `hooks/call-log.sh` appends one line
-per tool call: a timestamp, a fingerprint of the session, the tool name, the
-subagent type where there is one, and whether the spawn was named.
+your project's `.claude/settings.json` and `hooks/call-log.sh` appends a line
+per event: a timestamp, a fingerprint of the session, the tool name, the
+subagent type where there is one, whether the spawn was named, the event —
+`call` or `ran` — and the harness's id for that call.
+
+**Two lines per completed call, one per call that was stopped.** `ran` is
+written only when a tool succeeds, so a `call` with no `ran` under the same id
+did not run, whatever stopped it — a guard, the permission system, or you
+answering no. It costs one extra hook invocation per successful call, and it is
+the difference between a log that records what was attempted and one that
+records what happened. What it cannot tell you is *which* of refused, errored
+and interrupted a given unpaired line was.
 
 Never the command, the prompt, the file path, the branch or the agent's name.
 The session id is hashed rather than stored, so a line correlates with its
@@ -59,6 +68,27 @@ neighbours and identifies nothing beyond the machine that wrote it.
 call and is trimmed from the head once it reaches the cap, so committing it puts
 a conflict in front of everyone who runs a session in your repository — and the
 hashed session id it carries tells a second reader nothing they can use.
+
+**A relative path is resolved against your project root**, whatever directory a
+tool call happens to be running in — one log, at the path you wrote, always. It
+did not used to be. Before this version it was resolved against the working
+directory, so every `cd` into a subdirectory started another log there. One
+project accumulated **twenty** of them, six directories deep, and a `.gitignore`
+line is anchored to the directory holding it — so the strays were not ignored,
+and one of them was committed.
+
+If you installed before this version, they are still on disk. Harmless — the log
+holds no content by design — but yours to remove:
+
+```bash
+find . -name orrery-calls.tsv -not -path ./.claude/'*'      # look first
+git ls-files '*orrery-calls.tsv'                            # any that got committed
+```
+
+An absolute path is used exactly as written. A relative path with no project
+root to resolve against records nothing rather than guessing — the one place
+this hook does not fail open, because a missing line costs a line and a file in
+your source tree costs you finding it.
 
 Remove that line and it stops. The log is capped — 256 KB by default,
 `ORRERY_CALL_LOG_MAX` to change it — and `hooks/call-log.sh --purge` empties it.
@@ -166,6 +196,55 @@ two apart means reimplementing Claude Code's own permission matcher and keeping
 it in step with it, a second copy of the thing being defended that would be wrong
 without saying so. Use `--reconcile` instead — one command, and the difference is
 on the record as your decision.
+
+## Optional: switch on the sandbox
+
+Everything above is enforced by hooks and by the deny-list — both of them
+in-process, both of them things that can be wrong. Underneath there is one more
+layer, and **installing this plugin does not give it to you.**
+
+It is a `sandbox` block in `.claude/settings.json`, and a plugin cannot write
+that file, for the same reason it never merges the deny-list on your behalf. So
+it does not arrive, and nothing about a healthy install says otherwise.
+`orrery:doctor` reports whether the block is present; it does not fail the run,
+because whether to sandbox is your decision and not this plugin's.
+
+What it buys: the platform confines every shell command to your project
+directory and to a named set of domains, at the kernel rather than in a hook.
+It is the only layer that still holds when a hook is wrong. Paste it beside
+`permissions`:
+
+```json
+"sandbox": {
+  "enabled": true,
+  "failIfUnavailable": true,
+  "allowUnsandboxedCommands": true,
+  "excludedCommands": [],
+  "filesystem": { "allowRead": ["/bin", "/usr", "/etc", "/private/etc", "/var/db", "/lib"] },
+  "network": { "allowedDomains": ["github.com", "api.github.com"] }
+}
+```
+
+Three of those are the argument rather than the configuration.
+`failIfUnavailable` makes a sandbox that cannot start refuse rather than pass
+through silently. `allowUnsandboxedCommands` sends a command that cannot run
+sandboxed to the permission flow instead of refusing it outright, and that is
+what lets `excludedCommands` stay **empty** — which it should. An exclusion
+lifts the sandbox for the whole Bash call, so anything sharing a line with an
+excluded command escapes with it. Keep the escape hatch a decision per call
+rather than a name on a list.
+
+**What it costs, so that none of it reads as breakage.** Writes outside the
+project come back `Operation not permitted` from the kernel rather than from a
+hook. Anything that writes `.claude/settings.json` has to be run from a terminal
+rather than from a session. `gh` does not work inside the sandbox at all — it
+cannot verify TLS there and cannot reach its keyring — so it goes through the
+permission flow every time, deliberately. Shell network access is limited to the
+domains listed; in-process tools are unaffected, so reading documentation and
+searching the web work normally.
+
+Add the domains your own work needs. The two above are a starting point, not a
+recommendation about your project.
 
 ## What stays your responsibility
 
