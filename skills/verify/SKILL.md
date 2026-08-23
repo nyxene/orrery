@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Prove a completion claim before making it. Invoke before saying anything passes, is fixed, is done, or is ready — and before committing, pushing, or opening a PR. Turns "should work" into a command that was actually run, with its output read.
+description: Prove a completion claim before making it. Invoke before saying anything passes, is fixed, is done, or is ready — and before committing, pushing, or opening a PR. Turns "should work" into a command that was actually run, with its output read. Not for finding a cause when something is broken — that is `diagnose`, which builds a command that goes red before any theory.
 argument-hint: "[the claim you are about to make]"
 ---
 
@@ -29,16 +29,42 @@ unverified claim asserted as fact is the failure this skill exists to stop.
 Step 1 is satisfied by naming any command. A command that exits 0 whatever the
 state of the code satisfies its letter and proves nothing at all.
 
-Four conditions, all of them required:
+Five conditions, all of them required:
 
 - **Red-capable** — it goes red if the claim is false, and you can say what its
   failing output looks like. "Runs without erroring" is not this.
 - **Deterministic** — the same verdict every run.
 - **Fast** — seconds. A check slow enough to avoid is a check you do not have.
 - **Runnable unattended** — no human clicking through it.
+- **Reading the real thing** — the environment, the inputs and the state it
+  reads are the ones the claim is about. Everything the command touches from
+  outside the repository is an input, and one nobody wrote down.
 
 For a check you wrote yourself, red-capability is established the same way it is
 for a regression test: break what it guards, watch it deny, put it back.
+
+The fifth is the one that is invisible when it fails. The other four are
+properties of the command and can be inspected by reading it; the fifth is a
+property of everything the command *reaches*, and a command reaching the wrong
+thing satisfies all four with full confidence. Four rules in this library exist
+because that happened:
+
+| what it read instead | how it presented |
+|---|---|
+| a machine's accumulated leftovers | green in every pre-commit, red the first time it ran anywhere clean |
+| toy inputs standing in for production scale | a suite that passed and a phase that was non-functional |
+| a stale local mirror of state owned elsewhere | every local reading agreeing with every other, all from one snapshot |
+| suites that skipped themselves | a gate reporting a pass count for tests that never executed |
+
+So the question is not "did it run and go green". It is **what did it read**.
+Name the machine, the inputs and the state; anything you cannot name is
+ambient, and ambient is untested.
+
+There is a corollary worth stating because it is where this most often bites:
+**"deterministic" has no environment coordinate.** A command green on every run
+here and red on every run there satisfies determinism *on both machines*. Two
+machines disagreeing is not flakiness, it is the fifth condition failing, and
+reaching for a retry is the wrong move — the disagreement is the measurement.
 
 ## What proves what
 

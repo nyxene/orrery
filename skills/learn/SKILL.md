@@ -6,10 +6,21 @@ argument-hint: "[what happened, in one line]"
 
 # Learn — Turn an Incident Into a Rule
 
-This is what keeps a project's rule layer alive. Every rule got there because
-something actually went wrong; none of them are general advice. That is the
-whole difference between an earned rule set and a list of best practices, and
-it survives only if rules are filed at the moment of the incident.
+This is what keeps a project's rule layer alive. Almost every rule got there
+because something actually went wrong, and that is the whole difference between
+an earned rule set and a list of best practices — it survives only if rules are
+filed at the moment of the incident.
+
+**A few are declared policy instead, and they say so.** A rule set before it
+bit carries `cost: none — set as policy before it bit`, and that line is the
+marker: nobody has paid for this one yet. Such a rule earns its place on the
+risk it names rather than on an incident, which is a higher bar and a rarer
+one — reserve it for a harm nobody wants to meet once. If you cannot name the
+harm in a sentence, you are writing best practice and the answer is no.
+
+The distinction decides how a rule loses an argument. An earned rule wins on
+its cost; a declared one wins only on the risk, so when the risk turns out to
+be imaginary it goes, and nothing is lost.
 
 **File it now, not later.** An hour later you have the lesson but not the
 evidence. A week later you have neither, and the rule reads like something
@@ -63,6 +74,11 @@ evidence about a past decision, never a veto over the person directing the work.
   stale comment — that is debt, not a rule. Rules are lessons about *how to
   work*; debt is *what we left in the code*.
 - **A one-off.** If it cannot recur, there is nothing to prevent.
+- **Friction with Orrery itself** — a guard that refused something reasonable, a
+  skill that fired wrongly, a rule whose advice was wrong. That is `feedback`,
+  which reports upward to the tooling's own tracker. `feedback` already cedes
+  the other direction: a rule goes here when the incident will recur *in this
+  project*. The distinction is where the fix has to land, not how it felt.
 
 ## Procedure
 
@@ -96,10 +112,16 @@ is authoritative.
 | `git/` | Branching, commits, PRs, merging |
 | `process/` | Consent, planning, debt, reporting, working with the user |
 | `craft/` | Framework and tooling lessons that hold in any project |
-| `domain/` | True only for this product's subject matter |
 
-The test for `craft` versus `domain`: would this still be true and useful in a
-project that has nothing to do with this one's subject?
+**There is no `domain` scope, and this table used to offer one.** A lesson true
+only of one project's subject matter belongs in that project, not in a library
+installed into all of them — the rules loader has no case that can emit it, so a
+file filed under `domain/` exists and never loads: no error, no rule.
+
+So the test is not craft-versus-domain, it is whether this is a rule at all.
+Would it still be true and useful in a project that has nothing to do with this
+one's subject? If no, it is a fact about one codebase — see *A fact about one
+codebase* above — and it belongs in that codebase's own notes.
 
 **4. Name the file as the law itself**: kebab-case, lowercase, `.md`, 3-8
 words, and the filename states the rule rather than its subject.
@@ -109,7 +131,7 @@ words, and the filename states the rule rather than its subject.
 ```yaml
 ---
 rule: <the law, one lowercase line>
-scope: agents | git | process | craft | domain
+scope: agents | git | process | craft
 learned: YYYY-MM-DD
 origin: "<the issue, PR, or incident — never invented>"
 cost: <what it actually broke, or "none — set as policy before it bit">

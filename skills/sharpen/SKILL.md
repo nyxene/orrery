@@ -46,13 +46,21 @@ friction is still legible.
    It answers what a transcript answers badly and what a skill cannot answer
    about itself. Group by the session fingerprint and read the shape:
 
-   - **A planner ran, commands ran, and no checker was ever spawned.** The case
+   - **Commands ran against a plan and no checker was ever spawned.** The case
      this log exists for. `plan` requires a spike where an answer cannot be read,
      and says in prose that a spike does not replace the review — prose that
      nothing enforces. Each such session is one time it did not hold.
    - **How often a checker runs at all**, as a fraction of the sessions that
-     spawned a planner. A ratio, not a count: the denominator is what makes it
+     produced a plan. A ratio, not a count: the denominator is what makes it
      mean anything.
+
+     **The denominator is the hard half, and it is not in this log.** Drafting
+     is not an agent — `plan` writes in the session that invoked it — so no
+     spawn marks a session as having planned, and the log records no content
+     that could. Until something does, count the plan documents written in the
+     window and say that is what you counted. A ratio whose denominator came
+     from a different source than its numerator is worth stating as two numbers
+     rather than one fraction.
    - **How many agents a piece of work cost**, which is the number the route
      table is spending and has never been able to see.
 

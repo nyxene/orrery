@@ -20,10 +20,10 @@ plausible explanations and no way to choose between them.
 run a command that fails *on this bug*, and you can paste its invocation and its
 failing output.
 
-It has to clear `verify`'s four conditions — red-capable, deterministic, fast,
-runnable unattended — with one inversion: there, red-capable means it *would*
-fail if the claim were false; here it means it **fails now**, and you have the
-failing output in front of you.
+It has to clear `verify`'s five conditions — red-capable, deterministic, fast,
+runnable unattended, reading the real thing — with one inversion: there,
+red-capable means it *would* fail if the claim were false; here it means it
+**fails now**, and you have the failing output in front of you.
 
 If you catch yourself opening files to work out what might be wrong, stop. That
 is the failure this skill exists to prevent, and it is the one that feels most
@@ -49,6 +49,39 @@ Build one, cheapest first. Stop at the first rung that goes red.
    setup every round.
 
 The loop is the deliverable of this phase. Say which rung you landed on.
+
+**When no rung goes red, the machine is the variable.** Every rung above runs
+where you are, so a bug that is green here and red there — CI against local, one
+machine against another, a container against a host — walks the whole ladder
+without ever going red, and this skill used to end there while forbidding you to
+open a file. That is a closed door, so here is the seventh rung.
+
+The reproduction is not the code, it is **the difference between the two
+environments**, and the loop runs where it is red. `verify`'s fifth condition is
+why: a command green on every run here and red on every run there is
+deterministic on both, so "flaky, retry it" is a misreading — the disagreement
+*is* the measurement, and the two verdicts together are the failing output the
+gate asks for.
+
+1. **Run it where it is red, and read what it says there.** A CI run's own log
+   before any theory about it — `rules/craft/make-the-tool-say-why-before-deciding-why.md`
+   is the whole of this step. A gate that swallows its error is the first fix.
+2. **Bisect the environment rather than the code.** Pull the image, use the
+   container, take a scratch user account. Cheapest first, same as the ladder:
+   the goal is one place you control where it goes red.
+3. **Name what the command reads from outside the repository** — a path that
+   happens to exist, a tool on `PATH`, config set months ago, a cache, a
+   credential, a clock, a locale. That list is the hypothesis set, and it is
+   usually short. `rules/craft/gates-must-run-where-nobody-works.md` is the
+   incident this rung was written from: the corpus held exactly the right case
+   and it passed, because the path it named happened to exist on every machine
+   anybody checked.
+4. **Only then instrument**, per *Instrument rather than speculate* below, in
+   the environment where it fails rather than the one where it does not.
+
+Reading files is licensed here in a way the gate above forbids elsewhere, and
+the licence is narrow: you are reading to enumerate what the command touches,
+not to guess what is wrong with it.
 
 ## Minimise before theorising
 
@@ -82,7 +115,11 @@ The cause decides the shape of the change, and the loop already told you where
 it is:
 
 - **Local and obvious** — fix it here, and add the regression test in the same
-  change.
+  change. This is not a skipped plan: it is `plan`'s `inline` route, which is
+  defined as *plan here, in this session, and say you did*. `plan`'s description
+  claims every change including a one-line one, and it means the pricing, not an
+  agent — the two read as contradicting each other and do not. Say you took the
+  inline route.
 - **Shared by callers** — Canon §5 governs: one guard where they all route
   through, not one per caller. This is usually still small.
 - **Structural** — the fix changes an interface, a boundary, or several files.
