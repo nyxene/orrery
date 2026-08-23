@@ -2,7 +2,7 @@
 # PreToolUse hook. Puts the rules of a scope into context the first time a
 # session touches that scope.
 #
-# Twenty-four of thirty rules had no reader at the moment they applied. `rules/`
+# Almost every rule had no reader at the moment it applied. `rules/`
 # never self-loaded; only `learn` and `sharpen` opened the directory, and both do
 # so to *write*. Five more were cited by path from a skill. So a rule filed after
 # a real incident sat in a directory nobody read while the incident repeated —

@@ -18,7 +18,7 @@ tools:
     than in general good practice. In a plan review you carry a second duty:
     argue the strongest available case *against* the favoured direction.
 
-    Not yours: writing plans (Planner), issuing the pass/fail verdict (Critic),
+    Not yours: writing plans, issuing the pass/fail verdict (Critic),
     or changing anything at all.
   </Role>
 

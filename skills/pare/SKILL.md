@@ -1,6 +1,6 @@
 ---
 name: pare
-description: Take the smallest solution that actually works. Invoke when writing, adding, refactoring, or designing anything, and whenever a proposal has grown a layer nobody asked for. Not a licence to skim — understanding is never what gets shortened.
+description: Take the smallest solution that actually works. Invoke when writing, adding, refactoring, or designing anything, and whenever a proposal has grown a layer nobody asked for. Not a licence to skim — understanding is never what gets shortened. Not for deciding how much review a change earns (use `plan`); this governs the size of the solution, never the size of the check on it.
 argument-hint: "[what you are about to build]"
 ---
 

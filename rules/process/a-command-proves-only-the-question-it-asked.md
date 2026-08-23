@@ -2,14 +2,14 @@
 rule: before reporting, name the claim and name what establishes it — a command proves only the question it asked, a truncated output only its own part, and a decision nothing at all about the world
 scope: process
 canon: 3
-evidence: "three incidents, merged. A reflog piped through `head` showed three clean commits and the audit was reported as finding nothing; a fourth was found later by hand, carrying private residue to a remote, and the repository had to be deleted and recreated. A ruling that a project must not be touched was written up as evidence that nothing was installed there, and reached two shipped documents. A commit was reported as pushed because the commit before it had succeeded, and cached versions as in use because a marker path existed, when that path is a directory of locks and it was empty"
+evidence: "incidents, merged. In a multi-agent run, a call exhausted its structured-output retries and was reported as a hard failure while its pull request had merged; a second agent reported as running while it babysat its own poll loop and never returned, its work having landed without it — a task was nearly re-run from scratch against an already-merged branch. A reflog piped through `head` showed three clean commits and the audit was reported as finding nothing; a fourth was found later by hand, carrying private residue to a remote, and the repository had to be deleted and recreated. A ruling that a project must not be touched was written up as evidence that nothing was installed there, and reached two shipped documents. A commit was reported as pushed because the commit before it had succeeded, and cached versions as in use because a marker path existed, when that path is a directory of locks and it was empty"
 ---
 
 A green result is evidence for the question it answered and for nothing beside
 it. Before stating a result, say the claim in words, then look at what is
 supposed to support it and check the two are about the same thing.
 
-Three substitutions, one shape:
+Four substitutions, one shape:
 
 - **A command that answered a neighbouring question.** Existence is not
   occupancy; a commit is not a push; a file being present is not it being
@@ -21,6 +21,11 @@ Three substitutions, one shape:
 - **A decision, read as an observation.** "Do not touch that project" does not
   mean the project is untouched; "we are not publishing yet" does not mean
   nothing is published; "that is out of scope" does not mean it is absent.
+- **A harness's own failure or timeout signal, read as a fact about the work.**
+  A run reported as failed, an agent reported as stalled, a call that exhausted
+  its retries — each is a claim about the machinery that was meant to do the
+  work, never about whether the work exists. The branch, the pull request and
+  the merge are what settle that, and they have disagreed.
 
 **Why:** each substitution is invisible from inside. The command *did* succeed,
 the three clean lines look identical whether they are the only three or the

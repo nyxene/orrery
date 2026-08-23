@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.15.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.16.0-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -64,15 +64,23 @@ its moment arrives.
 | 🎓 | **`learn`** | Turn an incident into a rule, while the cause is still known |
 | 🪒 | **`sharpen`** | Improve the method itself from accumulated evidence |
 
+**When two of them seem to fire, the one that names the other is right.** Most
+descriptions carry a *not for this — use that* clause, put there by whichever
+skill knows where the boundary is. Where neither names the other, take the one
+whose description names what you actually asked for rather than the one with the
+wider scope: a skill claiming *any change* or *anything* is stating what it
+charges, not staking a claim on the work.
+
 ## What else is in the box
 
 - **[CANON.md](CANON.md)** — eight non-negotiable rules, loaded into every
   session by hook. Consent before work. Evidence before claims. Surgical
   changes. Root cause, not symptom. They are short because every line is paid
   for in every session of every project.
-- **Four agents** — `planner`, `architect`, `critic`, `auditor`: the
-  consensus-planning loop and the independent audit that runs before anything
-  is committed.
+- **Three agents** — `architect`, `critic`, `auditor`: the checkers of the
+  consensus-planning loop, and the independent audit that runs before anything
+  is committed. Drafting a plan is not one of them — `plan` writes in the
+  session that invoked it, and spends agents only on reading what it wrote.
 - **Seven hooks** — two guards (a Bash guard with a mutation-tested case corpus,
   and an agent guard), two loaders for the canon and for scoped rules, a prompt
   that catches unfinished work before a context reset takes it, a reporter that
@@ -128,9 +136,15 @@ is text loaded into a session and is not platform-specific.
 
 ## What makes the rules different
 
-Every rule in **[rules/](rules/)** exists because something actually went
+Almost every rule in **[rules/](rules/)** exists because something actually went
 wrong, and each carries the evidence it was earned from — not general advice
 that reads well and loses every argument it enters.
+
+The exception is marked rather than hidden. A handful were set as policy before
+they bit, about a harm nobody wants to meet even once — licensing, third-party
+content, spending your money without asking. Those carry `evidence:` naming the
+risk instead of an incident, and they are held to a higher bar for it: an earned
+rule wins an argument on what it cost, a declared one only on the risk it names.
 
 ```yaml
 rule: nothing goes outward without its own command — approving the mechanism is not it
@@ -186,7 +200,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.15.0 · Canon, thirteen skills, four agents, 19 rules, seven hooks
+Version 0.16.0 · Canon, thirteen skills, three agents, 19 rules, seven hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

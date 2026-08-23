@@ -39,8 +39,8 @@ Everything else, first match wins:
 | Route | When | Runs |
 |---|---|---|
 | `inline` | One file, or the approach is already obvious | 0 — plan here, in this session, and say you did |
-| `pair` | The approach is known, or has precedent in this codebase | Planner → Critic |
-| `consensus` | The approach is genuinely uncertain | Planner → (Architect ∥ Critic) |
+| `pair` | The approach is known, or has precedent in this codebase | 1 — Critic |
+| `consensus` | The approach is genuinely uncertain | 2 — Architect ∥ Critic |
 
 **Uncertainty has a kind, and only one kind is settled by hiring readers.**
 Before choosing between `pair` and `consensus`, ask what the uncertainty is
@@ -127,8 +127,9 @@ the absence of a spike is a claim like any other.
 
 ## The pass
 
-1. **Planner** drafts to the plan directory. **Its brief opens with the route and
-   the mode**, because what it must produce depends on both:
+1. **Draft to the plan directory, here, in this session.** The drafting is not
+   an agent — the checkers are. **Open the draft with the route and the mode**,
+   because what it must contain depends on both:
    - Always: steps with acceptance criteria, an **Assumptions** list rated
      VERIFIED / REASONABLE / FRAGILE, and per-step dependencies. The checkers
      verify that list rather than rebuilding it, which is where the time goes —
@@ -149,7 +150,7 @@ the absence of a spike is a claim like any other.
    - DELIBERATE only: the expanded test plan.
    - Always, when §Spike applies: the spike's result as a fact, with the command
      that produced it. A plan that turns on an unread number and carries no
-     command is returned to the planner rather than checked.
+     command is redrafted rather than checked.
 2. *(--interactive only)* **Stop on the draft and wait.** Put it to the owner with
    `AskUserQuestion` — proceed / request changes — and do not spawn a checker
    until they answer. Displaying the draft and carrying on is not this step: the
@@ -167,13 +168,13 @@ the absence of a spike is a claim like any other.
 
 A non-APPROVE verdict revises the plan. It does not restart the pass.
 
-- **Planner** revises against the findings, and states in the revision how it
-  answered each one. An architect antithesis it rejects is answered in writing,
-  not ignored.
+- **The draft** is revised here against the findings, and the revision states
+  how each one was answered. An architect antithesis you reject is answered in
+  writing, not ignored.
 - **Critic** re-checks **its own prior findings** and anything the revision newly
   touched. Not a fresh full pass — the plan it already read has not changed
   underneath it.
-- **Architect** re-runs **only if the approach changed** — or if the planner
+- **Architect** re-runs **only if the approach changed** — or if the revision
   rejected its antithesis. A finding about a missing function name does not
   warrant re-arguing the direction; a rejected argument does, because nobody else
   can weigh it. The critic never saw the antithesis, by design, so a rejection

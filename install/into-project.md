@@ -9,7 +9,7 @@ Skills become available as `orrery:frame`, `orrery:plan`, `orrery:build`,
 `orrery:review`, `orrery:diagnose`, `orrery:pare`, `orrery:verify`,
 `orrery:debt`, `orrery:doctor`, `orrery:feedback`, `orrery:handoff`,
 `orrery:learn`,
-`orrery:sharpen`. Agents (`planner`, `architect`, `critic`, `auditor`) resolve
+`orrery:sharpen`. Agents (`architect`, `critic`, `auditor`) resolve
 by name. All seven hooks start firing immediately — including the one that stops
 the first compaction of a session to ask whether there is unfinished work to
 hand off.
