@@ -214,6 +214,12 @@ whole is what lets them rank it differently than you did.
 Then draft, agree and apply **one change at a time**. A batch of twelve edits
 gets rubber-stamped or refused wholesale, and either way nothing was decided.
 
+**A correction is not a change.** That rule is about decisions. Where the
+project states something about itself that the disk contradicts, there is
+nothing to decide — the fix is what the file already says — so corrections go
+as one batch and the batch is one item on the list. Anything whose fix could
+reasonably be written two ways is a change, and goes alone.
+
 **6. Log the outcome** — append to the host's own sharpen log, at the location
 its CLAUDE.md declares; create it on first use. Record date, proposal,
 decision, and for a modification, what changed. **Read it in step 1, before
@@ -235,7 +241,9 @@ not when the list is empty, which it never is.
 Applying ends differently: **one change, then stop and report.** Each landed
 change moves the library the next finding was measured against, and a list
 carried on past the first fix is a list about a repository that no longer
-exists. Re-run the checks rather than working down a stale ranking.
+exists. Re-run the checks rather than working down a stale ranking. A batch of
+corrections is the one change, by the carve-out above — it moves nothing that a
+finding was measured against.
 
 ## The prune pass — a rule layer only grows unless something shrinks it
 

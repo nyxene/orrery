@@ -41,30 +41,48 @@ shopt -s nullglob
 files=("$dir"/agent-*.jsonl)
 [ ${#files[@]} -eq 0 ] && { echo "No agents ran in session $session." >&2; exit 2; }
 
+# A markdown cell whose content may contain the field separator is a cell, not a
+# record. This used to render the table first and then recover its totals with
+# `awk -F'|'`, so one pipe in an agent's description shifted every column: 140
+# output tokens reported as 0, 210 input as 140, and the `<!-- retrospective -->`
+# block — the half meant for a machine — carried the shifted numbers too. An
+# agent description is free text a model writes at spawn time.
+#
+# So the totals come from the data and the rendering is a separate step. The
+# cell is escaped as well: without that the arithmetic is right and the table
+# still renders with an extra column.
 rows=""
+n_out=0 t_out=0 t_inp=0 t_cache=0 t_tools=0
 for f in "${files[@]}"; do
   meta="${f%.jsonl}.meta.json"
   type="$(jq -r '.agentType // "unknown"' "$meta" 2>/dev/null || echo unknown)"
   desc="$(jq -r '.description // "—"' "$meta" 2>/dev/null || echo "—")"
-  rows="$rows$(jq -sr --arg t "$type" --arg d "$desc" '
+
+  # Tab-separated numbers, never a rendered row. `dur` is floored here rather
+  # than in the shell: jq yields a float and bash arithmetic cannot read one.
+  IFS=$'\t' read -r out inp cache tools dur < <(jq -sr '
     # Timestamps carry milliseconds, which fromdateiso8601 will not parse.
     def secs: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
     ([.[].timestamp] | map(select(. != null))) as $ts
-    | {
-        out:   ([.[].message.usage.output_tokens // 0] | add),
-        inp:   ([.[].message.usage.input_tokens // 0] | add),
-        cache: ([.[].message.usage.cache_read_input_tokens // 0] | add),
-        tools: ([.[].message.content[]? | select(.type == "tool_use")] | length),
-        dur:   (if ($ts | length) > 1 then (($ts | max | secs) - ($ts | min | secs)) else 0 end)
-      }
-    | "| \($t) | \($d) | \(.out) | \(.inp) | \(.cache) | \(.tools) | \(.dur / 60 | floor)m\(.dur % 60)s |"
-  ' "$f")"$'\n'
-done
+    | [
+        ([.[].message.usage.output_tokens // 0] | add),
+        ([.[].message.usage.input_tokens // 0] | add),
+        ([.[].message.usage.cache_read_input_tokens // 0] | add),
+        ([.[].message.content[]? | select(.type == "tool_use")] | length),
+        (if ($ts | length) > 1 then (($ts | max | secs) - ($ts | min | secs) | floor) else 0 end)
+      ] | @tsv
+  ' "$f")
 
-totals="$(printf '%s' "$rows" | awk -F'|' '
-  NF > 1 { out += $4; inp += $5; cache += $6; tools += $7; n++ }
-  END { printf "%d %d %d %d %d", n, out, inp, cache, tools }')"
-read -r n_out t_out t_inp t_cache t_tools <<<"$totals"
+  rows="$rows$(printf '| %s | %s | %s | %s | %s | %s | %dm%ds |' \
+    "${type//|/\\|}" "${desc//|/\\|}" "$out" "$inp" "$cache" "$tools" \
+    "$((dur / 60))" "$((dur % 60))")"$'\n'
+
+  n_out=$((n_out + 1))
+  t_out=$((t_out + out))
+  t_inp=$((t_inp + inp))
+  t_cache=$((t_cache + cache))
+  t_tools=$((t_tools + tools))
+done
 
 cat <<EOF
 <!-- retrospective

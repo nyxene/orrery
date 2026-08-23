@@ -277,5 +277,52 @@ else
   bad "an absolute path is used as given" "abs exists: $([ -f "$abspath" ] && echo yes || echo no)"
 fi
 
+# --- a skill invocation is recorded, and is not a spawn ----------------------
+# `Skill` was added to the matcher after the fact. Before that no skill call was
+# recorded anywhere, and the gap was invisible because the log looked complete.
+# The name shares field four with the subagent type, so the pair below is what
+# has to hold: the name arrives, and field three is what tells a reader which
+# kind of name it is.
+skill_log="$tmp/skill.log"
+run "$skill_log" '{"session_id":"abc-123","tool_name":"Skill","tool_input":{"skill":"sharpen","args":"the whole library"}}'
+sline="$(grep '	Skill	' "$skill_log" 2>/dev/null || true)"
+if [ -n "$sline" ]; then
+  ok "a Skill call is recorded at all"
+else
+  bad "a Skill call is recorded at all" "no Skill row in $skill_log"
+fi
+if [ "$(printf '%s' "$sline" | cut -f4)" = sharpen ]; then
+  ok "the skill name lands in the kind column"
+else
+  bad "the skill name lands in the kind column" "field 4 was: $(printf '%s' "$sline" | cut -f4)"
+fi
+if [ "$(printf '%s' "$sline" | cut -f3)" = Skill ]; then
+  ok "and the tool column says which reading of that column applies"
+else
+  bad "and the tool column says which reading applies" "field 3 was: $(printf '%s' "$sline" | cut -f3)"
+fi
+
+# The property the whole recorder is built around, restated for the new field:
+# names, never content. `args` is what a person typed and must not survive.
+if grep -q 'the whole library' "$skill_log"; then
+  bad "skill arguments are never recorded" "the args string reached the log"
+else
+  ok "skill arguments are never recorded"
+fi
+
+# The same forgery guard as the subagent type, because a skill name is
+# caller-supplied free text by exactly the same route.
+forge_skill="$tmp/forge-skill.log"
+# A marker rather than a timestamp, for the reason given at the case above: a
+# real date here is a dated incident narrative to `tools/sanitize-scan.sh`, and
+# the assertion never needed one.
+run "$forge_skill" "$(jq -cn --arg s $'ok\nFORGED-STAMP\tdeadbeef\tBash\t-\tno\tcall\tforged' \
+  '{tool_name:"Skill", session_id:"abc-123", tool_input:{skill:$s}}')"
+if [ "$(wc -l < "$forge_skill" | tr -d ' ')" = 1 ]; then
+  ok "a newline in a skill name cannot forge a second line"
+else
+  bad "a newline in a skill name cannot forge a second line" "$(wc -l < "$forge_skill") lines"
+fi
+
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]

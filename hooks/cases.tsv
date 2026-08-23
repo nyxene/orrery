@@ -55,6 +55,20 @@ allow	mkdir -p ~/Library/Application-Support/myapp
 # --- 1c. credential directories under home ----------------------------------
 deny	cat ~/.ssh/id_rsa
 deny	ls ~/.aws/	# mutant L88
+# macOS's default filesystem is case-insensitive, so each of these opens exactly
+# the file the line above it does. This branch was case-sensitive while the
+# `~/Library` branch of the same `if` was not, and the second line here was
+# matched by nothing at all: section 2 carries the `.json` credential name, and
+# that file has no extension.
+deny	ls ~/.AWS/
+deny	cat ~/.Ssh/config
+deny	gpg --homedir ~/.GnuPG --list-secret-keys
+# The other half of the rule, so a later pass cannot resolve the two into one.
+# Case matters for flags and must not for paths — and these must be the
+# redirected forms, because the plain ones are the deny-list's and this section
+# does not judge them at all.
+deny	git -C /Users/someone/dev branch -D old-feature	# the destructive flag
+allow	git -C /Users/someone/dev branch -d merged-feature	# the safe one, and it stays allowed
 
 # --- 2. secret files ---------------------------------------------------------
 deny	cat .env
@@ -473,6 +487,14 @@ deny	git status && hooks/permissions-check.sh --reconcile .
 # inline code, and neither spelling leaves the script in the verb position.
 deny	bash hooks/permissions-check.sh --reconcile .
 deny	bash -c "hooks/permissions-check.sh --reconcile ."
+# The same file on a case-insensitive filesystem. What this section protects is a
+# decision rather than a file, and one capital letter used to be enough.
+deny	hooks/Permissions-Check.sh --reconcile .
+deny	hooks/permissions-check.SH --reconcile .
+deny	bash hooks/PERMISSIONS-CHECK.sh --reconcile .
+# The read-only modes stay free under any casing, or the fix has taken more than
+# it was asked for.
+allow	hooks/Permissions-Check.sh --report
 # Sourcing runs it too, and the two spellings of one builtin disagreed: `.` is
 # punctuation, so it was dropped and the script became the verb, while `source`
 # is a word and became the verb itself. Both are stripped now, so both are here

@@ -555,7 +555,19 @@ fi
 # read included. The `~/Library` entries are as sensitive as `~/.ssh` and are
 # reached by ordinary tools rather than by anything that looks like an attack —
 # `cat ~/Library/Keychains/login.keychain-db` is one `cat`.
-if grep -qE '(^|[[:space:]])(~|\$HOME)/\.(ssh|aws|gnupg|kube|docker|npmrc|netrc|git-credentials)([/[:space:]]|$)' <<<"$cmd" \
+#
+# Case-insensitive, like the branch beside it, and that was the one difference
+# between them for as long as both existed. macOS's default filesystem is
+# case-insensitive, so a capital letter opened exactly the same file and this
+# half allowed it: the lowercase spelling of the AWS credential file was refused
+# and the uppercase one was matched by nothing at all — section 2 carries only
+# the `.json` credential name, and that file has no extension.
+#
+# Paths and filenames are matched without regard to case throughout this file;
+# flags are not. `git branch -D` a few lines down is matched against `$cmd`
+# deliberately, because `-d` and `-D` are different commands. Both rules have a
+# case in `cases.tsv` now, so neither can be "tidied" into the other.
+if grep -qiE '(^|[[:space:]])(~|\$HOME)/\.(ssh|aws|gnupg|kube|docker|npmrc|netrc|git-credentials)([/[:space:]]|$)' <<<"$cmd" \
   || grep -qiE '(^|[[:space:]"'"'"'=])(~|\$HOME)/library/(keychains|cookies|messages|mail|safari|accounts|suggestions|autosave information)([/[:space:]"'"'"']|$)' <<<"$cmd"; then
   deny "Access to a credential or personal-data store under the home folder (~/.ssh, ~/.aws, ~/Library/Keychains, ~/Library/Cookies, ~/Library/Messages, ...) is not allowed."
 fi
@@ -847,8 +859,12 @@ while IFS= read -r seg; do
   # An interpreter is asked separately, and without the `-c` test section 3b
   # uses: `bash script.sh` and `bash -c "script.sh"` both run it, and neither
   # leaves the script in the verb position.
-  grep -qxF permissions-check.sh <<<"$v" \
-    || { grep -qxE "$interpreters" <<<"$v" && grep -qF permissions-check.sh <<<"$seg"; } \
+  # Matched without regard to case, for the reason section 1 carries: on a
+  # case-insensitive filesystem `Permissions-Check.sh` runs this exact file, and
+  # the check that reserves this operation for a person was walked past by one
+  # capital letter. What is being protected here is a decision, not a file.
+  grep -qixF permissions-check.sh <<<"$v" \
+    || { grep -qxE "$interpreters" <<<"$v" && grep -qiF permissions-check.sh <<<"$seg"; } \
     || continue
   deny "permissions-check.sh --reconcile records every deny rule this project is currently missing as one it declined on purpose, and permanently silences the startup warning about them. That is a decision about the project's own permissions, so it is typed by the person whose project it is, in their own terminal — never run on their behalf. This hook only ever sees the agent's Bash tool, so reaching it here is the one spelling that cannot have been theirs. Print the command for them if that is what was asked. The read-only modes are refused by nothing: --report lists the same rules, and the plain hook mode is what runs at startup."
 done < <(segments "$cmd")
