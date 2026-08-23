@@ -9,6 +9,108 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.17.0
+
+**Minor.** The guard starts refusing things it used to allow, the call log starts
+recording something it never saw, and `build`'s retrospective stops reporting
+numbers it had made up. Two of the three were invisible from the inside: a check
+that cannot fire and a log that looks complete read exactly like a clean result.
+
+### What you need to do
+
+Nothing to your settings. No deny rule is withdrawn, and nothing you have merged
+into your own needs removing.
+
+**Two things will behave differently, both deliberately.** Commands that the
+Bash guard used to allow are now refused — see below, and if one of them was
+load-bearing for you, that is worth knowing before you meet it mid-task. And
+`orrery:call-log` begins writing a row for every `Skill` invocation, so a log you
+already keep grows a kind of line it has never held.
+
+**One rule file leaves the product.** Under `rules/process/`, the file
+`fix-it-now-if-cheap-and-adjacent.md` is replaced by
+`fix-what-you-find-when-you-find-it.md`. Nothing of yours points at the old path
+unless you wrote it into something by hand.
+
+### The guard was walked past by one keystroke of casing
+
+Two of its refusals matched paths case-sensitively while the section beside them
+matched case-insensitively — the same statement, the same subject, opposite
+treatment, with nothing marking the difference as deliberate:
+
+```
+  §1  home credential stores            §4  the reserved operation
+  ────────────────────────────          ─────────────────────────────
+  cat ~/.aws/cre*        REFUSED        …/permissions-check.sh --reconcile  REFUSED
+  cat ~/.AWS/cre*        allowed        …/Permissions-Check.sh --reconcile  allowed
+  cat ~/.Ssh/config      allowed        bash …/PERMISSIONS-CHECK.sh …       allowed
+```
+
+**macOS's default filesystem is case-insensitive**, so every "allowed" line above
+opened exactly the file the refused line names. macOS is one of the two platforms
+the guard models. Both sections now fold case, and the corpus carries the variant
+spellings so the next edit cannot quietly drop them again.
+
+### The call log never saw a skill run
+
+Its matcher listed `Agent`, `Edit`, `Write`, `NotebookEdit` and `Bash`, and no
+skill invocation was recorded anywhere — so which of this library's own skills had
+ever run was unknowable, and the gap was invisible because the log looked
+complete. It had already produced a false statement in a report.
+
+`Skill` joins the matcher. The kind column carries the skill name where the tool
+is `Skill` and the subagent type where it is `Agent` — the tool name in field
+three says which reading applies, so a skill named `critic` and an agent typed
+`critic` are never confused. The record format is unchanged: no eighth field, and
+still no content of any call.
+
+Skill invocations also stop being counted as spawns anywhere that counts.
+
+### `build`'s retrospective was reporting numbers it had reconstructed
+
+The totals in the retrospective comment — agents, tokens, cost — were recovered by
+re-parsing the markdown the script had just rendered, with `awk -F'|'`. One pipe
+character inside an agent's description shifted every column, and 140 output
+tokens were reported as 0, including inside the machine-readable block. The totals
+now come from the data the table was rendered from. The script has a suite, and
+seven of its cases go red against the version that shipped before this one.
+
+### Canon gained two clauses, and both are about what you are already doing
+
+**§2, on surgical changes.** A defect is not a drive-by: something *wrong* — a
+wrong answer, a check that cannot fire, a claim the code does not keep — is fixed
+the moment it is found, in the change you are already making, at whatever size the
+fix turns out to be. What stays deferred is code outside the repository you do not
+control. Dead code is still flagged rather than deleted; it is not telling anyone
+anything false.
+
+**§7, on the owner's attention.** The prose beside a shape says only what the
+shape cannot. A paragraph restating the diagram spends that attention twice on one
+fact, and depth is held rather than spent — everything else waits to be asked for,
+and asking is cheap.
+
+### Three rules, two of them new to you
+
+- **Every merge is recorded in an issue** — the pull request names it, and work
+  found mid-task joins the issue already open rather than starting a new one.
+  Earned from a merge that reached a default branch with nothing in the tracker
+  behind it.
+- **A report is a shape plus what the shape cannot say** — the practice §7 now
+  states, written down because it was holding only while somebody remembered to
+  ask for it.
+- **Fix what you find when you find it** replaces the older, narrower rule about
+  fixing what is cheap and adjacent. "Cheap and adjacent" was the test being
+  applied, and it deferred a finding that produced a wrong result in its own
+  subject matter. The test is *is this wrong*, not *is this small*.
+
+### `sharpen` — a correction is not a change
+
+Its one-item-at-a-time rule is about decisions. Where a project states something
+about itself that the disk contradicts, there is nothing to decide — the fix is
+what the file already says — so corrections go as one batch and the batch is one
+item. Anything whose fix could reasonably be written two ways is a change, and
+goes alone.
+
 ## 0.16.0
 
 **Minor.** Mostly the library correcting what it says about itself, which sounds

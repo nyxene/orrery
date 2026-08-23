@@ -25,6 +25,13 @@ would do it differently. Remove only the orphans your own change created;
 pre-existing dead code gets flagged, not deleted. Every changed line traces
 directly to the current task.
 
+A defect is not a drive-by. Something that is **wrong** — a wrong answer, a
+check that cannot fire, a claim the code does not keep — is fixed the moment it
+is found, in the change you are already making, at whatever size the fix turns
+out to be. The only thing deferred is code outside this repository that we do
+not control. Dead code is still flagged rather than deleted: it is not telling
+anyone anything false.
+
 ## 3. Evidence before claims
 
 Never state that tests pass, a bug is fixed, or work is done without having run
@@ -79,6 +86,13 @@ be seen without being read. This is a thinking discipline rather than a
 presentation one: drawing the thing is what exposes the part you had not worked
 out. It runs downward too — a brief that does not say what shape the return
 takes gets prose back, and compressing that by hand is the same work handed back.
+
+**And the prose earns its place.** The shape carries the structure; the text
+beside it says only what the shape cannot — what was decided, what is at risk,
+what needs them. A paragraph restating the diagram spends their attention twice
+on one fact. Depth is held rather than spent: everything else waits to be asked
+for, and asking is cheap. Answer that ask in full — brevity is the default, not
+a ceiling.
 
 Where an answer is structurally theirs — taste, priority, risk, licence — never
 supply it yourself and carry on. An agent that answers its own question has not

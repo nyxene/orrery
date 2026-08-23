@@ -20,8 +20,14 @@
 # ## What is recorded, and what is deliberately next to it and not recorded
 #
 # Seven fields, tab separated: an ISO-8601 UTC timestamp, a session fingerprint,
-# the tool name, the subagent type where there is one, whether the spawn was
-# named, the event — `call` or `ran` — and the harness's id for this tool call.
+# the tool name, the kind where the tool has one — a subagent type for `Agent`,
+# a skill name for `Skill` — whether the spawn was named, the event — `call` or
+# `ran` — and the harness's id for this tool call.
+#
+# `Skill` was added to the matcher after the fact. Until then no skill invocation
+# was recorded anywhere, so which of this library's own skills had ever run was
+# unknowable — and the gap was invisible, because the log looked complete. It
+# had already produced a false statement in a report.
 #
 # ## Why two lines, and what the pair means
 #
@@ -162,7 +168,14 @@ session="$(jq -r '.session_id // "nosession"' <<<"$input" 2>/dev/null || true)"
 # passes on a spawn, not a value from a fixed list. The comment here claimed the
 # opposite for as long as it existed, and that claim is why nothing sanitized the
 # field; see the `clean` call below.
-agent="$(jq -r '.tool_input.subagent_type // .tool_input.agentType // "-"' <<<"$input" 2>/dev/null || true)"
+# `.skill` shares this column with the two agent-type keys because they answer
+# the same question — which *kind* of thing this call was, for the tools that
+# have a kind. The tool name in field three says which reading applies, so a
+# skill named `critic` and an agent typed `critic` are never confused. An eighth
+# field instead would have changed the record format for every reader of a log
+# already holding thousands of lines, to carry a value that is never present at
+# the same time as its neighbour.
+agent="$(jq -r '.tool_input.subagent_type // .tool_input.agentType // .tool_input.skill // "-"' <<<"$input" 2>/dev/null || true)"
 # Whether a name was given, never the name itself.
 named=no
 [ -z "$(jq -r '.tool_input.name // empty' <<<"$input" 2>/dev/null || true)" ] || named=yes
