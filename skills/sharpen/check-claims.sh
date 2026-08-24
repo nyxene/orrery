@@ -302,6 +302,28 @@ if [ -z "$dangling" ]; then ok "every registered hook command resolves to a file
 else bad "hooks.json registers commands with no script behind them"
      for p in $dangling; do note "$p"; done; fi
 
+# --- 10. Every frontmatter block is YAML somebody else can read -------------
+# `description` decides whether a skill or an agent fires, and the block it
+# sits in is YAML. Claude Code reads that line by splitting on its first colon
+# rather than parsing it, so a description a strict parser refuses installs
+# and displays perfectly, and breaks only in whatever else reads the tree.
+#
+# One pattern rather than a parser: a plain scalar may not carry a colon
+# followed by a space, and that is the rule a prose description trips over.
+unparseable=""
+for f in skills/*/SKILL.md agents/*.md rules/*/*.md; do
+  [ -f "$f" ] || continue
+  keys=$(awk 'NR==1 && $0!="---" { exit } NR>1 && $0=="---" { exit }
+              NR>1 && match($0, /^[A-Za-z_-]+: /) {
+                v=substr($0,RLENGTH+1)
+                if (v !~ /^["'"'"'[{]/ && v ~ /: /) print substr($0,1,RLENGTH-2)
+              }' "$f")
+  [ -n "$keys" ] && unparseable="$unparseable $f:$(printf '%s' "$keys" | tr '\n' ',')"
+done
+if [ -z "$unparseable" ]; then ok "every skill, agent and rule frontmatter parses as YAML"
+else bad "frontmatter carries an unquoted value containing a colon and a space"
+     for f in $unparseable; do note "$f"; done; fi
+
 echo
 [ "$fail" -eq 0 ] && echo "claims check: clean" || echo "claims check: $fail area(s) need attention"
 exit "$fail"
