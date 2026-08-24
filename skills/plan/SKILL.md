@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Produce a plan someone else can execute, checked by as many independent agents as the stake earns — none, a critic, or a critic and an architect in parallel until APPROVE. Use before any change, including a one-line one: it prices the work and an obvious fix spends no agents. Not for building (use `build`).
+description: "Produce a plan someone else can execute, checked by as many independent agents as the stake earns — none, a critic, or a critic and an architect in parallel until APPROVE. Use before any change, including a one-line one: it prices the work and an obvious fix spends no agents. Not for building (use `build`)."
 argument-hint: "[--interactive] [--deliberate] <task description>"
 ---
 
