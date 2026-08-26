@@ -184,30 +184,47 @@ fi
 # Two marketplace source shapes: a local "directory" (read its plugin.json and
 # git HEAD directly) or a "github" repo (no local clone to read — ask the
 # remote for its HEAD sha via ls-remote, no full clone needed).
+#
+# Two files record that source and both are read, project first — a project
+# that writes its own `extraKnownMarketplaces` entry means it. The fallback is
+# Claude Code's own ~/.claude/plugins/known_marketplaces.json, where the
+# `source` object has exactly the shape the project entry uses.
+#
+# Reading only the project meant an install whose project never wrote that entry
+# had this check skipped from the day it was installed — as a `warn`, so the run
+# stayed green and the row read `n/a`, which is accurate and hard to tell from a
+# check that ran and agreed. The messages below name which file answered.
 if [ "$have_jq" -eq 1 ]; then
-  src_kind=$(jq -r '.extraKnownMarketplaces.orrery.source.source // empty' "$PROJECT/.claude/settings.json" 2>/dev/null)
+  known_json="$HOME/.claude/plugins/known_marketplaces.json"
+  src_obj=$(jq -c '.extraKnownMarketplaces.orrery.source // empty' "$PROJECT/.claude/settings.json" 2>/dev/null)
+  src_where="the project's .claude/settings.json"
+  if [ -z "$src_obj" ]; then
+    src_obj=$(jq -c '.orrery.source // empty' "$known_json" 2>/dev/null)
+    src_where="$known_json"
+  fi
+  src_kind=$(printf '%s' "$src_obj" | jq -r '.source // empty' 2>/dev/null)
   live_sha=""
   case "$src_kind" in
     directory)
-      src_path=$(jq -r '.extraKnownMarketplaces.orrery.source.path // empty' "$PROJECT/.claude/settings.json" 2>/dev/null)
+      src_path=$(printf '%s' "$src_obj" | jq -r '.path // empty' 2>/dev/null)
       if [ -n "$src_path" ] && [ -f "$src_path/.claude-plugin/plugin.json" ]; then
         live_ver=$(jq -r '.version' "$src_path/.claude-plugin/plugin.json" 2>/dev/null)
         live_sha=$(git -C "$src_path" rev-parse HEAD 2>/dev/null)
       else
-        warn "source directory not resolvable ($src_path) — skipping drift check"
+        warn "source directory not resolvable ($src_path, named in $src_where) — skipping drift check"
       fi
       ;;
     github)
-      src_repo=$(jq -r '.extraKnownMarketplaces.orrery.source.repo // empty' "$PROJECT/.claude/settings.json" 2>/dev/null)
+      src_repo=$(printf '%s' "$src_obj" | jq -r '.repo // empty' 2>/dev/null)
       if [ -n "$src_repo" ]; then
         live_sha=$(git ls-remote "https://github.com/$src_repo.git" HEAD 2>/dev/null | cut -f1)
         [ -z "$live_sha" ] && warn "couldn't reach https://github.com/$src_repo.git — skipping drift check (offline?)"
       else
-        warn "no repo recorded for the github-sourced marketplace — skipping drift check"
+        warn "no repo recorded for the github-sourced marketplace in $src_where — skipping drift check"
       fi
       ;;
     *)
-      warn "unrecognized or missing marketplace source kind ('$src_kind') — skipping drift check"
+      warn "no marketplace source found — looked in the project's .claude/settings.json and in $known_json — skipping drift check"
       ;;
   esac
 
