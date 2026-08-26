@@ -112,11 +112,15 @@ if [ "$have_jq" -eq 1 ] && [ "$have_claude" -eq 1 ]; then
     row "install found" "$cached_ver ($scope)"
 
     # claude plugin list --json carries no gitCommitSha — only the raw state
-    # file does. Matched by installPath: unique per plugin+marketplace+version.
+    # file does. Matched by installPath, which is keyed by
+    # plugin+marketplace+version and so shared by every project installing that
+    # version: the match yields one entry per project. `first` is what keeps
+    # this a sha rather than a newline-joined list of them, which equals no real
+    # sha while printing, truncated to 7 characters, as though it matched.
     installed_json="$HOME/.claude/plugins/installed_plugins.json"
     if [ -f "$installed_json" ]; then
       cached_sha=$(jq -r --arg ip "$install_path" \
-        '.plugins["orrery@orrery"][]? | select(.installPath==$ip) | .gitCommitSha // empty' \
+        'first(.plugins["orrery@orrery"][]? | select(.installPath==$ip) | .gitCommitSha) // empty' \
         "$installed_json" 2>/dev/null)
     fi
 
@@ -273,8 +277,11 @@ if [ "$have_jq" -eq 1 ] && [ -n "${install_path:-}" ] && [ -d "$install_path" ];
     row "cache unedited" "n/a (no hashing tool)"
   else
     # `.in_use` is written into the cache by Claude Code and moves on its own.
-    # Hashing it would report every session as a tampered install.
-    now=$(find "$install_path" -type f ! -name '.in_use' -print0 2>/dev/null \
+    # Hashing it would report every session as a tampered install. It is a
+    # directory of one file per live session, named after the PID, so the path
+    # exclusion is the one that holds — `-type f` never yields the directory
+    # for the name filter to reject. The name filter stays for the file shape.
+    now=$(find "$install_path" -type f ! -name '.in_use' ! -path '*/.in_use/*' -print0 2>/dev/null \
             | LC_ALL=C sort -z | xargs -0 $sum 2>/dev/null | $sum | cut -d' ' -f1)
     mkdir -p "$LOG_DIR" 2>/dev/null
     recorded=$(cat "$DIGEST_FILE" 2>/dev/null)
