@@ -397,6 +397,42 @@ else
   row "sandbox" "n/a"
 fi
 
+# --- 9. the method this plugin implements is installed alongside it ---------
+# `orrery` declares `orrery-method` as a dependency: the corpus is published
+# once, as its own plugin, and installing orrery pulls it in. So both present is
+# the healthy state, and orrery alone is the failure — every skill still loads
+# and every guard still fires, while the method they implement is simply not in
+# the session. Nothing else reports that.
+if [ "$have_jq" -eq 1 ] && [ "$have_claude" -eq 1 ] && [ -n "${json:-}" ]; then
+  family=$(echo "$json" | jq -r --arg p "$PROJECT" \
+    '[.[] | select((.id | startswith("orrery")) and (.scope == "user" or .projectPath == $p)) | .id] | unique | .[]' \
+    2>/dev/null)
+  has_full=0; has_method=0; extra=""
+  while IFS= read -r id; do
+    [ -z "$id" ] && continue
+    case "${id%%@*}" in
+      orrery)        has_full=1 ;;
+      orrery-method) has_method=1 ;;
+      *)             extra="$extra ${id%%@*}" ;;
+    esac
+  done <<< "$family"
+
+  if [ "$has_full" -eq 1 ] && [ "$has_method" -eq 1 ]; then
+    ok "orrery and its orrery-method dependency are both here"
+    row "family" "orrery + method"
+  elif [ "$has_full" -eq 1 ]; then
+    bad "orrery is installed and orrery-method is not — the method its skills implement is missing, and nothing else will say so"
+    printf '    the dependency installs with orrery; if it did not, the marketplace may not allow the cross-marketplace reference\n'
+    row "family" "orrery, method missing"
+  elif [ "$has_method" -eq 1 ]; then
+    ok "orrery-method only — the corpus, without the machinery that executes it"
+    row "family" "orrery-method"
+  else
+    row "family" "none found"
+  fi
+  [ -n "$extra" ] && warn "also installed from this family:$extra — unknown to this doctor, check it is meant to be there"
+fi
+
 echo
 if [ "$fail" -eq 0 ]; then echo "doctor: clean"; else echo "doctor: $fail area(s) need attention"; fi
 

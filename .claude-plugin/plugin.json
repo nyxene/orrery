@@ -1,6 +1,6 @@
 {
   "name": "orrery",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "Methodology library for coding agents: consensus planning, fan-out execution, debt tracking, rules earned from real incidents, and guards that fire before every shell call.",
   "author": {
     "name": "Evgeniy Kovrov",
@@ -8,6 +8,9 @@
   },
   "license": "MIT",
   "repository": "https://github.com/nyxene/orrery",
+  "dependencies": [
+    { "name": "orrery-method", "marketplace": "orrery-method" }
+  ],
   "skills": [
     "./skills/frame",
     "./skills/plan",

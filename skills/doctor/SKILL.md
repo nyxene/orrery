@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Check whether orrery is actually loaded and current in a host project — enabled on the checked-out branch, cache matching the marketplace source, no conflicting global install. Invoke on "doctor", "is orrery working", "check the plugin install", "why isn't the plugin loading", or periodically as a health check independent of any specific symptom.
+description: Check whether orrery is actually loaded and current in a host project — enabled on the checked-out branch, cache matching the marketplace source, no conflicting global install, and the method it implements installed alongside it. Invoke on "doctor", "is orrery working", "check the plugin install", "why isn't the plugin loading", or periodically as a health check independent of any specific symptom.
 argument-hint: "[optional: a project path, default is the current one]"
 ---
 
@@ -46,7 +46,8 @@ hook · the cached git SHA matches the marketplace source's current HEAD (a
 version-string match alone misses a source change that forgot a version bump)
 · the loaded cache's `plugin.json` doesn't redeclare a hooks path (a manifest
 shape that loads nothing while passing validation) · whether this project's
-copy of the deny-list still matches the one the plugin ships.
+copy of the deny-list still matches the one the plugin ships · whether
+`orrery-method`, the corpus this plugin's skills implement, is installed with it.
 
 That last one calls `hooks/permissions-check.sh --report` rather than repeating
 the comparison; the same script runs as a `SessionStart` hook and says it once
@@ -94,6 +95,15 @@ news.
   resolved, because the plugin root moves on every update and no document can
   carry it — **it is printed for you to hand over, not to run.** Pass it on
   exactly as printed.
+- **Method missing** — `orrery` is installed and `orrery-method` is not. The
+  corpus its skills implement is not in the session: every skill still loads and
+  every guard still fires, and the method they are written against is simply
+  absent. It installs as a dependency of this plugin, so reaching this state
+  usually means the marketplace refused the cross-marketplace reference — reinstall
+  orrery, and if it recurs, report it.
+- **Family: an unknown member** — something else installed whose name starts
+  with `orrery`. Reported rather than judged: this doctor knows two plugins, and
+  a third is either new or is not ours.
 - **Deny-list: unknown** — the comparison could not be made: a settings file
   that will not parse, an unreadable shipped list, no `jq`. The message says
   which. This is **not** a drift finding and must not be repeated as one — fix
