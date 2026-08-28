@@ -106,5 +106,24 @@ else
   bad "no jq is announced" "expected a WARNING payload, got: $out"
 fi
 
+# --- this loader carries this plugin's canon and no other -------------------
+# `orrery-method` is a declared dependency, not a vendored copy: its canon is a
+# different document about a different thing, and its own plugin's hook loads
+# it. A canon found under method/ here would mean a second copy of the corpus
+# in this repository — the drift SHIPLIST exists to make impossible — so it is
+# not read, and this case is what would notice if that changed.
+foreign="$tmp/foreign"; mkdir -p "$foreign/method"
+printf 'CONDUCT FIXTURE MARKER\n'   > "$foreign/CANON.md"
+printf 'STRUCTURE FIXTURE MARKER\n' > "$foreign/method/CANON.md"
+out="$(run "$foreign")"
+if grep -qF 'STRUCTURE FIXTURE MARKER' <<<"$(context "$out")"; then
+  bad "no second canon is read from this plugin's tree" \
+      "a canon under method/ reached the session — the corpus is a dependency, not a copy"
+elif grep -qF 'CONDUCT FIXTURE MARKER' <<<"$(context "$out")"; then
+  ok "only this plugin's own canon is emitted"
+else
+  bad "only this plugin's own canon is emitted" "the conduct canon did not come through: $out"
+fi
+
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]
