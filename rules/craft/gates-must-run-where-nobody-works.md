@@ -1,7 +1,7 @@
 ---
 rule: a suite proves only the conditions it actually had — run the gates where nobody works, and on what production actually hands them
 scope: craft
-evidence: "two incidents, merged. A guard's delete check resolved its target against the filesystem; the directory it named always exists on a machine that has run the tool, so the corpus was green in every pre-commit run and red the first time it executed in a clean environment — after shipping in two releases. Separately, a tool's suite ran fifteen cases against manifests of two to four entries and the same command died on the real fifty-entry one, leaving the tool's primary phase non-functional while every gate reported green"
+evidence: "two incidents, merged. A guard's delete check resolved its target against the filesystem; the directory it named always exists on a machine that has run the tool, so the corpus was green in every pre-commit run and red the first time it executed in a clean environment — after shipping in two releases. Separately, a tool's suite ran fifteen cases against manifests of two to four entries and the same command died on the real fifty-entry one, leaving the tool's primary phase non-functional while every gate reported green. A third, later: the same suites moved onto a different Linux runner and went red twice against a tree whose local pre-commit hook and whose previous CI had both been green. The runner executed as root, so probes that prove a refusal by making a path unreadable could not fire; and a comparison consumed input pinned to byte collation while itself collating on the ambient locale. The second had been latent for months in the program that decides which files ship, invisible because both machines it had ever run on happened to agree"
 ---
 
 A suite is evidence about the conditions it ran under and about no others. Two
@@ -14,6 +14,15 @@ been passing against whatever those machines accumulated — directories that
 exist because something created them once, tools on `PATH`, config set months
 ago, caches. None of it is in the repository, and all of it is load-bearing
 until proven otherwise.
+
+Two conditions belong on that list and are almost never thought of as
+environment at all, because they are properties of the process rather than of
+the disk. **Who the suite runs as:** a case that proves a refusal by making a
+path unreadable proves nothing under a uid that ignores permission bits, and
+root is the default in more container images than not. **What locale it runs
+under:** every program that compares or orders text collates, and pinning
+`LC_ALL` on the producers while leaving it off the consumer means the two agree
+by luck — which they will, on any two machines that happen to share a default.
 
 **The size.** Fixtures are sized for legibility — two or three entries, enough
 to show the case. Some defects are invisible at that size and certain at the
