@@ -33,6 +33,7 @@ Orrery holds the method. The project holds its own facts, declared in its
 | `Output language: <language>` — terminal conversation only | Canon §8, `build` | Everything stays English |
 | Plan directory | `plan` | Falls back to `docs/planning/plans/` |
 | Debt labels — the label that marks debt, the scope labels, the priority labels, in the project's own spelling | `debt` | Its queries match nothing, and an empty pool is indistinguishable from a clean one |
+| Debt pool — the one active area whose debt feeds the per-task quota | `debt` | Falls back to the area the current task touches, which in a repository with several areas is close to no narrowing at all |
 | Debt quota — how many debt issues a feature task also closes | `debt`, `build` | No quota; the skill tracks and reports only |
 | Model tiers — which model serves each build tier | `build` | The session's default model throughout |
 | Quality gates — the commands that prove the work | `build`, Canon §3 | The agent has no proving command to run |

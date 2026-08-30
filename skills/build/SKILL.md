@@ -49,7 +49,7 @@ model release then changes one paragraph instead of a table.
 | Core | The strongest available | The bulk of substantive logic once architecture is set — scoped work that is not in the critical tier. |
 | Routine | The cheap tier | Wiring, glue code, mechanical repetition, tests over already-understood shapes, boilerplate. |
 | Data collection | The cheap tier | Gathering reference values, transcribing source material, building fixtures and goldens — collecting facts, not deciding how to compute something. |
-| Audit | **A different model family from the implementers** | Independent, read-only, adversarial — spawned via the `auditor` agent type, whose frontmatter pins its own model. Always after implementation, before commit. |
+| Audit | **Its own session**; a different model family where the stake earns it | Independent, read-only, adversarial — spawned via the `auditor` agent type, whose frontmatter pins its own model. Always after implementation, before commit. |
 
 The host project declares which model serves each tier (see the declarations in
 install/into-project.md); when nothing is declared, use the session's default
@@ -57,9 +57,19 @@ model throughout.
 
 A host may declare a budget regime that reassigns tiers; follow the declaration.
 
-The audit tier is the one that is about family rather than capability. An
-auditor sharing the implementer's blind spots confirms them instead of catching
-them, and what the gate buys is independence, not raw strength.
+The audit tier is the one that is about context rather than capability. A judge
+that ran inside the session which produced the work inherits its reasoning whole
+— the same files in the same order, the same alternatives already dismissed — so
+whatever was missed is missing from the judge as well. A fresh session is the
+mechanism, and it is what the gate buys. Spawning the `auditor` agent type is
+what supplies it.
+
+A different model family on top of that is an amplifier rather than the
+mechanism: two fresh sessions of one model already have separate contexts, and
+two families additionally have separate blind spots, which is worth buying where
+the stake earns it. This repository buys it — `auditor` pins Fable — but a
+project with one family available conforms, and nothing in this table says
+otherwise.
 
 ## Procedure
 
