@@ -196,6 +196,24 @@ else
   bad "a call that never completes leaves one unpaired call line" "$(cat "$log")"
 fi
 
+# The pair can only form if both halves watch the same tools, so the two
+# registrations in hooks.json must carry the same matcher. Narrow the PostToolUse
+# one and every call to the dropped tool reads as "did not run" — the false
+# statement the header records. This sentence lived in hooks.json as a `_comment`
+# until the CLI began rejecting that key at load; the fact moved to the header
+# and the check moved here, where an edit that breaks it goes red.
+hj="$here/hooks.json"
+# `any(…)` and not a bare `select(.hooks[].command | …)`: the bare form emits the
+# entry once per matching hook, so a second call-log hook on one entry would make
+# this two lines and the comparison red with identical matchers — a false red.
+pre_m="$(jq -r '.hooks.PreToolUse[]  | select(any(.hooks[]; .command | test("call-log"))) | .matcher' "$hj" 2>/dev/null)"
+post_m="$(jq -r '.hooks.PostToolUse[] | select(any(.hooks[]; .command | test("call-log"))) | .matcher' "$hj" 2>/dev/null)"
+if [ -n "$pre_m" ] && [ "$pre_m" = "$post_m" ]; then
+  ok "the PreToolUse and PostToolUse registrations watch the same tools"
+else
+  bad "the PreToolUse and PostToolUse registrations watch the same tools" "pre=[$pre_m] post=[$post_m]"
+fi
+
 # --- the two ways the event field can be wrong ------------------------------
 
 # Absent: this hook fails open, the field is newer than the log, and going

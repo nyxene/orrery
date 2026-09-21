@@ -34,6 +34,14 @@ jobs:
       - name: Agent guard corpus and mutation pass
         run: ./hooks/agent-guard.test.sh --mutate
 
+      # The process gate and its escape, same cost and the same lack of a
+      # trigger. A gate whose waiver stops recording is worse than no gate.
+      - name: Process guard corpus and mutation pass
+        run: ./hooks/process-guard.test.sh --mutate
+
+      - name: Waiver suite
+        run: ./hooks/waiver.test.sh
+
       # The mutation pass proves the corpus still pins the guard rather than
       # merely running beside it. It takes minutes, so it runs only when the
       # thing it pins is in the diff — same rule as the pre-commit hook.

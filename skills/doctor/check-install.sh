@@ -10,7 +10,9 @@
 #
 # Notes on the checks: `claude plugin list --json` carries no status/error
 # field, so only the plain-text form reports a load failure — this script
-# reads both. Paths are canonicalized so matching survives symlinks; freshness
+# reads both. (It does carry `enabled`, a two-state boolean, which is what
+# decides enabled vs. disabled; "failed to load" is the third state it cannot
+# express.) Paths are canonicalized so matching survives symlinks; freshness
 # compares git SHAs, not version strings, so a source change without a version
 # bump still registers; and the log lives outside the plugin cache, which is
 # version-pinned and replaced on every update.
@@ -82,9 +84,16 @@ if [ "$have_jq" -eq 0 ]; then
 fi
 
 # --- 1. what claude plugin list actually says for this project --------------
-# --json has no status/error field (confirmed empirically) — only the plain
-# text form carries "Status: failed to load" and the reason, so both are read.
-proj_entry="" user_entry="" plain_block=""
+# --json carries `enabled`, a two-state boolean, and no `status` and no `error`
+# key in any entry shape — measured, not read off the documentation. There are
+# two shapes: a user-scope entry has no `projectPath`, which is why the
+# selection below matches on it only for the scopes that carry it. Re-run
+# `claude plugin list --json | jq -c '[.[]|keys]|unique'` rather than trusting
+# this sentence, since the CLI may add a field. So `enabled` decides
+# enabled vs. disabled, and only the plain-text form can report "failed to
+# load" and the reason behind it — a third state a boolean cannot express.
+# Both are read, for different questions.
+proj_entry="" local_entry="" user_entry="" plain_block="" plain_all=""
 if [ "$have_jq" -eq 1 ] && [ "$have_claude" -eq 1 ]; then
   # A project-scope plugin's "enabled" state is contextual to the invoking
   # cwd, not just to a path argument — running from elsewhere with $PROJECT
@@ -92,13 +101,23 @@ if [ "$have_jq" -eq 1 ] && [ "$have_claude" -eq 1 ]; then
   # the target project so the CLI sees the right context.
   json=$(cd "$PROJECT" 2>/dev/null && claude plugin list --json 2>/dev/null)
   proj_entry=$(echo "$json" | jq -c --arg p "$PROJECT" '[.[] | select(.id=="orrery@orrery" and .scope=="project" and .projectPath==$p)] | .[0] // empty')
+  # `local` scope is the install a project gets when its enablement is written
+  # to the untracked .claude/settings.local.json — which is what a repository
+  # whose index other people read does, to keep the owner's configuration out
+  # of it. Public or private is not the condition and never was: a private
+  # repository with collaborators has the same reason. This scope was invisible
+  # to the check below until it was fixed, and while it was, a correctly
+  # installed, enabled, demonstrably running plugin reported as
+  # "no orrery install found".
+  local_entry=$(echo "$json" | jq -c --arg p "$PROJECT" '[.[] | select(.id=="orrery@orrery" and .scope=="local" and .projectPath==$p)] | .[0] // empty')
   user_entry=$(echo "$json" | jq -c '[.[] | select(.id=="orrery@orrery" and .scope=="user")] | .[0] // empty')
-  plain_block=$(cd "$PROJECT" 2>/dev/null && claude plugin list 2>/dev/null | awk '/orrery@orrery/{f=1} f{print} f && /^[[:space:]]*$/ && NR>1{if(seen)exit; seen=1}')
+  plain_all=$(cd "$PROJECT" 2>/dev/null && claude plugin list 2>/dev/null)
+  plain_block=$(printf '%s\n' "$plain_all" | awk '/orrery@orrery/{f=1} f{print} f && /^[[:space:]]*$/ && NR>1{if(seen)exit; seen=1}')
 
   if [ -n "$proj_entry" ] && [ -n "$user_entry" ]; then
     warn "both a project-scope and a user-scope orrery install exist — using project-scope for freshness checks below; this combination is itself the double-fire risk check 3 looks for"
   fi
-  entry="${proj_entry:-$user_entry}"
+  entry="${proj_entry:-${local_entry:-$user_entry}}"
 
   if [ -z "$entry" ]; then
     bad "no orrery install found for this project (claude plugin list --json)"
@@ -124,55 +143,137 @@ if [ "$have_jq" -eq 1 ] && [ "$have_claude" -eq 1 ]; then
         "$installed_json" 2>/dev/null)
     fi
 
-    # Plain text carries no projectPath, so its status line can only be
-    # trusted once --json has confirmed an install for THIS project exists.
-    # If orrery is also project-scope-installed in an unrelated project, the
-    # first "orrery@orrery" block in the text may belong to that one instead —
-    # a real gap, noted in SKILL.md rather than silently assumed away.
-    status_line=$(echo "$plain_block" | grep -m1 'Status:')
-    error_line=$(echo "$plain_block" | grep -m1 'Error:')
+    # Enabled vs. disabled comes from the entry matched on projectPath above,
+    # so it is attributed to THIS project by construction.
+    entry_enabled=$(echo "$entry" | jq -r '.enabled | select(. != null) | tostring')
+
+    # "failed to load" is a third state no boolean can carry, and only the
+    # plain text reports it. But plain text carries no projectPath: the awk
+    # above takes the FIRST "orrery@orrery" block in the whole output, which on
+    # a machine with orrery installed in several projects belongs to whichever
+    # the CLI printed first. So the text is consulted only when it is
+    # unambiguous — exactly one such block — and otherwise reports unknown
+    # rather than attributing a neighbour's failure to this project.
+    orrery_blocks=$(printf '%s\n' "$plain_all" | grep -c 'orrery@orrery')
+    status_line=""; error_line=""
+    if [ "$orrery_blocks" -eq 1 ]; then
+      status_line=$(printf '%s\n' "$plain_block" | grep -m1 'Status:')
+      error_line=$(printf '%s\n' "$plain_block" | grep -m1 'Error:')
+    fi
+
     case "$status_line" in
       *"failed to load"*)
         bad "claude plugin list reports: failed to load"
-        [ -n "$error_line" ] && bad "  $(echo "$error_line" | sed 's/^ *//')"
+        [ -n "$error_line" ] && bad "  $(printf '%s\n' "$error_line" | sed 's/^ *//')"
         row "load status" "failed to load"
         ;;
-      *"enabled"*) ok "claude plugin list reports: enabled"; row "load status" "enabled" ;;
-      *"disabled"*) bad "claude plugin list reports: disabled"; row "load status" "disabled" ;;
-      *) warn "no status line found for orrery@orrery in claude plugin list"; row "load status" "unknown" ;;
+      *)
+        # `enabled` is attributed correctly in every case, but it cannot rule
+        # *out* a load failure — an enabled plugin that failed to load still
+        # reads true. So where the text was too ambiguous to consult, "enabled"
+        # ships with that limit attached rather than as a clean pass.
+        case "$entry_enabled" in
+          true)
+            if [ "$orrery_blocks" -eq 1 ]; then
+              ok "claude plugin list reports: enabled"; row "load status" "enabled"
+            else
+              warn "enabled per --json, but $orrery_blocks orrery@orrery blocks in the text — a load failure could not be ruled out for this project"
+              row "load status" "enabled (load failure not ruled out)"
+            fi
+            ;;
+          false) bad "claude plugin list reports: disabled"; row "load status" "disabled" ;;
+          *)
+            # No `enabled` field: a CLI older than the one measured in 2026-09.
+            # Fall back to the text status, which is what this check read
+            # before the field existed — but only where the text is
+            # unambiguous, since that is the whole reason the field is
+            # preferred when it is there.
+            case "$status_line" in
+              *"enabled"*)  ok "claude plugin list reports: enabled"; row "load status" "enabled" ;;
+              *"disabled"*) bad "claude plugin list reports: disabled"; row "load status" "disabled" ;;
+              *)
+                if [ "$orrery_blocks" -eq 1 ]; then
+                  warn "no enabled field and no status line for orrery@orrery in claude plugin list"
+                  row "load status" "unknown"
+                else
+                  warn "no enabled field, and $orrery_blocks orrery@orrery blocks in the text — a status here could belong to another project"
+                  row "load status" "unknown (more than one orrery block in the text)"
+                fi
+                ;;
+            esac
+            ;;
+        esac
+        ;;
     esac
   fi
 elif [ "$have_jq" -eq 1 ]; then
   row "install found" "n/a (no claude CLI)"; row "load status" "n/a (no claude CLI)"
 fi
 
-# --- 2. enabled on the branch actually checked out ---------------------------
+# --- 2. enabled where the project actually writes it -------------------------
+# Two files, because a repository whose index other people read keeps the
+# owner's configuration out of it and enables the plugin in the untracked
+# settings.local.json.
+# Reading only the tracked file reported those projects as not enabled.
+#
+# `select(. != null)` and not `// false`: the alternative operator yields a
+# non-empty string for a missing key, so "last non-null wins" implemented with
+# `// false` means "last file that EXISTS wins" — settings.json true plus a
+# settings.local.json without the key would have flipped to a false red. Check
+# 8 carries the same note for the same reason.
+#
+# Which file answered is carried, not discarded. The tracked file varies by
+# branch, which is the whole point of this check — a branch predating the
+# install commit lacks the key. The untracked one does not vary by branch at
+# all, so reporting it as a branch fact would be a check that cannot fire
+# dressed as one that passed.
 if [ "$have_jq" -eq 1 ]; then
-  if [ -f "$PROJECT/.claude/settings.json" ]; then
-    proj_scope_enabled=$(jq -r '.enabledPlugins["orrery@orrery"] // false' "$PROJECT/.claude/settings.json" 2>/dev/null)
-    branch=$(git -C "$PROJECT" branch --show-current 2>/dev/null)
-    branch="${branch:-detached/no-git}"
+  proj_scope_enabled=""; enabled_where=""
+  for f in "$PROJECT/.claude/settings.json" "$PROJECT/.claude/settings.local.json"; do
+    [ -f "$f" ] || continue
+    v=$(jq -r '.enabledPlugins["orrery@orrery"] | select(. != null) | tostring' "$f" 2>/dev/null) || continue
+    [ -n "$v" ] && { proj_scope_enabled="$v"; enabled_where="${f#"$PROJECT"/}"; }
+  done
+  branch=$(git -C "$PROJECT" branch --show-current 2>/dev/null)
+  branch="${branch:-detached/no-git}"
+
+  if [ -z "$enabled_where" ]; then
+    if [ -f "$PROJECT/.claude/settings.json" ] || [ -f "$PROJECT/.claude/settings.local.json" ]; then
+      bad "no enabledPlugins entry for orrery in either settings file on branch '$branch'"
+      row "enabled on branch" "no ($branch)"
+    else
+      warn "neither $PROJECT/.claude/settings.json nor .claude/settings.local.json found"
+      row "enabled on branch" "n/a"
+    fi
+  elif [ "$enabled_where" = ".claude/settings.local.json" ]; then
+    # Untracked and therefore not branch-conditional — say so instead of
+    # naming a branch the answer does not depend on.
+    if [ "$proj_scope_enabled" = "true" ]; then
+      ok "enabledPlugins true, from .claude/settings.local.json — untracked, so not a branch fact"
+      row "enabled on branch" "yes (local file)"
+    else
+      bad "enabledPlugins false in .claude/settings.local.json — switched off deliberately, not a branch that predates the install"
+      row "enabled on branch" "no (local file)"
+    fi
+  else
     if [ "$proj_scope_enabled" = "true" ]; then
       ok "enabledPlugins true on checked-out branch '$branch'"
       row "enabled on branch" "yes ($branch)"
     else
-      bad "enabledPlugins missing/false on branch '$branch' — this branch may predate the install commit"
+      bad "enabledPlugins false on branch '$branch' — this branch may predate the install commit"
       row "enabled on branch" "no ($branch)"
     fi
-  else
-    warn "$PROJECT/.claude/settings.json not found"
-    row "enabled on branch" "n/a"
   fi
 fi
 
-# --- 3. global scope isn't double-enabling on top of this project's scope ---
+# --- 3. user scope isn't double-enabling on top of this project's own -------
 if [ "$have_jq" -eq 1 ]; then
   global_enabled=$(jq -r '.enabledPlugins["orrery@orrery"] // false' "$HOME/.claude/settings.json" 2>/dev/null)
   if [ "$global_enabled" = "true" ] && [ "${proj_scope_enabled:-false}" = "true" ]; then
     bad "orrery is enabled both globally (user scope) and for this project — every hook fires twice"
     row "global conflict" "yes — double-enabled"
   elif [ "$global_enabled" = "true" ]; then
-    ok "orrery enabled at user scope globally; no project-scope entry to conflict with"
+    ok "orrery enabled at user scope globally; no project-local entry to conflict with"
     row "global conflict" "user-scope only"
   else
     ok "no global enablement of orrery"
@@ -229,7 +330,12 @@ if [ "$have_jq" -eq 1 ]; then
   esac
 
   if [ -n "$live_sha" ]; then
-    if [ -n "$cached_sha" ]; then
+    # Braced with a default. `cached_sha` is assigned only where an install for
+    # this project was found, and under `set -u` reading it otherwise ends the
+    # script mid-report with `unbound variable` — which is every run against a
+    # repository that develops the plugin as a checkout rather than installing
+    # it. The suite never saw it because its fixture always plants an install.
+    if [ -n "${cached_sha:-}" ]; then
       if [ "$cached_sha" = "$live_sha" ]; then
         ok "cache (${cached_ver:-?} @ ${cached_sha:0:7}) matches source HEAD"
         row "cache fresh" "yes"
@@ -376,6 +482,20 @@ fi
 # Reported, never failed. Whether to sandbox is your decision, and a doctor that
 # goes red on a deliberate choice is a doctor people stop running — after which
 # the deny-list findings above go unread too.
+#
+# **Two layers, two sources, and this check reported them as one.**
+# `sandbox.enabled` in a project settings file buys layer 4: the kernel refuses
+# a write outside the project. It does not buy layer 5.
+# `network.strictAllowlist` is honoured only from user settings, managed
+# settings or `--settings` on the command line — the last per session and the
+# only scoped one — and is *ignored* from a
+# repository's own file — so what a project settings file can do to egress is
+# pre-allow, never deny, and an unlisted domain is asked about rather than
+# refused. In auto mode that question goes to the classifier and not to you.
+#
+# So a project that switched the sandbox on used to read `layers 4 and 5` here
+# while an unlisted domain answered normally. The two are reported apart now,
+# and the second one names the per-session way to close it.
 if [ "$have_jq" -eq 1 ]; then
   sb=""
   for f in "$PROJECT/.claude/settings.json" "$PROJECT/.claude/settings.local.json"; do
@@ -387,14 +507,71 @@ if [ "$have_jq" -eq 1 ]; then
     [ -n "$v" ] && sb="$v"
   done
   case "$sb" in
-    true)  ok "platform sandbox enabled (layers 4 and 5)"; row "sandbox" "on" ;;
+    true)  ok "platform sandbox enabled — layer 4, the filesystem half"; row "sandbox" "on" ;;
     false) warn "platform sandbox is configured here but switched off"; row "sandbox" "off" ;;
     *)     warn "no platform sandbox here — layers 4 and 5 do not arrive with the plugin, and are yours to switch on"
            printf '    see "Optional: switch on the sandbox" in the install guide\n'
            row "sandbox" "absent" ;;
   esac
+
+  # Layer 5 is asked only when layer 4 is on: the network block does nothing
+  # with the sandbox off, and "egress does not deny" printed beside "no sandbox
+  # here" reads as two problems where there is one.
+  if [ "$sb" = "true" ]; then
+    strict=""
+    # The managed path is a variable so a test can point it somewhere it
+    # controls: as a literal it would pass on any machine lacking the file.
+    for f in "$HOME/.claude/settings.json" \
+             "${DOCTOR_TEST_MANAGED-/Library/Application Support/ClaudeCode/managed-settings.json}"; do
+      [ -r "$f" ] || continue
+      v=$(jq -r '.sandbox.network.strictAllowlist | select(. != null) | tostring' "$f" 2>/dev/null) || continue
+      [ -n "$v" ] && strict="$v"
+    done
+    case "$strict" in
+      # The setting is only honoured from v2.1.219. On an older CLI it parses,
+      # sits in the file, and does nothing — which reads exactly like the state
+      # it claims to prevent, which is how this was missed the first time.
+      # `sort -V` rather than a numeric compare: 2.1.9 is older than 2.1.100.
+      # A version it cannot read gets its own answer rather than the happy one.
+      # Falling through to `ok` there would print "egress denies" having
+      # verified nothing, which is this check's own failure mode wearing the
+      # sentence that says it was caught.
+      true) cli="$(claude --version 2>/dev/null | awk '{print $1}')"
+            case "$cli" in [0-9]*.[0-9]*.[0-9]*) ;; *) cli="" ;; esac
+            if [ -z "$cli" ]; then
+              warn "strictAllowlist is set, and the CLI version could not be read — unverified"
+              printf '    it is honoured from 2.1.219; older than that it parses and does nothing\n'
+              row "layer5" "cli-unknown"
+            elif [ "$(printf '%s\n2.1.219\n' "$cli" | sort -V | head -1)" = "$cli" ] \
+               && [ "$cli" != "2.1.219" ]; then
+              warn "strictAllowlist is set and this CLI ($cli) predates it — egress does not deny"
+              row "layer5" "cli-too-old"
+            else
+              ok "egress denies unlisted domains — layer 5, from a source the platform honours"
+              row "layer5" "denying"
+            fi ;;
+      # No line for the machine-wide sources, deliberately: closing it there for
+      # *this* project tightens every other one, met somewhere else with nothing
+      # connecting it to a plugin installed here. A library that may not write a
+      # settings file must not talk you into writing the more dangerous one by
+      # hand. `--settings` is the third source and is per session; measured, so
+      # it is named as a recipe rather than as a possibility.
+      *)    warn "egress pre-allows and never denies — layer 5 is not closed here"
+            printf '    an unlisted domain is asked about, not refused, and in auto mode nobody is asked\n'
+            printf '    two of the three sources that would close it are machine-wide and would\n'
+            printf '    tighten every other project you have, so no line for those is printed here\n'
+            printf '    the third is per project and measured: put sandbox.network.strictAllowlist in\n'
+            printf '    a file and start with  claude --settings <file>  — binds that session only\n'
+            printf '    this check reads files, not the running session: it says pre-allow even inside\n'
+            printf '    a session started that way, so the flag is not something it can confirm\n'
+            row "layer5" "pre-allow" ;;
+    esac
+  else
+    row "layer5" "n/a"
+  fi
 else
   row "sandbox" "n/a"
+  row "layer5" "n/a"
 fi
 
 # --- 9. the method this plugin implements is installed alongside it ---------
@@ -431,6 +608,161 @@ if [ "$have_jq" -eq 1 ] && [ "$have_claude" -eq 1 ] && [ -n "${json:-}" ]; then
     row "family" "none found"
   fi
   [ -n "$extra" ] && warn "also installed from this family:$extra — unknown to this doctor, check it is meant to be there"
+fi
+
+# --- 10. installed and loaded is not the same as used ------------------------
+#
+# Every check above answers "is the plugin present and current". None answers
+# "is any of it running", and the two come apart further than they look: a
+# project can close 141 issues and merge 154 pull requests in a week with no
+# orrery skill in its call log at all, the only part of the library executing
+# there being a hook. Another can spawn every agent untyped — no critic, no
+# auditor — which is the role frontmatter never applying, silently.
+#
+# None of that is a broken install, so nothing here counts toward `fail`. It is
+# reported because otherwise nobody looks: "is the method actually being used
+# here" had no command behind it, and the answer turned out to be no.
+#
+# The call log is off unless you asked for it, and that absence is itself the
+# finding — a project with no log cannot answer this question at all.
+echo
+DAYS="${ORRERY_DOCTOR_DAYS:-7}"
+since="$(date -u -v-"${DAYS}"d +%Y-%m-%d 2>/dev/null || date -u -d "$DAYS days ago" +%Y-%m-%d)"
+calls="${ORRERY_CALL_LOG:-}"
+case "$calls" in ''|/*) ;; *) calls="$PROJECT/$calls" ;; esac
+[ -n "$calls" ] || calls="$PROJECT/.claude/orrery-calls.tsv"
+
+if [ ! -f "$calls" ]; then
+  warn "no call log, so what has actually run here is unknowable — see install/into-project.md"
+  row "usage" "no log"
+else
+  skills_ran="$(awk -F'\t' -v s="$since" '$1>=s && $3=="Skill" && $6=="ran" && $4 ~ /^orrery:/ {print $4}' "$calls" | sort -u | tr '\n' ' ')"
+  spawns="$(awk -F'\t' -v s="$since" '$1>=s && $3=="Agent" && $6=="ran"' "$calls" | wc -l | tr -d ' ')"
+  # `-`, empty, or the literal `general-purpose`. The recorder writes `-` only
+  # when no type was passed at all, and the failure this reports — a role's
+  # model and tool list never applying — happens just as completely when a
+  # session passes `general-purpose` explicitly. Counting only `-` made the
+  # check dead against the very log that motivated it.
+  untyped="$(awk -F'\t' -v s="$since" '$1>=s && $3=="Agent" && $6=="ran" && ($4=="-" || $4=="" || $4=="general-purpose")' "$calls" | wc -l | tr -d ' ')"
+  if [ -n "$skills_ran" ]; then
+    ok "skills that fired in the last $DAYS days: $skills_ran"
+    row "usage" "skills: $skills_ran"
+  else
+    warn "no orrery skill has fired here in $DAYS days — the plugin is loaded and nothing is invoking it"
+    row "usage" "no skills in $DAYS days"
+  fi
+  if [ "$untyped" -gt 0 ]; then
+    warn "$untyped of $spawns agent spawns carried no role — untyped or general-purpose, so no role's model and tool list applied"
+    row "spawns" "$untyped/$spawns untyped"
+  fi
+
+  # The log trims itself oldest-first at its cap, silently. A window shorter
+  # than the one asked for makes every count above a floor rather than a total,
+  # and saying so is the difference between a number and a misleading one.
+  cap="${ORRERY_CALL_LOG_MAX:-262144}"
+  size="$(wc -c < "$calls" | tr -d ' ')"
+  oldest="$(head -1 "$calls" | cut -f1)"
+  if [ "$size" -gt $(( cap * 9 / 10 )) ]; then
+    warn "the call log is at $size of $cap bytes and drops its oldest rows — it starts at $oldest, so the counts above are a floor"
+  fi
+fi
+
+# --- the number that says whether any of this worked -------------------------
+#
+# Every count above is about *this* machine: which skills ran, which spawns
+# carried a role. None of them answers the question the retrospective gate was
+# built for — are issues closing with their cost recorded — and a mechanism
+# whose effect nobody measures is how the first version of this problem went
+# unnoticed for months.
+#
+# Two numbers, side by side. Issues closed in the window carrying no
+# retrospective, and waivers recorded in the same window. The first is the
+# failure; the second is the part of it somebody decided on purpose, which is a
+# different fact and must not be averaged into the first.
+#
+# This is the one check here that needs the network, and every way it can fail
+# has to be visibly different from a clean answer. A tool in this method shipped the other
+# behaviour once, where a failed fetch and a successful one produced identical
+# reports, and a release was prepared twice on the strength of it. Four
+# failure shapes, four distinct words:
+#
+#   * it cannot ask                    -> `unknown`, never zero
+#   * it answers something unparseable -> `unknown`, because `[ "x" -gt 0 ]`
+#                                         errors and falls into the *success*
+#                                         branch, printing a green tick
+#   * it hits the page limit           -> says the numbers are a floor, the way
+#                                         the call-log cap above already does
+#   * nothing closed at all            -> says so, rather than a tick that reads
+#                                         as "all of them carried one"
+RETRO_LIMIT="${ORRERY_DOCTOR_LIMIT:-500}"
+if command -v gh >/dev/null 2>&1; then
+  counts="$(cd "$PROJECT" 2>/dev/null && gh issue list --state closed \
+    --search "closed:>=$since" --limit "$RETRO_LIMIT" --json number,comments \
+    --jq '[(length), ([.[] | select(((([.comments[]?.body] // []) | join("")) | contains("<!-- retrospective")) | not)] | length)] | @tsv' \
+    2>/dev/null || true)"
+else
+  counts=""
+fi
+
+# Two integers and a tab, or nothing. Anything else is an answer this cannot
+# read, and reading it anyway is how a malformed reply printed a green tick.
+case "$counts" in
+  *[!0-9$'\t']*|'' | *$'\t'*$'\t'*) counts="" ;;
+  *$'\t'*) ;;
+  *) counts="" ;;
+esac
+
+if [ -n "$counts" ]; then
+  n_closed="$(printf '%s' "$counts" | cut -f1)"
+  n_bare="$(printf '%s' "$counts" | cut -f2)"
+
+  # The waiver log resolves the way `hooks/waiver.sh` resolves it, not the way
+  # the call log does. Deriving it from `$calls` meant any project that named
+  # its call log elsewhere got a silent `0 waived` beside a file full of
+  # waivers — the same zero-that-means-unknown this section refuses to print.
+  wlog="${ORRERY_WAIVER_LOG:-.claude/orrery-waivers.tsv}"
+  case "$wlog" in /*) ;; *) wlog="$PROJECT/$wlog" ;; esac
+  waived=0
+  if [ -f "$wlog" ]; then
+    # Only waivers for a close. The log records every deliberate skip, so an
+    # unfiltered count could exceed the number it annotates.
+    waived="$(awk -F'\t' -v s="$since" '$1>=s && $4 ~ /^gh issue close/' "$wlog" | wc -l | tr -d ' ')"
+  fi
+
+  if [ "$n_closed" -eq 0 ]; then
+    warn "no issues closed here in $DAYS days, so there is nothing to say about retrospectives"
+    row "retrospectives" "nothing closed"
+  elif [ "$n_bare" -gt 0 ]; then
+    warn "$n_bare of $n_closed issues closed in $DAYS days carry no retrospective ($waived waived on purpose)"
+    row "retrospectives" "$n_bare/$n_closed missing, $waived waived"
+  else
+    ok "every issue closed in $DAYS days carries a retrospective ($n_closed of them)"
+    row "retrospectives" "$n_closed/$n_closed"
+  fi
+  [ "$n_closed" -ge "$RETRO_LIMIT" ] && warn "the query stopped at $RETRO_LIMIT issues, so those counts are a floor — ORRERY_DOCTOR_LIMIT raises it"
+else
+  warn "could not read an answer from the tracker, so whether closed issues carry retrospectives is unknown here — not zero"
+  row "retrospectives" "unknown"
+fi
+
+# The one gate a hook cannot be. A merge closes an issue server-side, from an
+# event no local hook is present for, so this half lives in your repository —
+# and a copied file can simply be absent.
+# Any workflow that runs the matcher, not one filename. This repository carries
+# the same gate inline in its own `gates.yml`, so a filename check reported it
+# missing on the first project anyone would run this against — a check with one
+# implementation, wrong where it was written.
+#
+# And a repository with no workflows at all gets the warning too. The previous
+# shape said nothing there, which is silence for exactly the repository with
+# zero merge-side coverage.
+if [ -d "$PROJECT/.github/workflows" ] \
+   && grep -rlq 'names-an-issue' "$PROJECT/.github/workflows" 2>/dev/null; then
+  ok "a workflow refuses a pull request that names no issue"
+  row "pr gate" "present"
+else
+  warn "nothing refuses a pull request that names no issue — a merge can close an issue no pull request named, and no hook can see it"
+  row "pr gate" "missing"
 fi
 
 echo

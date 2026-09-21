@@ -99,6 +99,7 @@ n_deny=$(jq '.permissions.deny | length' hooks/permissions.json)
 # Written-out numbers are how these sentences read; digits are how they are kept.
 word() { case "$1" in
   3) echo three;; 4) echo four;; 5) echo five;; 6) echo six;; 7) echo seven;;
+  8) echo eight;; 9) echo nine;;
   10) echo ten;; 11) echo eleven;;
   12) echo twelve;; 13) echo thirteen;;
   *) echo "$1";; esac; }
@@ -123,7 +124,7 @@ word() { case "$1" in
 check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated number
   local stated
   stated=$(grep -rhoiE "${FIXTURES[@]}" "$3" "${COUNT_SCOPE[@]}" 2>/dev/null \
-             | grep -oiE '[0-9]+|three|four|five|six|seven|ten|eleven|twelve|thirteen' \
+             | grep -oiE '[0-9]+|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen' \
              | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')
   if [ -z "$stated" ]; then note "$1: nothing states it ($2 on disk)"; return; fi
   for s in $stated; do
@@ -136,7 +137,7 @@ check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated numb
 check_count "skills"     "$n_skills" '(eleven|ten|twelve|thirteen|[0-9]+) skills'
 check_count "rules"      "$n_rules"  '[0-9]+ rules'
 check_count "agents"     "$n_agents" '(three|four|five|[0-9]+) agents'
-check_count "hooks"      "$n_hooks"  '(four|five|six|seven|[0-9]+) hooks'
+check_count "hooks"      "$n_hooks"  '(four|five|six|seven|eight|nine|[0-9]+) hooks'
 check_count "deny rules" "$n_deny"   '[0-9]+ deny rules'
 
 # --- 3. The manifest ships every skill --------------------------------------
@@ -272,6 +273,11 @@ fi
 #
 # `guard-test-lib.sh` is excluded by name: the guard suites source it and
 # Claude Code never runs it, so it is a library that happens to live in `hooks/`.
+# `waiver.sh` is excluded for the same reason from the other direction — the
+# process guard calls it to record a deliberate skip, and registering it on an
+# event would make it fire on every tool call. Both are named individually
+# rather than matched by a pattern, so the next unregistered guard is still
+# caught.
 #
 # The first token of a command, not the whole string — a registration may carry
 # arguments, and reading one as part of the path invents two defects at once: a
@@ -280,7 +286,7 @@ fi
 # Every arm reports through `note`, which is what moves the counter; `bad` only
 # prints. Check 7 above is what forgetting that costs.
 cmds=$(jq -r '[.hooks[][].hooks[].command] | .[]' hooks/hooks.json | awk '{print $1}' | tr -d '"')
-scripts=$(ls hooks/*.sh | sed 's#hooks/##' | grep -v '\.test\.sh$' | grep -v '^guard-test-lib\.sh$' | sort)
+scripts=$(ls hooks/*.sh | sed 's#hooks/##' | grep -v '\.test\.sh$' | grep -v '^guard-test-lib\.sh$' | grep -v '^waiver\.sh$' | sort)
 registered=$(printf '%s\n' "$cmds" | sed 's#.*/hooks/##' | sort -u)
 if [ "$scripts" = "$registered" ]; then ok "every hook script is registered in hooks.json"
 else bad "hooks/ and hooks.json name different scripts"
@@ -301,6 +307,20 @@ done < <(printf '%s\n' "$cmds" | sed 's#[$]{CLAUDE_PLUGIN_ROOT}#.#' | sort -u)
 if [ -z "$dangling" ]; then ok "every registered hook command resolves to a file"
 else bad "hooks.json registers commands with no script behind them"
      for p in $dangling; do note "$p"; done; fi
+
+# --- 9b. No hook entry carries a key that exists to hold prose ----------------
+# The CLI validates every hook entry's keys at load and prints `unknown key
+# "_comment" … ignored` at the start of each session — attributed to this plugin
+# by name, on every host. `claude plugin validate --strict` passes such a tree,
+# so this is the gate that sees it. A hook-group entry has exactly two keys in
+# the format, `matcher` and `hooks`, so that level is an allowlist; below it the
+# hook objects carry keys that change, so only a `_` prefix is refused there.
+# The prefix arm reads the whole document. Not covered: a non-`_` stray key
+# at the top level or inside a hook object.
+stray=$(jq -r '[(.hooks[][] | keys[] | select(. != "matcher" and . != "hooks")), (.. | objects | keys[] | select(startswith("_")))] | unique | .[]' hooks/hooks.json)
+if [ -z "$stray" ]; then ok "no hook entry carries a prose key"
+else bad "hooks.json carries a prose key the CLI rejects at load — move it to the script header"
+     for k in $stray; do note "$k"; done; fi
 
 # --- 10. Every frontmatter block is YAML somebody else can read -------------
 # `description` decides whether a skill or an agent fires, and the block it

@@ -28,6 +28,12 @@ run "guard corpus"   ./hooks/bash-guard.test.sh
 # The Agent guard's whole pass — corpus, probes and mutants — takes about two
 # seconds, so it needs no trigger.
 run "agent guard"    ./hooks/agent-guard.test.sh --mutate
+# The process gate and the waiver that is its only supported escape. Same cost
+# as the pass above, so the same lack of a trigger. The pair is inseparable: a
+# gate whose escape stops recording turns every skip back into a silence
+# indistinguishable from having followed the protocol.
+run "process guard"  ./hooks/process-guard.test.sh --mutate
+run "waiver"         ./hooks/waiver.test.sh
 run "call log"       ./hooks/call-log.test.sh
 # The three hooks that emit rather than decide. Their failure is silence, so
 # nothing but these would report it.

@@ -1,0 +1,58 @@
+# Refuses a pull request that names no issue.
+#
+# Copy this file to `.github/workflows/pr-names-an-issue.yml` in your project,
+# and `install/ci/names-an-issue.sh` (with its suite) to `install/ci/` there —
+# or anywhere, as long as the `run:` line below points at it.
+#
+# ## Why a workflow and not a hook
+#
+# Orrery ships a hook that refuses `gh issue close` without a retrospective, and
+# that hook sees every command a session types. It cannot see a merge. GitHub
+# closes an issue named by `Closes #N` server-side, after the button, from an
+# event no local hook is present for — and on a project that lands work through
+# pull requests, that is most of them.
+#
+# So the two halves live in different places by necessity: the hook covers what
+# a session types, this covers what a merge does. Measured across three projects
+# in one week before either existed: nine pull requests merged carrying no issue
+# reference at all.
+#
+# ## Why the matcher is a file
+#
+# A check written inside a `run:` block is a check nothing can run. Two gates
+# shipped in this library had never matched anything — one built an empty
+# `find` range, one used `grep -P` where BSD grep has no `-P` — and both
+# reported clean for months. `names-an-issue.sh` has a suite beside it; run it
+# in your own CI too, because a gate nobody has watched go red is not a gate.
+#
+# ## Why the body arrives through the environment
+#
+# A pull request title and body are attacker-controlled text, and `${{ }}`
+# pastes them into the shell before bash ever sees them. The env block below is
+# not style.
+name: pr-names-an-issue
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  names-an-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: A pull request names the issue it belongs to
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: install/ci/names-an-issue.sh "$PR_TITLE" "$PR_BODY"
+
+      # The gate's own suite. Twelve cases, seconds to run, and the reason it is
+      # here rather than assumed: this is the check whose failure mode is
+      # silence.
+      - name: And the matcher still matches
+        run: install/ci/names-an-issue.test.sh

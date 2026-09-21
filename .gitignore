@@ -22,6 +22,11 @@ sh-thd-*
 *.local.json
 .claude/settings.local.json
 .claude/orrery-calls.tsv
+# The waiver log. Same reason as the line above, and it was learned the same
+# way twice: a manual run of the guard wrote six rows into this file and
+# `git add -A` committed them, so the first row of the record whose whole value
+# is that its rows are true was a test artifact.
+.claude/orrery-waivers.tsv
 node_modules/
 
 # Editor state — machine-specific, never shared

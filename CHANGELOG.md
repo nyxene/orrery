@@ -9,6 +9,149 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.23.0
+
+**Minor.** A command you have been able to run since the first release starts
+being refused, and a hook now runs before every shell call. Both are the same
+change: the method's bookkeeping obligations stop being honour-system and start
+having a gate behind them — with a supported, recorded way past.
+
+Also here: a pull-request gate that has been named in the manifest since the day
+after 0.22.0 shipped and therefore reached nobody, and a doctor that can finally
+see an install it has been reporting as absent.
+
+### `gh issue close` is refused unless the issue carries its retrospective
+
+Measured across three projects over one week: **179 issues closed, 218 pull
+requests merged, 2 retrospectives.** Nothing in the method had a refusal behind
+it, so following it and not following it left identical traces — which is to say
+no trace — and the only reason anyone found out was somebody going and looking.
+
+`hooks/process-guard.sh` is a third guard, and it is a different trade from the
+two you already have. The Bash guard exists for accidents that cannot be undone
+and stays deliberately thin; this one is bookkeeping, where a false refusal
+costs an argument rather than a boundary. So it is a separate file with its own
+case corpus, and it **fails open**: anything it cannot parse is passed through.
+That direction is deliberate and its corpus pins it. A bookkeeping gate that
+blocks every command when `jq` is missing gets removed within the hour, and
+removing it takes the delete guard with it.
+
+`skills/build/close-issue.sh` is what it refuses the bare command in favour of:
+it posts the retrospective and closes the issue in one act, so there is nothing
+to verify — the only close that happens is one that posted. It generates the
+machine-readable header and the spend table from your session's own transcripts,
+which means the half of a retrospective that actually answers *what did this
+cost* is the half nobody has to write.
+
+**What you need to do:** nothing, unless you close issues from a script. If you
+do, point it at `close-issue.sh` or waive deliberately — see below. If you have
+been closing issues by hand and wondering whether the retrospective step was
+real, it is real now.
+
+### Skipping stays possible, and stops being invisible
+
+`hooks/waiver.sh` records one line per waived obligation: the act, the reason,
+and whether the reason was stated or inferred. **The only way past the gate is a
+command that writes that line.**
+
+This is the argument `--no-verify` already earns in a pre-commit hook. The point
+was never that skipping is impossible — it is that skipping becomes something
+somebody typed. Either a row carries a reason, or the gate was circumvented, and
+that is a violation with a name instead of a silence indistinguishable from
+obedience.
+
+### The pull-request gate a hook cannot be
+
+`install/ci/pr-names-an-issue.yml`, with `names-an-issue.sh` and its test, now
+actually ship. They were added to the manifest one day after 0.22.0 was
+published, which means every consumer on that version has been reading an
+install guide that does not mention them and running an install that does not
+contain them.
+
+A hook cannot do this job. Hooks see commands a session types; a merge closes an
+issue server-side, from an event no local hook is present for. Measured across
+three projects in one week before this existed: **nine pull requests merged
+carrying no issue reference at all**, in projects where the rule was loaded into
+every session.
+
+**What you need to do:** it is a copy, not something the plugin supplies at
+runtime, because GitHub Actions runs against your checkout and cannot read a
+plugin cache. `install/into-project.md` carries the copy step under *Copy in the
+one gate a hook cannot be*, and `/doctor` reports when the workflow is missing.
+
+Two things to check before you copy it in, because neither is universal: a
+second workflow does not block a merge unless the branch ruleset names its
+check, and if your repository already refuses a pull request that names no
+issue, you do not need this one. Installing it anyway costs you a duplicate run
+on every pull request and buys nothing.
+
+### `/doctor` can see a local-scope install
+
+A plugin enabled in `.claude/settings.local.json` rather than in the tracked
+`.claude/settings.json` — which is what any repository whose index other people
+read ends up doing, private ones included — was invisible to two checks. In a
+project where the plugin was installed, enabled and demonstrably running, the
+doctor printed:
+
+```
+✗ no orrery install found for this project
+✗ enabledPlugins missing/false on branch '<branch>'
+```
+
+Both false, and they are the two lines anybody reads first when asking whether
+the plugin is on at all. Those two reds are why a working install was believed
+to be broken.
+
+Three things changed with it. Enablement is now resolved across **both**
+settings files, and the report says **which one answered** — the tracked file
+varies by branch, which is what makes *not enabled on this branch* a true
+sentence, while the untracked one does not vary by branch and now says so
+instead of naming a branch the answer does not depend on. And enabled-versus-
+disabled now comes from the install record's own field rather than from a
+plain-text block that carries no project attribution: on a machine with orrery
+in several projects, that block belongs to whichever one the CLI printed first.
+Where the text is too ambiguous to rule out a load failure, the report says
+`enabled (load failure not ruled out)` rather than a clean pass it cannot
+establish.
+
+**What you need to do:** nothing. If you saw either of those reds and changed
+your settings to satisfy them, change them back — a local-scope install was
+always correct.
+
+### A correction to what this plugin told you
+
+`skills/doctor/SKILL.md` said that having both `orrery` and `orrery-method`
+installed loads the canon twice and that you should disable one of them. That is
+backwards, and the doctor's own code has been saying the opposite for weeks:
+`orrery` is the machinery and it **declares** the method as a dependency rather
+than carrying a copy, so both installed is the healthy state and `orrery` alone
+is the failure — every skill loads, every guard fires, and the corpus they are
+written against is simply absent.
+
+**What you need to do:** if you disabled `orrery-method` on the strength of that
+paragraph, re-enable it. You have been running the machinery without the law it
+implements.
+
+### Also
+
+Two shipped rules gain the case that would have caught a real error. *State
+owned elsewhere is fetched before it is read* was written about a stale mirror —
+a local copy of the same fact — and did not reach the case where your own tree
+is not a copy at all but a different artefact ahead of what you published; its
+advice now widens from versions to what files an install has and what its
+documents instruct. *A command proves only the question it asked* gains a sixth
+substitution: a commit message, changelog entry or pull-request title read as a
+fact about current state, which is evidence of what somebody meant when they
+wrote it and about today establishes nothing.
+
+The deny-list gains no rules and withdraws none. It gains a long measured note
+on what a Bash deny rule actually binds — the spelling is matched per
+subcommand, an env-assignment prefix and a loop body escape, and the platform's
+documentation and the machine disagree on two of the probed spellings. Read it
+before assuming a rule covers a spelling you have not tried.
+
+No file leaves the product. No deny rule is withdrawn.
+
 ## 0.22.0
 
 **Minor.** Nothing you run behaves differently, but `build` stops asking for
