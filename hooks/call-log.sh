@@ -43,6 +43,15 @@
 # there is no list to leave something off — guard, classifier, person and
 # interrupt are all covered by the same absence.
 #
+# The two registrations in `hooks/hooks.json` carry the **same matcher**, on
+# purpose: a pair can only form if both halves watch the same tools. Narrow the
+# `PostToolUse` one — drop `Skill`, say — and every Skill call reads as "did not
+# run", which is the false statement paragraph three above was written to end.
+# The suite pins the two matchers equal, so that edit goes red instead of
+# shipping. This sentence used to live beside the registration itself, as a
+# `_comment` key the CLI now rejects at load; it moved here so the file that
+# holds every hook carries only the keys the format defines.
+#
 # `PermissionDenied` exists as an event and is deliberately not used. It reports
 # *why* rather than *whether*, and its coverage of the three denial paths is not
 # documented — a mechanism whose completeness rests on an undocumented event is

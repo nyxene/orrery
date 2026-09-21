@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Check whether orrery is actually loaded and current in a host project — enabled on the checked-out branch, cache matching the marketplace source, no conflicting global install, and the method it implements installed alongside it. Invoke on "doctor", "is orrery working", "check the plugin install", "why isn't the plugin loading", or periodically as a health check independent of any specific symptom.
+description: Check whether orrery is actually loaded and current in a host project — enabled on the checked-out branch, cache matching the marketplace source, no conflicting global install, and the method it implements installed alongside it. It also reports whether any of it is actually being *used* here — which skills fired, whether agent spawns carried a type, and whether the pull-request gate a hook cannot be is installed. Invoke on "doctor", "is orrery working", "check the plugin install", "why isn't the plugin loading", "is anyone using this", or periodically as a health check independent of any specific symptom.
 argument-hint: "[optional: a project path, default is the current one]"
 ---
 
@@ -37,11 +37,14 @@ like nvm/homebrew shims often aren't loaded), it says so explicitly rather than
 reporting "not installed."
 
 It checks, in order: `jq` and `claude` on `PATH` · what `claude plugin list`
-(both `--json`, for install metadata, and plain text, for the load-status line
-and error message `--json` doesn't carry) says about this project's install ·
-`enabledPlugins` is true on **the branch actually checked out** — not main,
-not whatever branch the install commit landed on · whether user scope and
-project scope are *both* enabling orrery at once, which double-fires every
+(both `--json`, for install metadata and the `enabled` flag, and plain text,
+for the "failed to load" status and error message `--json` doesn't carry) says
+about this project's install, at **project, local or user scope** · whether
+`enabledPlugins` is true in either `.claude/settings.json` — where it is a fact
+about **the branch actually checked out**, not main and not whatever branch the
+install commit landed on — or `.claude/settings.local.json`, where it is
+untracked and therefore not a branch fact at all · whether user scope and a
+project-local scope are *both* enabling orrery at once, which double-fires every
 hook · the cached git SHA matches the marketplace source's current HEAD (a
 version-string match alone misses a source change that forgot a version bump)
 · the loaded cache's `plugin.json` doesn't redeclare a hooks path (a manifest
@@ -78,11 +81,17 @@ news.
   the marketplace source is a local path.
 - **Not enabled on this branch** — check whether the branch actually has the
   commit that added `enabledPlugins` to `.claude/settings.json`. This is a git
-  state question, not a plugin bug.
-- **Global conflict: double-enabled** — user scope and project scope both
-  enable orrery for the same project; every hook fires twice. Decide which
-  scope should own it and disable the other. (User scope alone, with no
-  project-scope entry, is not a conflict — that's just a global install.)
+  state question, not a plugin bug. It is only ever said of the *tracked* file:
+  a project that enables orrery in the untracked `.claude/settings.local.json`
+  — which is what any repository whose index other people read does, to keep
+  the owner's configuration out of it, private ones included — gets `yes (local file)` and no branch named, because that
+  file does not vary by branch and claiming otherwise would be a check that
+  cannot fire.
+- **Global conflict: double-enabled** — user scope and one of the project's
+  own settings files both enable orrery for the same project; every hook fires
+  twice. Decide which scope should own it and disable the other. (User scope
+  alone, with no project-local entry, is not a conflict — that's just a global
+  install.)
 - **Manifest shape: buggy** — the cached `plugin.json` redeclares a hooks
   path. Fix the source, `claude plugin update`, restart.
 - **Deny-list: behind** — the rules printed underneath are shipped by this
@@ -120,8 +129,15 @@ manifest error still leaves an `installPath` entry to inspect) — a clean run
 is evidence, not a guarantee.
 
 The plain-text load-status line carries no project attribution, unlike
-`--json`. If orrery is project-scope-installed in more than one project at
-once, the status line picked up here could in principle belong to a different
-project's entry rather than this one's — this script only trusts it once
-`--json` has confirmed *some* install exists for this exact project, which
-narrows but does not eliminate the ambiguity.
+`--json`. If orrery is installed at project or local scope in more than one
+project at once — the ordinary case on a machine with several host projects —
+the block picked up here belongs to whichever install the CLI printed first,
+which is usually not this one.
+
+So the text is consulted **only when the output contains exactly one
+`orrery@orrery` block**. Enabled versus disabled comes from the `enabled` field
+on the entry already matched by `projectPath`, and is correct either way; what
+the ambiguity costs is the third state, `failed to load`, which no boolean can
+express. Where it cannot be ruled out the report says so —
+`enabled (load failure not ruled out)` — rather than printing a clean pass or
+attributing a neighbour's failure to this project.

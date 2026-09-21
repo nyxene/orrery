@@ -10,7 +10,7 @@ Skills become available as `orrery:frame`, `orrery:plan`, `orrery:build`,
 `orrery:debt`, `orrery:doctor`, `orrery:feedback`, `orrery:handoff`,
 `orrery:learn`,
 `orrery:sharpen`. Agents (`architect`, `critic`, `auditor`) resolve
-by name. All seven hooks start firing immediately — including the one that stops
+by name. All eight hooks start firing immediately — including the one that stops
 the first compaction of a session to ask whether there is unfinished work to
 hand off.
 
@@ -240,12 +240,191 @@ project come back `Operation not permitted` from the kernel rather than from a
 hook. Anything that writes `.claude/settings.json` has to be run from a terminal
 rather than from a session. `gh` does not work inside the sandbox at all — it
 cannot verify TLS there and cannot reach its keyring — so it goes through the
-permission flow every time, deliberately. Shell network access is limited to the
-domains listed; in-process tools are unaffected, so reading documentation and
-searching the web work normally.
+permission flow every time, deliberately. In-process tools are unaffected, so
+reading documentation and searching the web work normally.
+
+**What this block does *not* buy is egress confinement.** `allowedDomains` in a
+project settings file **pre-allows**: it removes the prompt for the hosts you
+list. It cannot deny the ones you did not — an unlisted domain is asked about
+rather than refused, and in auto mode that question goes to the classifier.
+Denial needs `network.strictAllowlist`, which the platform reads only from user
+settings, managed settings, or `--settings` on the command line, and ignores
+from this file.
+
+Measured rather than inferred: with this exact block in place, `curl` to two
+domains outside the list returned `200` and `401` — both connections completed.
+So what you switch on here is **layer 4**, the filesystem half, plus a list that
+removes prompts.
+
+Two of those three sources are machine-wide. User and managed settings govern
+**every project you have**, so switching strict egress on for this one would
+tighten the rest, and you would meet that somewhere else with nothing to connect
+it to a plugin you installed here. This guide does not hand you that line.
+
+**The third is per project, and it works.** `--settings` takes a file and binds
+the session it starts. Put the strict block somewhere in the repository:
+
+```json
+{ "sandbox": { "enabled": true, "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false, "excludedCommands": [],
+    "network": { "strictAllowlist": true,
+                 "allowedDomains": ["github.com", "api.github.com"] } } }
+```
+
+and start work with `claude --settings .claude/strict-sandbox.json`. Needs
+Claude Code **2.1.219 or newer** — older than that, `strictAllowlist` parses,
+sits in the file and denies nothing, which looks exactly like the state it is
+meant to prevent.
+
+Measured rather than argued, by running the same two requests with the file and
+without it. Listed host `200` both times; unlisted host `200` without and **no
+connection at all** with. That difference is the whole evidence — a single
+reading could not tell "the setting did nothing" from "it worked and the request
+was approved anyway".
+
+**`allowUnsandboxedCommands` is `false` here and `true` in the block above, and
+that is the difference between the two files rather than an oversight.** With
+`true`, a command the sandbox refuses is offered to the permission flow and can
+be retried outside the sandbox — and in auto mode that offer goes to the
+classifier rather than to you, so the egress you just denied can happen anyway
+one decision later. That is a reasonable trade for the everyday block. It is not
+one for a file whose whole purpose is the deny, and it is not what was measured:
+the probe set `false` deliberately, because an escape hatch answers a different
+question than the one being asked.
+
+**What `false` costs, said plainly.** With the everyday block above,
+`allowUnsandboxedCommands: true` sends a command the sandbox cannot run to the
+permission flow — which is how `gh` works at all under Seatbelt, since it fails
+TLS verification there. Under this strict file there is no such offer: those
+commands simply fail. `gh` is the one you meet first, and it is not alone —
+process substitution (`diff <(…) <(…)`) is refused because `/dev/fd` is,
+`mktemp -d` without a template lands outside the writable scope, writing
+`.claude/settings.json` is refused outright, and `git checkout` and `git stash`
+fail partway on paths the platform protects. Under the everyday block each of
+those is recoverable through the retry; under this one they are dead ends, and
+a dead end is what sends a reader looking for an exclusion. That is the trade a file
+whose purpose is the deny has to make, and it is why this is a second file you
+launch into rather than a replacement for the first.
+
+**And a strict file cannot subtract, which is the part to read twice.** Array
+keys *merge* across every scope a session loads; they do not override. Measured,
+as a third run of the same probe with a third host in it: a domain added to the
+project's own `.claude/settings.json` and to nothing else was reachable from the
+strict session, and a host listed nowhere was refused by the proxy in the same
+run — `200` beside `000/403/56`. The project entry joined the strict list and
+the strict list held. Two consequences follow, and neither is visible from
+inside the strict file:
+
+- `excludedCommands: []` here enforces nothing. An exclusion set anywhere else
+  rides into the strict session, and an excluded command lifts the sandbox for
+  the whole Bash call — which under `allowUnsandboxedCommands: false` is the one
+  full escape left. The platform's own troubleshooting steers a reader whose
+  `gh` or `docker` "simply fails" toward exactly that entry, so the pressure to
+  add one arrives precisely here.
+- The effective allowlist is the union of every scope's `allowedDomains` *plus*
+  every `WebFetch(domain:…)` allow rule the session loads, including one saved
+  by a past "don't ask again". The two domains in the file are a floor, not the
+  session's reach.
+
+The merge rule behind the first is measured for `allowedDomains`; the
+`excludedCommands` case follows from that rule and was not probed separately,
+and this guide says so rather than letting one measurement stand for two. The second is a separately documented fact — the
+allowlist is `allowedDomains` plus `WebFetch` allow rules — and is not measured
+here at all. Either way the file is a floor, not a ceiling: audit what the other
+scopes carry before trusting it.
+
+**Its ceiling, which travels with the recipe.** It binds *that session*. Every
+other session started in the same directory the ordinary way has egress open,
+and nothing on screen distinguishes the two. A control that holds only while
+someone remembers is the failure this library names in three of its own files,
+so treat the flag as the mechanism and not as the habit: a shell function that
+adds `--settings` when the file is present costs a few lines in your profile and
+is inert in every repository that does not have one.
 
 Add the domains your own work needs. The two above are a starting point, not a
 recommendation about your project.
+
+## Closing an issue now goes through a gate
+
+`hooks/process-guard.sh` refuses `gh issue close`. This is the one hook that
+will stop a command you have been running for years, so it is described here
+rather than met cold.
+
+The reason is a measurement, not a preference: across three projects in one
+week, 179 issues closed and 218 pull requests merged with **two**
+retrospectives between them. Nobody decided to stop writing them. There was
+simply nothing that noticed.
+
+```bash
+skills/build/close-issue.sh <N> --what "one line on what actually happened"
+```
+
+That builds the spend table from the session's own transcripts, posts it, and
+then closes the issue — so nothing has to verify that a comment exists. Add
+`--since <iso8601>` when the session already reported on an earlier issue.
+Closing an umbrella takes `--body-file <path>` instead: a phase retrospective
+is summed from its children, and this session's transcripts are the closer's
+spend rather than the phase's.
+
+**And there is a way past it, which writes itself down:**
+
+```bash
+ORRERY_WAIVE="why this one closes without a retrospective" gh issue close 42
+```
+
+Skipping stays possible on purpose — the same argument `--no-verify` earns in a
+pre-commit hook. What ends is skipping being invisible: the reason, the issue
+number and a hashed session id land in `.claude/orrery-waivers.tsv`. Either a
+row carries a reason, or the gate was gone around.
+
+**Add that path to `.gitignore` too**, for the reason the call-log path above
+carries — and this one was learned the same way: a manual run wrote rows into
+the file and `git add -A` committed them, so the first row of a record whose
+whole value is that its rows are true was a test artifact. If you would rather
+keep the log in the repository, that is a defensible choice — commit it
+deliberately and know that everyone's rows conflict.
+
+**What the gate does not reach**, stated so you do not mistake its silence for
+coverage: an issue closed by a merging pull request never passes a Bash hook at
+all — GitHub closes it server-side. Nor does a close routed through an
+interpreter, `bash -c "..."` or `eval`; both take deciding to write, and the
+waiver is cheaper than either. Those two are `allow` cases in
+`hooks/process-cases.tsv`, so the limit is a decision you meet rather than a
+hole you discover — but read that file rather than this paragraph for the
+current list, because a sentence claiming the list is complete is the first
+thing to go stale.
+
+**And it will refuse things that close nothing.** The pattern is quote-blind —
+it cannot parse shell — so a metacharacter inside quoted prose reads as a
+command separator, and writing *about* the gate in a commit message or a
+pull-request comment can be refused. It happened three times in the session
+that built it, once caused by a rule added in that same commit. The workaround
+is to pass the text through a file — `git commit -F msg.txt`, `gh pr comment
+--body-file` — and the alternative is a heuristic that would become a bypass.
+
+It covers what a session types, and it is a nudge rather than a boundary.
+## Copy in the one gate a hook cannot be
+
+```bash
+mkdir -p .github/workflows install/ci
+cp "$ORRERY/install/ci/pr-names-an-issue.yml" .github/workflows/
+cp "$ORRERY/install/ci/names-an-issue.sh" "$ORRERY/install/ci/names-an-issue.test.sh" install/ci/
+```
+
+`$ORRERY` is wherever the plugin is installed; `/doctor` prints the path.
+
+This refuses a pull request that names no issue, which
+`rules/git/every-merge-is-recorded-in-an-issue.md` requires and nothing else
+here can enforce. **A hook cannot do it.** The hooks see commands a session
+types; a merge closes an issue server-side, from an event no local hook is
+present for. Measured across three projects in one week before this existed:
+nine pull requests merged carrying no issue reference at all, in projects where
+that rule was loaded into every session.
+
+It is a copy rather than something the plugin supplies at runtime, because
+GitHub Actions runs against your repository's checkout and cannot read a plugin
+cache. That means it can go stale; `/doctor` reports when the workflow is
+missing, and re-copying is the whole update.
 
 ## What stays your responsibility
 

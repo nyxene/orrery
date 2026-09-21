@@ -767,7 +767,7 @@ if [ -n "$hits" ]; then
   targets="$(printf '%s' "$hits" \
     | tr -d '"'"'" \
     | grep -oE '[^[:space:]]+' \
-    | grep -viE '^('"$delete_verbs"'|rmtree|rmsync|remove_tree|removedirs|remove|find|xargs|env|command|sudo|doas|nohup|time|nice|exec|builtin|'"$interpreters"'|import|from|os|shutil|fs|glob|-[a-z-]*|[0-9]*>>?.*|[0-9]*<.*|&&|\|\||\{\}|\+|\\;)$' || true)"
+    | grep -viE '^('"$delete_verbs"'|rmtree|rmsync|remove_tree|removedirs|remove|find|xargs|env|command|sudo|doas|nohup|time|nice|exec|builtin|'"$interpreters"'|import|from|os|shutil|fs|glob|do|done|then|else|fi|-[a-z-]*|[0-9]*>>?.*|[0-9]*<.*|&&|\|\||\{\}|\+|\\;)$' || true)"
 
   if [ -z "$targets" ]; then
     deny "Could not determine what this delete targets; denying by default. Use explicit paths under the session scratchpad."

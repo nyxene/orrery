@@ -164,15 +164,23 @@ otherwise.
 9. **Retrospective logging**, in the table format
    `rules/process/retrospectives-always-use-the-table-format.md` fixes: the
    machine-readable header, the tokens and tool-calls table, real `gh`-queried
-   timestamps, and the numbered step list. Post it on the issue or PR. Do not
-   invent a second format — the rule exists because a second one was invented.
+   timestamps, and the numbered step list. Post it on **the issue that is
+   closing** — this task's issue, never a sub-PR and never the umbrella, which
+   gets its own assembled one when it closes. `skills/build/close-issue.sh <N>
+   --what "<one line>"` does the minimum form and closes the issue in one act,
+   which is what `hooks/process-guard.sh` refuses a bare `gh issue close` in
+   favour of. Do not invent a second format — the rule exists because a second
+   one was invented, and "the issue or PR" was itself two readings that between
+   them produced no retrospective at all.
 
    Run `skills/build/retrospect.sh` for the first two: it reads this session's
-   agent transcripts and prints the header block and the per-stage table. **No
-   step above records anything for it** — the transcripts already hold the usage,
-   the tool calls and the timestamps, which is why this step is at the end and
-   costs the run nothing. If it reports no transcripts, the cells are
-   `not captured`; never fill them with an estimate.
+   transcripts — the main session and every agent it spawned — and prints the
+   header block and the per-stage table. **No step above records anything for
+   it** — the transcripts already hold the usage, the tool calls and the
+   timestamps, which is why this step is at the end and costs the run nothing.
+   Pass `--since <iso8601>` when this session already reported on an earlier
+   issue, or the earlier one's spend is counted again here. If it reports no
+   transcripts, the cells are `not captured`; never fill them with an estimate.
 
 10. **Final report — in chat, in the project's configured output language**
    (Canon §8; English unless the project declares otherwise). Summarize what

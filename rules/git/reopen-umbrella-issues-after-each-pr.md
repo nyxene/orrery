@@ -17,7 +17,17 @@ feature itself, not to commit-message keyword parsing. Avoiding closing
 keywords in the PR does not prevent it — the link alone is enough to trigger
 closure on merge.
 
-**How to apply:** for any issue that will span more than one PR, check
+**How to apply — prevent it first.** An umbrella is never the source of a
+branch. `gh issue develop <N>` is what creates the link, so run it against the
+**leaf issue** the pull request actually finishes; if the work has no leaf issue
+yet, file one, which `every-merge-is-recorded-in-an-issue` already requires the
+pull request to name. Referencing the parent in the body (`Refs #N`) is fine and
+always was — what closes it is the branch link and a closing keyword, not a
+mention. This moves the cost from once per merge, forever, to once per branch,
+and it removes the failure instead of catching it. The paragraph below is what
+to do for an umbrella that already carries a link.
+
+**And detect it where prevention came too late:** for any issue that will span more than one PR, check
 `gh issue view <N> --json state` after each non-final PR merges. If it
 auto-closed, reopen it immediately with `gh issue reopen <N> --comment "..."`
 explaining which PR closed it and what's still outstanding. Only let it close

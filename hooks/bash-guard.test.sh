@@ -112,11 +112,22 @@ probes() { # $1 = guard path — prints how many it gets wrong
   out="$(jq -n '{tool_input:{command:"ls"}}' \
     | PATH="$fakebin:$PATH" bash "$1" 2>/dev/null || true)"
   grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
+  # A refusal that names the wrong thing is the failure
+  # rules/craft/make-the-tool-say-why-before-deciding-why.md is about, and the
+  # corpus cannot see it: the corpus scores the verdict, and this verdict was
+  # always right. The target extraction strips wrappers and flags but not shell
+  # keywords, so in a loop body `do` survived as a candidate target, was
+  # resolved against the project root, and the reason read `Destructive delete
+  # (do)`. Both halves are asserted here — refused, and refused *for the path*.
+  out="$(jq -n '{tool_input:{command:"for r in a b; do rm -rf ~/dev/x; done"}}' \
+    | bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
+  grep -q '(~/dev/x)' <<<"$out" || fails=$((fails + 1))
   echo "$fails"
 }
 
 trap_fails=0
-report_probes "$guard" "the Bash guard" "bad input, unknown platform" \
+report_probes "$guard" "the Bash guard" "bad input, unknown platform, a loop body's refusal names the path" \
   || trap_fails=$((trap_fails + $?))
 
 total="$(grep -cE '^(deny|allow)	' "$CASES")"
