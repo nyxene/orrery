@@ -161,7 +161,9 @@ if [ "$fails" -eq 0 ]; then ok "$total corpus cases"; else bad "$total corpus ca
 # The refusal is read by a session that has to act on it, so it has to name the
 # way out. A deny that only says no gets worked around rather than followed.
 out="$(payload 'gh issue close 42' | bash "$guard" 2>/dev/null)"
-for want in 'close-issue.sh' '--what' 'ORRERY_WAIVE='; do
+# `--waive` is the way past that survives a host running the server-side
+# workflow; `ORRERY_WAIVE` alone records a row the server cannot see.
+for want in 'close-issue.sh' '--what' '--waive' 'ORRERY_WAIVE='; do
   if grep -q -- "$want" <<<"$out"; then ok "the refusal names $want"
   else bad "the refusal names $want" "not in the message"; fi
 done

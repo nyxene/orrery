@@ -48,9 +48,13 @@
 # types and no close a merge performs, and on a project that lands most work
 # through pull requests that is the smaller half.
 #
-# The other half needs a workflow in the host repository, which is a separate
-# piece of work and is filed as one. Do not read this guard as closing the gap;
-# read it as closing the part a hook can reach.
+# The other half is a workflow in the host repository:
+# `install/ci/retrospective-on-close.yml` reopens an issue that closed as
+# finished work with no retrospective on it. For a long time this paragraph said
+# that half was "filed as one" — it was not, and one host closed more than a
+# hundred issues in a week through this gap, one with a retrospective. Do not read this guard as
+# closing the gap; read it as closing the part a hook can reach, and copy the
+# workflow for the rest.
 #
 # Exit contract: prints a permissionDecision JSON and exits 0 to deny; prints
 # nothing and exits 0 to pass through.
@@ -253,7 +257,10 @@ children rather than measured from this session, so assemble it and pass it in.
 
 If this issue really should close without one, say why and it is recorded:
 
-  ORRERY_WAIVE=\"why\" gh issue close <N>
+  $here/../skills/build/close-issue.sh <N> --waive \"why\"
 
-That line is written to .claude/orrery-waivers.tsv with the issue number and
-your reason. It is the supported way past this gate; there is no quiet one."
+That posts the reason on the issue, where a project running
+install/ci/retrospective-on-close.yml reads it, and writes it to
+.claude/orrery-waivers.tsv. It is the supported way past this gate; there is no
+quiet one. ORRERY_WAIVE=\"why\" gh issue close <N> records the row only — use it
+where that workflow is not installed, or the server reopens what you excused."

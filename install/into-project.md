@@ -369,8 +369,13 @@ spend rather than the phase's.
 **And there is a way past it, which writes itself down:**
 
 ```bash
-ORRERY_WAIVE="why this one closes without a retrospective" gh issue close 42
+skills/build/close-issue.sh 42 --waive "why this one closes without a retrospective"
 ```
+
+It posts the reason on the issue and records it locally. The older
+`ORRERY_WAIVE="why" gh issue close 42` still works and records only the local
+row — so in a project running `retrospective-on-close.yml` (below) the server
+sees a bare close and reopens it. Use `--waive` there.
 
 Skipping stays possible on purpose — the same argument `--no-verify` earns in a
 pre-commit hook. What ends is skipping being invisible: the reason, the issue
@@ -421,7 +426,37 @@ present for. Measured across three projects in one week before this existed:
 nine pull requests merged carrying no issue reference at all, in projects where
 that rule was loaded into every session.
 
-It is a copy rather than something the plugin supplies at runtime, because
+### And its sibling: a finished issue carries its retrospective
+
+```bash
+cp "$ORRERY/install/ci/retrospective-on-close.yml" .github/workflows/
+cp "$ORRERY/install/ci/retrospective-on-close.sh" "$ORRERY/install/ci/retrospective-on-close.test.sh" install/ci/
+```
+
+The hook that refuses a bare issue close sees what a session types, and a merge
+is not typed: `Closes #N` closes the issue server-side. Measured on one host over
+a week: more than a hundred issues closed as finished work, one with a
+retrospective, while every merged pull request named an issue — the half with a
+gate held and the half without one did not.
+
+This workflow reopens an issue that closed as finished work with no
+retrospective on it, with one comment naming the command that closes it
+properly. Closes as *not planned* or *duplicate* are left alone. It needs
+`issues: write`, which it declares.
+
+**What it costs, said before you meet it.** A session that merges first and
+posts afterwards is reopened in between; `build` avoids that by posting with
+`--no-close` before the merge. An issue you close by hand as *completed* is
+reopened too — close it with `close-issue.sh <N> --waive "<reason>"` instead, or
+as *not planned* when that is what it was. If agents on your project take work
+from open issues, a reopened one looks like work: the comment says why it
+reopened, and a pool that reads comments before starting will see it.
+
+It cannot see a merge made by a workflow running on `GITHUB_TOKEN` — a bot
+auto-merge, for instance — because those raise no `issues` event. `/doctor`'s
+count of closed issues without a retrospective still catches them.
+
+Both are copies rather than something the plugin supplies at runtime, because
 GitHub Actions runs against your repository's checkout and cannot read a plugin
 cache. That means it can go stale; `/doctor` reports when the workflow is
 missing, and re-copying is the whole update.

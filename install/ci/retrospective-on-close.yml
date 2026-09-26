@@ -1,0 +1,143 @@
+# Reopens an issue that closed as finished work without its retrospective.
+#
+# Copy this file to `.github/workflows/retrospective-on-close.yml` in your
+# project, and `install/ci/retrospective-on-close.sh` (with its suite) to
+# `install/ci/` there — or anywhere, as long as the `run:` line below points
+# at it. Opt-in, like `pr-names-an-issue.yml` beside it.
+#
+# ## Why a workflow and not a hook
+#
+# The hook that refuses `gh issue close` without a retrospective sees every
+# command a session types. It cannot see a merge: GitHub closes an issue named
+# by `Closes #N` server-side, from an event no local hook is present for. On a
+# project that lands work through pull requests that is most closes. Measured on
+# one host over a week: more than a hundred closed as finished work, one
+# carrying a retrospective.
+#
+# ## What it does
+#
+#   closed as not_planned or duplicate          → nothing; not finished work
+#   carries the retrospective or a waiver       → nothing
+#   otherwise                                   → reopen, with one comment
+#                                                 naming the command that closes
+#                                                 it properly
+#
+# Reopen rather than comment alone: a comment nobody has to act on is the
+# silence this whole mechanism exists to end, and an open issue is visible in
+# every list.
+#
+# ## The order that never meets this
+#
+# `skills/build/close-issue.sh <N> --what "…" --no-close` before the merge
+# posts the retrospective while the issue is still open, so the merge closes an
+# issue that already carries one and this run does nothing. `build` does it in
+# that order. Posted after the merge instead, it races this run — so after
+# reopening, the comments are read once more and the issue closed again if a
+# retrospective arrived in between. That covers a session running
+# `close-issue.sh` straight after merging — and the run waits before its first
+# read, because that is the habit, not the edge case: thirteen of twenty
+# retrospectives in the workshop landed 4 to 22 seconds after the close. A
+# retrospective pasted by hand after the re-read leaves the issue open with one
+# on it; closing it is one click in the web UI.
+#
+# ## Why it cannot loop
+#
+# It closes an issue again only when a retrospective or a waiver is on it — so
+# a run triggered by its own close would find one and do nothing. That holds
+# whatever token a host swaps in; the default `GITHUB_TOKEN` additionally raises
+# no workflow events at all.
+#
+# ## What it cannot see
+#
+# - A merge performed by a workflow running on `GITHUB_TOKEN` — a bot
+#   auto-merge, a promote-style release — closes issues with no `issues` event,
+#   so this never runs for them. The doctor's count of closed issues without a
+#   retrospective still catches them after the fact.
+# - After a reopen and re-close the last closer is `github-actions`; the
+#   timeline keeps the pull request's close, but anything reading "who closed
+#   it last" loses the merge.
+#
+# ## Why the check is a file
+#
+# A check written inside a `run:` block is a check nothing can run. The matcher
+# in `retrospective-on-close.sh` has a suite beside it; run it in your own CI.
+#
+# ## The comment below
+#
+# It must never contain either marker the matcher looks for, or it would satisfy
+# its own check and the doctor's. The suite reads this file and refuses it if
+# it does — so this header names them in words, not literally.
+name: retrospective-on-close
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  retrospective:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: A finished issue carries its retrospective
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          REASON: ${{ github.event.issue.state_reason }}
+          NOTICE: |
+            Reopened: this closed as finished work with no retrospective on it.
+
+            Close it from the session that did the work:
+
+                skills/build/close-issue.sh ISSUE_N --what "one line on what happened"
+
+            From any other session, add `--not-captured` so the spend table does not report your session's numbers as this work's. To close it without one on purpose, `--waive "the reason"` records why.
+
+            If this closed early — an umbrella whose children are not finished, say — leave it open. An umbrella's own close takes an assembled retrospective through `--body-file`.
+
+            Next time, post it before the merge with `--no-close`, and the merge closes an issue that already carries one.
+        run: |
+          set -uo pipefail
+          # gh's answer is captured before anything judges it. Piped straight
+          # into the matcher, a failed read under pipefail handed the matcher's
+          # verdict slot to gh's exit code — and a transient API error on a
+          # not-planned close reopened an issue that owed nothing.
+          read_comments() {
+            gh api --paginate --slurp "repos/$REPO/issues/$ISSUE/comments" \
+              | jq -c '[.[][] | .body // ""]'
+          }
+
+          # A session that merges and then runs close-issue.sh posts a few
+          # seconds after the close — measured in the workshop at 4 to 22 over
+          # thirteen closes. The wait is cheap rather than free: the first live
+          # run took 48 seconds end to end, inside the one minute a private
+          # repository is billed for — with 12 to spare, so a slow checkout can
+          # tip a run into a second minute.
+          sleep 45
+
+          comments="$(read_comments)" || { echo "::error::could not read the comments on #$ISSUE; nothing was reopened"; exit 1; }
+          verdict=0
+          printf '%s' "$comments" | install/ci/retrospective-on-close.sh "$REASON" || verdict=$?
+          case "$verdict" in
+            0) exit 0 ;;
+            1) ;;
+            *) echo "::error::could not tell whether #$ISSUE carries a retrospective; nothing was reopened"; exit 1 ;;
+          esac
+
+          gh issue reopen "$ISSUE" --repo "$REPO" --comment "${NOTICE//ISSUE_N/$ISSUE}"
+
+          # The race with a session that ran close-issue.sh straight after the
+          # merge: its retrospective may have landed between the read above and
+          # the reopen. Close again only if one is there now.
+          if comments="$(read_comments)" \
+             && printf '%s' "$comments" | install/ci/retrospective-on-close.sh "$REASON" >/dev/null; then
+            gh issue close "$ISSUE" --repo "$REPO" --reason completed
+            echo "#$ISSUE: a retrospective arrived during the reopen; closed again"
+          else
+            echo "#$ISSUE reopened: closed as finished work with no retrospective (or the re-read failed)"
+          fi

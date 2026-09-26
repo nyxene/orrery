@@ -9,6 +9,92 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.24.0
+
+**Minor.** The retrospective gate gains its server half. An issue closed by a
+merge — `Closes #N` — was never seen by the hook that refuses a bare close,
+and on a project that lands work through pull requests that is most closes. An
+opt-in workflow now covers it, and `close-issue.sh` gains the three modes it
+needs to live alongside it.
+
+Nothing you run is refused that was not refused before. What changes is what
+the process guard's refusal tells you, one line the doctor prints, and every
+close `close-issue.sh` makes, which now says it was completed.
+
+### A merge-closed issue owes its retrospective too
+
+Measured on one host over a week: more than a hundred issues closed as finished
+work, one carrying a retrospective — while every merged pull request named an
+issue, because a gate held that half. The method was followed exactly where
+something enforced it and nowhere else.
+
+`install/ci/retrospective-on-close.yml` runs on `issues: closed`. An issue
+closed as *not planned* or *duplicate* is left alone. One carrying a
+retrospective, or a recorded waiver, is left alone. Otherwise it is reopened,
+with one comment naming the command that closes it properly.
+
+It waits 45 seconds before reading, because a session that merges and then
+posts does so a few seconds later, and reads again after reopening so a
+retrospective that lands in between closes it back. If it cannot read the
+comments it fails the run and reopens nothing. Its matcher is a separate script
+with a suite, and its test for a retrospective is the one `/doctor` counts with,
+so the two cannot disagree.
+
+**What you need to do:** nothing, unless you want it. It is a copy, like the
+pull-request gate beside it:
+
+```bash
+cp "$ORRERY/install/ci/retrospective-on-close.yml" .github/workflows/
+cp "$ORRERY/install/ci/retrospective-on-close.sh" "$ORRERY/install/ci/retrospective-on-close.test.sh" install/ci/
+```
+
+**What it costs, said before you meet it.** On a project that has been closing
+issues by merge without retrospectives, the first days reopen a lot of them.
+That is the gate working. An issue you close by hand as *completed* is reopened
+too; close it with `--waive` instead, or as *not planned* when that is what it
+was. If agents on your project take work from open issues, a reopened one looks
+like work — the comment says why it reopened.
+
+It cannot see a merge made by a workflow running on `GITHUB_TOKEN`, a bot
+auto-merge for instance, because that raises no `issues` event. `/doctor`'s
+count of closed issues without a retrospective still catches those, and now
+names this workflow beside the number.
+
+### `close-issue.sh` gains three modes
+
+- **`--no-close`** posts the retrospective and leaves the issue open. `build`
+  now posts it **before** the merge this way, so the merge closes an issue that
+  already carries one and the workflow never has anything to do. Merging first
+  and posting after is the order that loses the race.
+- **`--not-captured`** is for closing an issue from a session that did not do
+  the work — the usual case after the workflow reopens one. Without it the spend
+  table measures whichever session runs it and posts your numbers as the work's.
+- **`--waive "<reason>"`** closes without a retrospective, on purpose. It posts a
+  marker the workflow reads and writes the local waiver row. The marker shares no
+  prefix with the retrospective header, so `/doctor` never counts a skip as a
+  retrospective.
+
+Every close it makes now passes `--reason completed`.
+
+### The guard's refusal points at the path that survives the server
+
+When `gh issue close` is refused, the way past it the guard names is now
+`close-issue.sh <N> --waive "why"`. The older `ORRERY_WAIVE="why" gh issue
+close <N>` still works and still records the row — but only locally, so on a
+project running the workflow the server sees a bare close and reopens it. The
+refusal and the install guide both say so.
+
+**What you need to do:** if a script of yours closes issues through
+`ORRERY_WAIVE`, and you install the workflow, switch it to `--waive`.
+
+### Also
+
+The process guard's own header claimed the server half of this gate had been
+filed as separate work. It had not. That sentence is corrected, and the half it
+promised is the workflow above.
+
+No file leaves the product. No deny rule is added or withdrawn.
+
 ## 0.23.0
 
 **Minor.** A command you have been able to run since the first release starts
