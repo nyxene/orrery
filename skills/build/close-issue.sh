@@ -4,6 +4,26 @@
 #
 #   skills/build/close-issue.sh <issue> --what "<one line>" [--since <iso8601>]
 #                               [--repo <owner/name>] [--dry-run]
+#                               [--no-close] [--not-captured]
+#   skills/build/close-issue.sh <issue> --waive "<reason>"
+#
+# `--no-close` posts and leaves the issue open, for the order `build` uses: the
+# retrospective goes up **before** the merge, so the pull request's `Closes #N`
+# never closes a bare issue. Posted after, it loses a race with
+# `install/ci/retrospective-on-close.yml`, which reopens a completed close that
+# carries no retrospective — every compliant session would be reopened and
+# nagged, on exactly the issues that did it right.
+#
+# `--not-captured` is for closing an issue from a session that did not do the
+# work — the usual case after that workflow reopens one. Measuring this
+# session's transcripts there posts the closer's spend as the work's: a real-
+# looking number that is the wrong one, which is worse than no number.
+#
+# `--waive` is the server-side half of `ORRERY_WAIVE`. The local waiver writes a
+# row nobody else can see, so the workflow would reopen the close it excused.
+# This posts a marker the workflow reads — `<!-- orrery-waiver`, deliberately
+# not sharing a prefix with `<!-- retrospective`, which is what keeps a skip
+# from being counted as a retrospective — records the row, and closes.
 #
 # ## Why the two acts are one command
 #
@@ -29,7 +49,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
 
-issue="" what="" since="" repo="" dry=0 bodyfile=""
+issue="" what="" since="" repo="" dry=0 bodyfile="" noclose=0 notcaptured=0 waive=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --body-file) bodyfile="${2:-}"; shift 2 ;;
@@ -37,12 +57,20 @@ while [ $# -gt 0 ]; do
     --since) since="${2:-}"; shift 2 ;;
     --repo)  repo="${2:-}"; shift 2 ;;
     --dry-run) dry=1; shift ;;
+    --no-close) noclose=1; shift ;;
+    --not-captured) notcaptured=1; shift ;;
+    --waive) waive="${2:-}"; [ -n "$waive" ] || { printf 'close-issue.sh: --waive needs a reason\n' >&2; exit 1; }; shift 2 ;;
     -*) printf 'close-issue.sh: unknown option %s\n' "$1" >&2; exit 1 ;;
     *)  [ -n "$issue" ] || issue="$1"; shift ;;
   esac
 done
 
-if [ -z "$issue" ] || { [ -z "$what" ] && [ -z "$bodyfile" ]; }; then
+if [ -n "$waive" ] && { [ -n "$what" ] || [ -n "$bodyfile" ] || [ "$noclose" -eq 1 ]; }; then
+  printf 'close-issue.sh: --waive is a close without a retrospective; it takes no --what, --body-file or --no-close\n' >&2
+  exit 1
+fi
+
+if [ -z "$issue" ] || { [ -z "$what" ] && [ -z "$bodyfile" ] && [ -z "$waive" ]; }; then
   printf 'usage: close-issue.sh <issue> --what "<one line>" [--since <iso8601>]\n' >&2
   printf '       close-issue.sh <issue> --body-file <path>\n' >&2
   printf '\n--what is the numbered list, compressed to the one line an ordinary\n' >&2
@@ -73,14 +101,26 @@ esac
 # exact substitution of a plausible answer for an honest one that the table
 # exists to prevent.
 spend=""
-if [ -n "$bodyfile" ]; then
+if [ -n "$bodyfile" ] || [ -n "$waive" ]; then
   :
+elif [ "$notcaptured" -eq 1 ]; then
+  spend='<!-- retrospective
+spend: not captured
+-->
+
+| Stage | Output tok | Input tok | Tool calls |
+|---|---:|---:|---:|
+| — | not captured | not captured | not captured |
+
+Closed from a session other than the one that did the work, so this session'"'"'s
+transcripts are not the work'"'"'s and every cell above is `not captured` rather
+than the closer'"'"'s spend.'
 elif [ -n "$since" ]; then
   spend="$("$here/retrospect.sh" --since "$since" || true)"
 else
   spend="$("$here/retrospect.sh" || true)"
 fi
-if [ -z "$bodyfile" ] && [ -z "$spend" ]; then
+if [ -z "$bodyfile" ] && [ -z "$waive" ] && [ -z "$spend" ]; then
   spend='<!-- retrospective
 spend: not captured
 -->
@@ -103,7 +143,9 @@ opened="$(gh issue view "$issue" "${gh_args[@]+"${gh_args[@]}"}" --json createdA
 
 body="$(mktemp "${TMPDIR:-/tmp}/orrery-retro.XXXXXX")"
 trap 'rm -f "$body"' EXIT
-if [ -n "$bodyfile" ]; then
+if [ -n "$waive" ]; then
+  printf '<!-- orrery-waiver\nreason: %s\n-->\n\nClosed without a retrospective, on purpose: %s\n' "$waive" "$waive" > "$body"
+elif [ -n "$bodyfile" ]; then
   # Posted verbatim. An assembled phase retrospective is the caller's work and
   # nothing here is entitled to append this session's numbers to it — those are
   # the closer's spend, not the phase's, and the two under one heading is
@@ -114,7 +156,10 @@ else
     printf '## Retrospective — #%s\n\n' "$issue"
     printf '%s\n\n' "$spend"
     printf '### What happened\n\n%s\n' "$what"
-    [ -n "$opened" ] && printf '\nOpened %s, closed %s.\n' "$opened" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [ -n "$opened" ]; then
+      if [ "$noclose" -eq 1 ]; then printf '\nOpened %s, posted before the merge %s.\n' "$opened" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      else printf '\nOpened %s, closed %s.\n' "$opened" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; fi
+    fi
   } > "$body"
 fi
 
@@ -125,5 +170,13 @@ if [ "$dry" -eq 1 ]; then
 fi
 
 gh issue comment "$issue" "${gh_args[@]+"${gh_args[@]}"}" --body-file "$body" >&2
-gh issue close "$issue" "${gh_args[@]+"${gh_args[@]}"}" >&2
-printf 'closed #%s, retrospective posted\n' "$issue" >&2
+if [ "$noclose" -eq 1 ]; then
+  printf 'retrospective posted; #%s left open for the merge to close\n' "$issue" >&2
+  exit 0
+fi
+if [ -n "$waive" ]; then
+  bash "$here/../../hooks/waiver.sh" "gh issue close #$issue" "$waive" command >&2 || true
+fi
+gh issue close "$issue" "${gh_args[@]+"${gh_args[@]}"}" --reason completed >&2
+if [ -n "$waive" ]; then printf 'closed #%s, waiver posted and recorded\n' "$issue" >&2
+else printf 'closed #%s, retrospective posted\n' "$issue" >&2; fi

@@ -159,7 +159,11 @@ otherwise.
    commit to the default branch, some require a branch and a reviewed PR. Prove
    the work with `verify` before making any claim about it, then land it the way
    that project lands things. Where the flow produces a PR, `Closes #N` on the
-   originating issue is what closes it.
+   originating issue is what closes it — so **post the retrospective of step 9
+   first**, with `--no-close`, and merge after. The merge then closes an issue
+   that already carries one. Merged first, the close is bare for as long as it
+   takes to write step 9, and a host running
+   `install/ci/retrospective-on-close.yml` reopens it in that window.
 
 9. **Retrospective logging**, in the table format
    `rules/process/retrospectives-always-use-the-table-format.md` fixes: the
@@ -169,7 +173,12 @@ otherwise.
    gets its own assembled one when it closes. `skills/build/close-issue.sh <N>
    --what "<one line>"` does the minimum form and closes the issue in one act,
    which is what `hooks/process-guard.sh` refuses a bare `gh issue close` in
-   favour of. Do not invent a second format — the rule exists because a second
+   favour of. Where a merge will do the closing, add `--no-close` and run it
+   before the merge (step 8). Closing an issue this session did not work on —
+   one the workflow reopened, say — add `--not-captured`, or the spend table
+   reports this session's numbers as that work's. Closing one without a
+   retrospective on purpose is `--waive "<reason>"`, which the workflow and the
+   waiver log both read. Do not invent a second format — the rule exists because a second
    one was invented, and "the issue or PR" was itself two readings that between
    them produced no retrospective at all.
 

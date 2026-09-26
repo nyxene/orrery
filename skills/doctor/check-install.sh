@@ -734,6 +734,10 @@ if [ -n "$counts" ]; then
     row "retrospectives" "nothing closed"
   elif [ "$n_bare" -gt 0 ]; then
     warn "$n_bare of $n_closed issues closed in $DAYS days carry no retrospective ($waived waived on purpose)"
+    # Most of these are closes a merge performed, which no hook sees. The
+    # workflow is the half that does; naming it here is what turns a number
+    # into a next step.
+    printf '    a merge closes issues past every hook — install/ci/retrospective-on-close.yml reopens those\n'
     row "retrospectives" "$n_bare/$n_closed missing, $waived waived"
   else
     ok "every issue closed in $DAYS days carries a retrospective ($n_closed of them)"
