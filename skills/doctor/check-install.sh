@@ -411,14 +411,19 @@ if [ "$have_jq" -eq 1 ] && [ -n "${install_path:-}" ] && [ -d "$install_path" ];
     rec_path="${recorded%%	*}"
     rec_digest="${recorded##*	}"
 
-    if [ -z "$recorded" ]; then
-      printf '%s\t%s\n' "$install_path" "$now" > "$DIGEST_FILE"
-      warn "cache baseline recorded ($install_path) — first run here, so there is nothing to compare against yet"
-      row "cache unedited" "baseline recorded"
-    elif [ "$rec_path" != "$install_path" ]; then
-      printf '%s\t%s\n' "$install_path" "$now" > "$DIGEST_FILE"
-      ok "install path changed since last check — new baseline recorded for $install_path"
-      row "cache unedited" "re-baselined (new install)"
+    # The write is checked: a baseline reported as recorded and never written
+    # makes every later run another "first run", and nothing says so.
+    if [ -z "$recorded" ] || [ "$rec_path" != "$install_path" ]; then
+      if ! printf '%s\t%s\n' "$install_path" "$now" 2>/dev/null > "$DIGEST_FILE"; then
+        warn "could not record a cache baseline at $DIGEST_FILE — not writable here, so whether the cache was edited cannot be checked"
+        row "cache unedited" "unknown (baseline not writable)"
+      elif [ -z "$recorded" ]; then
+        warn "cache baseline recorded ($install_path) — first run here, so there is nothing to compare against yet"
+        row "cache unedited" "baseline recorded"
+      else
+        ok "install path changed since last check — new baseline recorded for $install_path"
+        row "cache unedited" "re-baselined (new install)"
+      fi
     elif [ "$rec_digest" = "$now" ]; then
       ok "cache contents unchanged since the last check"
       row "cache unedited" "yes"
@@ -760,10 +765,15 @@ fi
 # And a repository with no workflows at all gets the warning too. The previous
 # shape said nothing there, which is silence for exactly the repository with
 # zero merge-side coverage.
-if [ -d "$PROJECT/.github/workflows" ] \
-   && grep -rlq 'names-an-issue' "$PROJECT/.github/workflows" 2>/dev/null; then
+if grep -rlq 'names-an-issue' "$PROJECT/.github/workflows" 2>/dev/null; then
   ok "a workflow refuses a pull request that names no issue"
   row "pr gate" "present"
+# A project's own gate has to read the body too, so that is what it is found by;
+# its matcher is not this library's, and a notifier reads the body too, so the
+# claim stops at "likely" and carries no ✓.
+elif grep -rlq 'github.event.pull_request.body' "$PROJECT/.github/workflows" 2>/dev/null; then
+  warn "a workflow hands the pull request body to a check — likely the project's own issue gate; what it refuses is not verified here"
+  row "pr gate" "own (unverified)"
 else
   warn "nothing refuses a pull request that names no issue — a merge can close an issue no pull request named, and no hook can see it"
   row "pr gate" "missing"
@@ -774,8 +784,8 @@ if [ "$fail" -eq 0 ]; then echo "doctor: clean"; else echo "doctor: $fail area(s
 
 # --- append a compact row to the per-project log for trend-analysis ---------
 mkdir -p "$LOG_DIR" 2>/dev/null
-[ -f "$LOG" ] || printf '# orrery doctor log — %s\n\nOldest run at top, newest at the bottom — check the tail for the latest.\n\n---\n' "$PROJECT" > "$LOG"
-{
+[ -f "$LOG" ] || printf '# orrery doctor log — %s\n\nOldest run at top, newest at the bottom — check the tail for the latest.\n\n---\n' "$PROJECT" 2>/dev/null > "$LOG"
+if {
   echo
   echo "## $(date -u +%Y-%m-%dT%H:%M:%SZ) — $([ "$fail" -eq 0 ] && echo clean || echo "$fail flagged")"
   echo
@@ -784,7 +794,10 @@ mkdir -p "$LOG_DIR" 2>/dev/null
   for i in "${!ROW_NAME[@]}"; do
     echo "| ${ROW_NAME[$i]} | ${ROW_RESULT[$i]} |"
   done
-} >> "$LOG"
-echo "(log: $LOG)"
+} 2>/dev/null >> "$LOG"; then
+  echo "(log: $LOG)"
+else
+  echo "(log not written: $LOG is not writable here)"
+fi
 
 exit "$fail"
