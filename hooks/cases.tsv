@@ -75,6 +75,102 @@ deny	cat .env
 deny	cat config/credentials.json
 allow	cat .env.example
 
+# --- 1a, 1c and 2 judge the words a command is handed, not its text ---------
+# These sections grepped the whole line, so a protected name refused a command
+# wherever it stood. A host project agent refused for adding two of them to a
+# deny list in its own source moved the edit into a script file and ran that;
+# and the issue describing the defect could not be filed, because its body
+# named them. Each allow below was refused before this change.
+allow	gh issue create --title "guard" --body "a name is text here: .env, .netrc, .npmrc, ~/.ssh/id_rsa, /etc/hosts"
+allow	git commit -m "fix: deny reads of .netrc and .npmrc in the pane profile"
+allow	sed -i 's/DENY: &\[&str\] = &\[/&".netrc", ".npmrc", /' src/sandbox.rs
+allow	echo "add .env to .gitignore"
+allow	cat > src/deny.rs <<'EOF'\npub const DENY: &[&str] = &[\n    ".netrc",\n    ".npmrc",\n];\nEOF
+allow	git commit -m "docs: what /etc/hosts and ~/Library/Keychains hold"
+allow	rg -n 'secret' .env.example config/.env.sample
+# A word that *is* the path is still refused, however it is quoted or reached.
+deny	grep API_KEY .env
+deny	cat < .env
+deny	source .env
+deny	cat "$HOME/.netrc"
+deny	cat '.npmrc'
+deny	echo "$(cat .env)"
+deny	cp config/credentials.json /tmp/x
+deny	ls "$HOME/Library/Keychains"
+deny	cat /etc/hosts
+deny	docker run --env-file=.env img
+# One example file exempts only itself. It used to exempt the whole command.
+deny	cat .env .env.example
+# Inline interpreter code has no words to read, so a name there is still
+# matched loosely — the read nothing else catches where the sandbox is off.
+# The cost is kept on purpose: code that only writes the name as text is
+# refused too, and the denial names the Edit and Write tools as the way.
+deny	bash -c "cat .env"
+deny	eval "cat ~/.netrc"
+deny	python3 -c "print(open('.env').read())"
+# One per class, each caught by its inline check alone: inside one quoted word
+# no path is a whole word, and neither names a file the secrets check knows.
+# The mutation pass found both inline checks held by nothing.
+deny	python3 -c "print(open('/etc/hosts').read())"
+deny	python3 -c "print(open('$HOME/.aws/config').read())"
+deny	python3 - <<'PY'\nprint(open('.netrc').read())\nPY
+deny	python3 - <<'PY'\nsrc = src.replace('DENY = [', 'DENY = [".netrc", ')\nPY
+# The first draft of this change judged words per segment, and the segmenter
+# splits inside quotes at `<`, `>`, `$(` and backticks — so a segment began
+# with the tail of a quoted string and the path after it was swallowed. An
+# audit found each of these allowed; every one was refused before the change.
+deny	grep KEY "$(pwd)" .env
+deny	cat "`pwd`/x" .env
+deny	grep -q "<<" .env
+deny	ls "$(pwd)" /etc
+# Words after a heredoc delimiter are arguments: this reads the file.
+deny	cat <<EOF .env\nx\nEOF
+# Inline code under its other spellings, and code arriving on stdin.
+deny	node -p "require('fs').readFileSync('.env','utf8')"
+deny	php -r 'readfile(".env");'
+deny	deno eval "Deno.readTextFileSync('.env')"
+deny	bash <<<"cat .env"
+deny	echo 'cat .env' | bash
+deny	awk 'BEGIN{while((getline l < ".env")>0)print l}'
+# ANSI-C quoting spells a name without its letters.
+deny	cat $'\x2eenv'
+deny	cat $'\056netrc'
+# The second audit. A backslash inside double quotes escapes only what bash
+# says it does, so a search for the name is a search:
+allow	rg "\.env" src
+allow	grep -rn "\.netrc" .
+# Substitutions run inside arithmetic, inside a parameter expansion and inside
+# an unquoted heredoc body; each was allowed before this change, by accident.
+deny	echo $(( $(cat .env) ))
+deny	echo ${X:-$(cat .env)}
+deny	cat <<EOF\n$(cat .env)\nEOF
+allow	cat <<'EOF'\n$(cat .env)\nEOF
+deny	cat $'.env'
+# The third audit. An empty unquoted body ends on the very next line, and the
+# command after it runs; a heredoc inside `$(…)` inside an unquoted body has
+# a queue of its own. Bash runs the read in both, and both were allowed.
+deny	cat <<EOF\nEOF\ncat .env
+deny	cat <<EOF\n$(cat <<X\nX\ncat .env\n)\nEOF\necho ok
+allow	cat <<EOF\n$(cat <<X\n.env\nX\n)\nEOF
+deny	cat <<EOF\n`cat .env`\nEOF
+# `\U` is not `\u`: the lexer reads the command before lowercasing it.
+deny	cat $'\U0000002eenv'
+# A backslash quotes a delimiter as surely as quotes do: the body is data.
+allow	cat <<\EOF\ncat .env\nEOF
+# Data handed to `cat`, and a different file — allowed, and pinned so.
+allow	cat <<< .env
+allow	cat "my .env"
+# A long single-dash flag is not an inline-code flag.
+allow	git commit -m "about .env" && python3 -Werror script.py
+# A comment is not lexed.
+allow	ls # see .env
+# An unquoted `${HOME}` is one word, not a brace group.
+deny	cat ${HOME}/.aws/credentials
+# And the shapes that must stay allowed beside them.
+allow	git commit -m "$(cat <<'EOF'\nfix: deny .netrc and ~/.ssh in the profile\nEOF\n)"
+allow	python3 tools/check.py --names "deny .netrc reads"
+allow	bash scripts/gates.sh
+
 # --- 3a. destructive git behind a global option -------------------------------
 # THE ONLY FORM THIS SECTION STILL JUDGES. The plain spellings below are marked
 # `allow` on purpose: they are refused by `hooks/permissions.json`, and a deny

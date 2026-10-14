@@ -12,9 +12,16 @@ set -uo pipefail
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 fail=0
+# Every gate runs without the GIT_* environment git exports into this hook. From
+# a linked worktree that includes an absolute GIT_DIR, and a suite that builds a
+# git fixture with `git -C "$tmp"` then writes into the repository being
+# committed — setting `core.bare` and committing its fixture onto your branch is
+# what that looked like where it was found. The gates run from the top of the
+# tree and find the repository on their own.
+git_vars="$(env | grep '^GIT_' | cut -d= -f1)"
 run() { # $1 = name, rest = command
   local name="$1"; shift
-  if out=$("$@" 2>&1); then
+  if out=$( for v in $git_vars; do unset "$v"; done; "$@" 2>&1 ); then
     printf '\033[32m✓\033[0m %s\n' "$name"
   else
     printf '\033[31m✗\033[0m %s\n' "$name"

@@ -511,10 +511,307 @@ interpreters='node|python|python2|python3|ruby|perl|php|osascript|bash|sh|zsh|de
 # corpus asserts the refusal, and the refusal still happens — from a layer the
 # consumer does not have.
 
+# Refusing rather than letting the clock decide, and ahead of every section that
+# walks segments, which since sections 1 and 2 do is all of them. Every segment
+# costs a few processes — `verb_of` is an awk, and greps follow it — so the cost
+# is mostly per segment: 3 KB carrying 500 substitutions took 23s. Not only,
+# though, which this comment said for months: macOS awk walks a string by
+# `substr`, which costs per byte, so a single flat 200 KB command takes about
+# 18 s here before this change and 21 s after it, and passes the timeout with no
+# segment cap to stop it. That limit is not closed by this one. The hook's timeout is 15 seconds,
+# and a guard killed by SIGTERM runs neither its checks nor its EXIT trap, so
+# above roughly 300 segments every rule in this file silently stopped applying.
+#
+# 100 is two orders of magnitude above real work — `ls -la` is one segment, a
+# pipeline with a substitution is four, the largest thing measured here was six.
+# It is not an order of magnitude inside the timeout, which this comment claimed
+# until it was measured: 99 flat segments take 2 to 5 s on the machine this is
+# developed on, depending on load, and about 10% more when a protected name sends
+# sections 1 and 2 into their per-segment walk — up to a third of the 15 s
+# budget, and an audit saw 14 s for a heavier draft under load. Lower this before adding per-segment
+# work, and re-measure with the walk triggered. A command past it is a
+# generated payload, and the answer to one is to refuse and let a person split
+# it, not to check half of it and report success.
+MAX_SEGMENTS=100
+seg_count="$(segments "$cmd" | grep -c . || true)"
+if [ "${seg_count:-0}" -gt "$MAX_SEGMENTS" ]; then
+  deny "This command holds $seg_count separate segments and the guard checks at most $MAX_SEGMENTS. Past that it cannot finish inside its own timeout, and a guard that runs out of time does not deny — it stops applying entirely. Split the command, or write it to a script and run that."
+fi
+
+# Where a path is judged: the words a command is handed, never its text.
+#
+# Sections 1 and 2 used to grep the whole command line for a protected name, so
+# a name refused the command wherever it stood — as the file `cat` is about to
+# open, and equally as a word in a commit message, an issue body, a `sed`
+# expression or a source file being written through a heredoc. Sections 3a and
+# 3a-bis had that defect first and were narrowed to what executes; these were
+# the last whole-text matchers left. What it cost was not only the refusals: a
+# host project agent refused for adding two of these names to a deny list in
+# its own source moved the same edit into a script file, which this guard does
+# not read, and ran that. A false refusal is what teaches the walk-around.
+#
+# So a name is judged in one of two ways.
+#
+#   * As a word. The whole command is lexed into the words the shell hands
+#     over, quotes removed, and a word is refused only when it *is* the path:
+#     the whole word, after an optional `NAME=` or `--flag=`. `$(…)` and
+#     backticks are lexed as commands of their own, inside double quotes too,
+#     and a redirect target is a word of its own. A heredoc body is not read
+#     here, though words after its delimiter on the same line are.
+#
+#     Lexed from the command rather than from `segments`, on purpose. The
+#     segmenter splits inside quotes at `<`, `>`, `$(` and backticks, which is
+#     right for finding verbs and wrong for finding words: a segment that starts
+#     with the tail of a quoted string opens a quote that never closes, and the
+#     path after it disappears into it. `grep KEY "$(pwd)" .env` was allowed
+#     that way in the first draft of this change, which an audit caught.
+#
+#   * As text, for code that has no words to read. Inline interpreter code —
+#     an inline-code flag, a heredoc or herestring to an interpreter, `eval`, an
+#     `awk` program — and an interpreter handed no file, which reads its code
+#     from stdin (`echo … | bash`). An inline read of a private key is the case
+#     the section-1 note below says nothing else catches, so the name is matched
+#     loosely there, as it always was. That keeps one false refusal on purpose:
+#     inline code that only *writes* a name is refused too, and its denial says
+#     to put that text into a file with the Edit or Write tool instead.
+#
+# The silence this trades for: a name that reaches a command some other way than
+# as a word — assembled from variables, or read from a file — exactly as before.
+command_words() {
+  awk '
+  # Lowercased here, on the way out, and not before lexing: `\U` and `\u` are
+  # different escapes, and so are a heredoc delimiter and its lowercase.
+  function emit() { if (inw) { gsub(/\n/, " ", w); print tolower(w) } w = ""; inw = 0 }
+  # Is the line after position p the terminator of queued heredoc k? Sets tlen
+  # to the length of that line, so the caller can step over it.
+  function is_term(p, k,    e, line) {
+    e = index(substr(buf, p + 1), "\n")
+    line = (e > 0) ? substr(buf, p + 1, e - 1) : substr(buf, p + 1)
+    tlen = length(line)
+    if (hdd[k]) sub(/^\t+/, "", line)
+    return line == hd[k]
+  }
+  function has_term(p, k,    rest, m, t, b2) {
+    rest = substr(buf, p + 1); m = split(rest, L, "\n")
+    for (t = 1; t <= m; t++) { b2 = L[t]; if (hdd[k]) sub(/^\t+/, "", b2); if (b2 == hd[k]) return 1 }
+    return 0
+  }
+  # Enter the next queued body at position p (a newline). A quoted delimiter
+  # makes the body pure data: skipped. An unquoted one expands `$(…)` and
+  # backticks, so the body is walked in heredoc mode, where only those open a
+  # command. One that never closes is neither: hiding the rest of the command
+  # is worse than reading it.
+  function next_body(p,    len) {
+    while (cur <= hdn) {
+      if (!has_term(p, cur)) { cur++; continue }
+      # An empty unquoted body: its terminator is the very next line, which the
+      # walk below only tests after a newline it has not reached yet. Missing
+      # that held heredoc mode open over the commands that followed, and bash
+      # runs them. Found by the third audit of this change.
+      if (!hdq[cur] && is_term(p, cur)) { p += tlen + 1; cur++; continue }
+      if (!hdq[cur]) { inH = 1; return p }
+      len = 0
+      while (!is_term(p + len, cur)) { e2 = index(substr(buf, p + len + 1), "\n"); len += e2 }
+      p += len + tlen + 1; cur++
+    }
+    inH = 0; hdn = bs[depth]; cur = hdn + 1
+    return p
+  }
+  { buf = buf (NR > 1 ? "\n" : "") $0 }
+  END {
+    n = length(buf); w = ""; inw = 0; inS = 0; inD = 0; inH = 0; depth = 0; hdn = 0; cur = 1; bs[0] = 0
+    for (i = 1; i <= n; i++) {
+      c = substr(buf, i, 1); nx = (i < n) ? substr(buf, i + 1, 1) : ""
+      if (inS) { if (c == "\047") inS = 0; else w = w c; continue }
+      # Inside double quotes a backslash escapes only what bash says it does.
+      # Escaping everything turned `rg "\.env" src`, a search, into the bare
+      # name, and the first version of this lexer refused it.
+      if (c == "\\" && i < n) {
+        i++; ch = substr(buf, i, 1)
+        if (inH) continue
+        if (inD && index("$`\042\\\n", ch) == 0) { w = w c ch; continue }
+        if (ch != "\n") { w = w ch; inw = 1 }
+        continue
+      }
+      # A substitution is a command of its own — inside double quotes, inside
+      # an unquoted heredoc body, inside `$((…))` and inside `${…}`, because
+      # bash runs it in all four. The word around it is set aside and resumed
+      # when it closes. Arithmetic is not skipped: `$((` opens a substitution
+      # here, its second `(` is a separator, its operands are words, and a `<<`
+      # inside it is a shift rather than a heredoc.
+      if (c == "$" && nx == "(") {
+        depth++; sw[depth] = w; si[depth] = inw; sd[depth] = inD; sh[depth] = inH
+        ar[depth] = (substr(buf, i + 2, 1) == "("); bk[depth] = 0
+        # Heredocs queue per substitution. One opened inside `$(…)` inside an
+        # unquoted body must not send the walk back into the outer body, which
+        # skipped every command between the two terminators.
+        sc[depth] = cur; bs[depth] = hdn; cur = hdn + 1
+        w = ""; inw = 0; inD = 0; inH = 0; i++; continue
+      }
+      # A backtick is the same substitution with a different closer, so it takes
+      # the same stack — heredoc queue included.
+      if (c == "`" && depth > 0 && bk[depth]) {
+        emit(); w = sw[depth]; inw = si[depth]; inD = sd[depth]; inH = sh[depth]; hdn = bs[depth]; cur = sc[depth]; depth--; continue
+      }
+      if (c == "`") {
+        depth++; sw[depth] = w; si[depth] = inw; sd[depth] = inD; sh[depth] = inH
+        ar[depth] = 0; bk[depth] = 1; sc[depth] = cur; bs[depth] = hdn; cur = hdn + 1
+        w = ""; inw = 0; inD = 0; inH = 0; continue
+      }
+      if (c == ")" && depth > 0 && !bk[depth] && !inD && !inH) { emit(); w = sw[depth]; inw = si[depth]; inD = sd[depth]; inH = sh[depth]; hdn = bs[depth]; cur = sc[depth]; depth--; continue }
+      if (inH) {
+        if (c == "\n" && is_term(i, cur)) { i += tlen + 1; cur++; i = next_body(i) }
+        continue
+      }
+      if (inD) { if (c == "\042") inD = 0; else w = w c; continue }
+      # ANSI-C quoting, decoded, because it is how a name is spelled without
+      # its letters: an audit of this change found a dollar-quoted dot passing
+      # here after the old whole-text match had refused it. `\u` and `\U` are
+      # decoded below 128, which is every character a protected name uses.
+      if (c == "$" && nx == "\047") {
+        j = i + 2; inw = 1
+        while (j <= n) {
+          ch = substr(buf, j, 1)
+          if (ch == "\047") break
+          if (ch == "\\" && j < n) {
+            j++; e = substr(buf, j, 1)
+            if (e == "x" || e == "u" || e == "U") {
+              lim = (e == "x") ? 2 : (e == "u") ? 4 : 8
+              h = ""; while (length(h) < lim && index("0123456789abcdefABCDEF", substr(buf, j + 1, 1)) > 0) { j++; h = h substr(buf, j, 1) }
+              v = 0; for (k = 1; k <= length(h); k++) v = v * 16 + index("0123456789abcdef", tolower(substr(h, k, 1))) - 1
+              w = w ((v > 0 && v < 128) ? sprintf("%c", v) : "?")
+            } else if (e ~ /[0-7]/) {
+              v = e + 0; for (k = 0; k < 2 && substr(buf, j + 1, 1) ~ /[0-7]/; k++) { j++; v = v * 8 + substr(buf, j, 1) }
+              w = w sprintf("%c", v)
+            } else if (e == "n") w = w "\n"
+            else if (e == "t") w = w "\t"
+            else w = w e
+            j++; continue
+          }
+          w = w ch; j++
+        }
+        i = j; continue
+      }
+      if (c == "\047") { inS = 1; inw = 1; continue }
+      if (c == "\042") { inD = 1; inw = 1; continue }
+      # `${HOME}` is one word. The segmenter splits on braces; this must not.
+      # Only a plain name is taken whole: `${X:-$(cmd)}` runs `cmd`, so any
+      # other expansion is lexed through and its substitution is seen.
+      if (c == "$" && nx == "{") {
+        j = index(substr(buf, i), "}")
+        if (j > 0 && substr(buf, i, j) ~ /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/) { w = w substr(buf, i, j); inw = 1; i += j - 1; continue }
+      }
+      # A heredoc: its delimiter is queued and its body entered at the next
+      # newline, so words after the delimiter on this line are still read —
+      # `cat <<EOF .env` reads the file and ignores stdin. A herestring is not
+      # one: `<<<` falls through to the separator branch below.
+      if (c == "<" && nx == "<" && substr(buf, i + 2, 1) != "<" && !ar[depth]) {
+        emit(); j = i + 2; dash = 0
+        while (j <= n && substr(buf, j, 1) == "-") { dash = 1; j++ }
+        while (j <= n && substr(buf, j, 1) == " ") j++
+        q = substr(buf, j, 1); if (q == "\047" || q == "\042") j++; else q = ""
+        # `<<\EOF` quotes the delimiter as surely as `<<'EOF'` does.
+        bq = 0; if (q == "" && substr(buf, j, 1) == "\\") { bq = 1; j++ }
+        d = ""
+        while (j <= n) {
+          ch = substr(buf, j, 1)
+          if (q != "" && ch == q) { j++; break }
+          if (q == "" && index(" \t\n;&|)<>", ch) > 0) break
+          d = d ch; j++
+        }
+        if (d ~ /^[A-Za-z_][A-Za-z0-9_]*$/) { hdn++; hd[hdn] = d; hdd[hdn] = dash; hdq[hdn] = (q != "" || bq) }
+        i = j - 1; continue
+      }
+      if (c == "\n") {
+        emit()
+        if (hdn >= cur) i = next_body(i)
+        continue
+      }
+      # A comment is not lexed: `#` starting a word runs to the end of the line.
+      if (c == "#" && !inw) { while (i < n && substr(buf, i + 1, 1) != "\n") i++; continue }
+      if (index(" \t;&|()<>", c) > 0) { emit(); continue }
+      w = w c; inw = 1
+    }
+    emit()
+  }' <<<"$1"
+}
+
+# Words that consume the rest of a command as code. `-c`, `-e` and `-E` are the
+# common ones; `-p` (node, bun, perl), `-r` (php) and the long and subcommand
+# spellings were missed by the first draft of this change, which an audit
+# caught: each was refused before it and allowed after. Short bundles only, up
+# to three letters, so a long single-dash flag such as `-Werror` is not one.
+inline_flag='(^|[[:space:]])(-[a-z]?[a-z]?[cepr]|--eval|--print|--command|eval)([[:space:]"'"'"'=]|$)'
+
+# The three protected classes, as whole words. Lowercase throughout, because the
+# filesystem this runs on is case-insensitive — see the note on section 1 below.
+word_prefix='^(-{0,2}[a-z0-9_-]+=)?'
+etc_word="${word_prefix}"'(/etc|/private/etc|/private/var/root|/var/root|/var/db)(/.*)?$'
+home_word="${word_prefix}"'(~|\$home|\$\{home\})/(\.(ssh|aws|gnupg|kube|docker|npmrc|netrc|git-credentials)|library/(keychains|cookies|messages|mail|safari|accounts|suggestions|autosave information))(/.*)?$'
+secret_word="${word_prefix}"'(.*/)?(\.env(\.[a-z0-9_-]+)?|credentials\.json|id_rsa|id_ed25519|id_ecdsa|\.pem|\.p12|\.pfx|\.jks|\.keystore|\.npmrc|\.netrc|\.git-credentials)$'
+# The example files a project commits on purpose. Exempt one at a time: the old
+# test exempted a whole command when any of them appeared anywhere in it, so
+# `cat .env .env.example` passed.
+example_word='(^|/|=)\.env\.(example|sample|template)$'
+
+# And the same three, loosely, for code.
+etc_text='(^|[[:space:]"'"'"'=])(/etc|/private/etc|/private/var/root|/var/root|/var/db)(/|[[:space:]"'"'"']|$)'
+home_text='(^|[[:space:]"'"'"'=])(~|\$home|\$\{home\})/(\.(ssh|aws|gnupg|kube|docker|npmrc|netrc|git-credentials)|library/(keychains|cookies|messages|mail|safari|accounts|suggestions|autosave information))([/[:space:]"'"'"']|$)'
+secret_text='(^|[/[:space:]"'"'"'])((\.env(\.[a-z0-9_-]+)?)|credentials\.json|id_rsa|id_ed25519|id_ecdsa|\.pem|\.p12|\.pfx|\.jks|\.keystore|\.npmrc|\.netrc|\.git-credentials)([/[:space:]"'"'"']|$)'
+example_text='\.env\.(example|sample|template)([/[:space:]"'"'"']|$)'
+
+etc_hit=""; home_hit=""; secret_hit=""; inline_hit=""
+
+words="$(command_words "$cmd")"
+grep -qxE "$etc_word" <<<"$words" && etc_hit=yes
+grep -qxE "$home_word" <<<"$words" && home_hit=yes
+grep -xE "$secret_word" <<<"$words" | grep -qvE "$example_word" && secret_hit=yes
+
+# The code path costs a process or two per segment, so it runs only when a
+# protected name appears in the command at all — which almost no command does.
+stripped="$(sed -E "s#$example_text# #g" <<<"$lower")"
+if grep -qE "$etc_text|$home_text|$secret_text" <<<"$stripped"; then
+  while IFS= read -r seg; do
+    [ -z "${seg// /}" ] && continue
+    v="$(verb_of "$seg")"
+    code=""
+    # The code is read from the whole command, not from this segment: the
+    # segmenter splits inside quotes at `<` and `>`, so `getline < "x"` in an
+    # awk program, or a comparison in inline Python, leaves the rest of the
+    # program in a segment of its own.
+    case "$v" in
+      eval|awk|gawk|mawk|nawk) code="$lower" ;;
+    esac
+    if [ -z "$code" ] && grep -qxE "$interpreters" <<<"$v"; then
+      if grep -qE "$inline_flag" <<<"$seg" || grep -q '<<' <<<"$seg"; then
+        code="$lower"
+      # Handed no file, an interpreter reads its code from stdin — a pipe or a
+      # herestring, which the segmenter puts in a segment of its own.
+      elif ! awk -v v="$v" '{
+          for (i = 1; i <= NF; i++) {
+            t = $i; gsub(/[\042\047]/, "", t); sub(".*/", "", t)
+            if (seen && t != "" && t !~ /^-/) found = 1
+            if (t == v) seen = 1
+          }
+        } END { exit !found }' <<<"$seg"; then
+        code="$lower"
+      fi
+    fi
+    [ -n "$code" ] || continue
+    text="$(sed -E "s#$example_text# #g" <<<"$code")"
+    grep -qE "$etc_text" <<<"$text" && { etc_hit=yes; inline_hit=yes; }
+    grep -qE "$home_text" <<<"$text" && { home_hit=yes; inline_hit=yes; }
+    grep -qE "$secret_text" <<<"$text" && { secret_hit=yes; inline_hit=yes; }
+  done < <(segments "$lower")
+fi
+
+inline_note=""
+[ -n "$inline_hit" ] && inline_note=" It was named inside inline interpreter code, where a path cannot be told from text, so it is refused even when the code only writes the name. To put text that names one into a file, use the Edit or Write tool."
+
 # 1a. Secrets and machine config: no access at all, read included — the risk here
 #     is exfiltration, and `cat` is as dangerous as `rm`.
-if grep -qE '(^|[[:space:]"'"'"'=])(/etc|/private/etc|/private/var/root|/var/root|/var/db)(/|[[:space:]"'"'"']|$)' <<<"$lower"; then
-  deny "Access to a system config directory (/etc, /private/etc, /var/root, /var/db) is not allowed."
+if [ -n "$etc_hit" ]; then
+  deny "Access to a system config directory (/etc, /private/etc, /var/root, /var/db) is not allowed.$inline_note"
 fi
 
 # Section 1b lived here: deny-by-default over the system trees, admitting a
@@ -567,16 +864,14 @@ fi
 # flags are not. `git branch -D` a few lines down is matched against `$cmd`
 # deliberately, because `-d` and `-D` are different commands. Both rules have a
 # case in `cases.tsv` now, so neither can be "tidied" into the other.
-if grep -qiE '(^|[[:space:]])(~|\$HOME)/\.(ssh|aws|gnupg|kube|docker|npmrc|netrc|git-credentials)([/[:space:]]|$)' <<<"$cmd" \
-  || grep -qiE '(^|[[:space:]"'"'"'=])(~|\$HOME)/library/(keychains|cookies|messages|mail|safari|accounts|suggestions|autosave information)([/[:space:]"'"'"']|$)' <<<"$cmd"; then
-  deny "Access to a credential or personal-data store under the home folder (~/.ssh, ~/.aws, ~/Library/Keychains, ~/Library/Cookies, ~/Library/Messages, ...) is not allowed."
+if [ -n "$home_hit" ]; then
+  deny "Access to a credential or personal-data store under the home folder (~/.ssh, ~/.aws, ~/Library/Keychains, ~/Library/Cookies, ~/Library/Messages, ...) is not allowed.$inline_note"
 fi
 
 # --- 2. Secrets: read/print .env, credentials, keys, tokens, certs -------
-secret_pattern='(^|[/[:space:]"'"'"'])((\.env(\.[a-zA-Z0-9_-]+)?)|credentials\.json|id_rsa|id_ed25519|id_ecdsa|\.pem|\.p12|\.pfx|\.jks|\.keystore|\.npmrc|\.netrc|\.git-credentials)([/[:space:]"'"'"']|$)'
-if grep -qE "$secret_pattern" <<<"$lower" \
-  && ! grep -qE '\.env\.(example|sample|template)([/[:space:]"'"'"']|$)' <<<"$lower"; then
-  deny "Reading or printing secret files (.env, credentials.json, private keys, certs, tokens) is not allowed."
+# Judged with sections 1a and 1c, in the segment walk above.
+if [ -n "$secret_hit" ]; then
+  deny "Reading or printing secret files (.env, credentials.json, private keys, certs, tokens) is not allowed.$inline_note"
 fi
 
 # --- 3. Destructive operations --------------------------------------------
@@ -705,25 +1000,6 @@ delete_words='(^|[^a-z0-9_-])(rm|rmdir|unlink|shred|srm|rmtree|remove_tree|remov
 # at the head of a segment misses `bash -c "rm -rf ~/dev"`. So: the segment's
 # verb is a delete, or it carries a flag that deletes (`find -delete`, and
 # `rsync --delete`, whose second dash the old pattern did not allow).
-# Refusing rather than letting the clock decide. Every segment costs three
-# processes — `verb_of` is an awk, and two greps follow it — so the cost is per
-# segment and not per byte: a flat 18 KB command checks in 0.4s, while 3 KB
-# carrying 500 substitutions takes 23s. The hook's timeout is 15 seconds, and a
-# guard killed by SIGTERM runs neither its checks nor its EXIT trap, so above
-# roughly 300 segments every rule in this file silently stopped applying.
-#
-# 100 is two orders of magnitude above real work — `ls -la` is one segment, a
-# pipeline with a substitution is four, the largest thing measured here was six —
-# and it leaves the whole check an order of magnitude inside the timeout on a
-# machine slower than the one this was measured on. A command past it is a
-# generated payload, and the answer to one is to refuse and let a person split
-# it, not to check half of it and report success.
-MAX_SEGMENTS=100
-seg_count="$(segments "$cmd" | grep -c . || true)"
-if [ "${seg_count:-0}" -gt "$MAX_SEGMENTS" ]; then
-  deny "This command holds $seg_count separate segments and the guard checks at most $MAX_SEGMENTS. Past that it cannot finish inside its own timeout, and a guard that runs out of time does not deny — it stops applying entirely. Split the command, or write it to a script and run that."
-fi
-
 hits=""
 while IFS= read -r seg; do
   [ -z "${seg// /}" ] && continue
