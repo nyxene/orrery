@@ -42,7 +42,7 @@ show_difference() { # $1 = expected, $2 = actual
 # Everything this repository holds that makes a claim about itself. `.githooks`
 # is in the list because the hook names the gates it runs, and a gate whose
 # files are not here is red on the first commit rather than on some later one.
-SCOPE=(CANON.md README.md CLAUDE.md CHANGELOG.md .githooks
+SCOPE=(CANON.md README.md .claude/CLAUDE.md CHANGELOG.md .githooks
        skills agents rules hooks install)
 
 # The same list without the changelog, for the counting pass below. A release
@@ -214,7 +214,7 @@ elif ! gh_out=$(gh label list --limit 100 2>&1); then
 else
   have=$(cut -f1 <<<"$gh_out")
   absent=""
-  for l in $(grep -oE '`(type|area|priority)/[a-z|\\]+`' CLAUDE.md | tr -d '`' \
+  for l in $(grep -oE '`(type|area|priority)/[a-z|\\]+`' .claude/CLAUDE.md | tr -d '`' \
                | awk -F/ '{n=split($2,v,/[\\|]+/); for(i=1;i<=n;i++) if(v[i]!="") print $1"/"v[i]}'); do
     case "$l" in */\*) continue ;; esac
     grep -qxF "$l" <<<"$have" || absent="$absent $l"
