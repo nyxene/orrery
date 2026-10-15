@@ -395,6 +395,40 @@ allow	pnpm dlx some-tool --out /Users/someone/dev
 deny	python3 -c "import shutil; shutil.rmtree('/Users/someone/dev')"
 deny	python3 -c "import os; os.remove('/Users/someone/dev/x')"
 deny	node -e "require('fs').rmSync('/Users/someone/dev',{recursive:true})"
+# A delete word inside inline code is matched in its strings too, on purpose.
+# A Python heredoc writing a sentence with "remove" in it was refused as
+# deleting `json,`, and the session it refused walked around it. Emptying the
+# literals first was tried, and three audit rounds each beat it with a wrong
+# quote pairing that emptied a real call. So these stay refused, and the denial
+# now names the Edit and Write tools as the way to write such text.
+deny	python3 - <<'PY'\nreason += " a later tidy-up would remove it."\nopen("tools/size-budget.json", "w").write(reason)\nPY
+deny	python3 -c "print('rm -rf is dangerous')"
+deny	bash -c 'echo "rm is fine"'
+deny	python3 - <<'PY'\nimport os\nos.remove("/Users/someone/dev/x")\nPY
+deny	bash -c 'rm -rf "/Users/someone/dev"'
+deny	python3 -c "import os; getattr(os, 'remove')('/Users/someone/dev/x')"
+deny	bash -c 'x="rm"; $x -rf /Users/someone/dev/x'
+# Every pairing the audits used to beat the emptying, pinned so it cannot
+# return: comments with an apostrophe, one or two; a quote inside the other
+# kind of literal; JS template, regex and block-comment literals; osascript,
+# which can only delete from inside a string.
+deny	python3 - <<'PY'\nimport os\n# it's fine\n\nos.remove("/Users/someone/dev/x")\nprint('done')\nPY
+deny	python3 - <<'PY'\nimport os\n# don't\nos.remove('/Users/someone/dev/x')\nPY
+deny	python3 - <<'PY'\nimport os\n# don't\nos.remove("/Users/someone/dev/x")\n# can't\nPY
+deny	python3 -c "import os # don't\nos.remove('/Users/someone/dev/x') # can't"
+deny	python3 - <<'PY'\nimport os\nprint('say "hi')\nos.remove("/Users/someone/dev/x")\nPY
+deny	node -e 'const fs=require("fs"); console.log(`it"s`); fs.rmSync("/Users/someone/dev/x")'
+deny	node -e 'const fs=require("fs"); const re=/"/; fs.rmSync("/Users/someone/dev/x")'
+deny	node -e 'const fs=require("fs"); /* it"s */ fs.rmSync("/Users/someone/dev/x"); /* it"s */'
+deny	osascript -e 'do shell script "rm -rf /Users/someone/dev/x"'
+# The flags are wider: each of these deletes, and each passed before.
+deny	node -p "require('fs').rmSync('/Users/someone/dev',{recursive:true})"
+deny	node --eval "require('fs').rmSync('/Users/someone/dev/x')"
+deny	deno eval "Deno.remove('/Users/someone/dev/x')"
+deny	php -r "unlink('/Users/someone/dev/x');"
+deny	bash --command 'rm -rf /Users/someone/dev/x'
+deny	bash -xeuc 'rm -rf /Users/someone/dev/x'
+deny	bash -c'rm -rf /Users/someone/dev/x'
 deny	sudo -u root rm -rf ~/dev
 deny	nice -n 10 rm -rf ~/dev
 # a second dash is still a flag that deletes
