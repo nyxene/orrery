@@ -1031,13 +1031,33 @@ done < <(segments "$cmd")
 # nothing and cost a great deal: any command containing both an interpreter and
 # the word `rm` anywhere — a test payload, a path, another segment entirely —
 # was refused. Four times in one day, to the author of the check.
+#
+# The word is still matched inside the code's own strings, and that is a
+# decision, not an oversight. A Python edit whose text contained "remove" was
+# refused as a deletion, and the session it refused walked around it. The fix
+# tried first emptied every string literal before matching, and three audit
+# rounds beat it: pairing quotes with a regex is wrong on an apostrophe in a
+# comment, on two of them, on a quote inside the other kind of literal, on a
+# JS regex or template literal. Each wrong pairing emptied a real
+# `os.remove(…)`, and `osascript -e 'do shell script "rm …"'` can only delete
+# from inside a string. This is the only layer protecting the working
+# directory, so it keeps the false refusal and says what to do about it
+# instead: the denial names the Edit and Write tools, which is how text naming
+# a deletion gets into a file.
+#
+# The flags are wider than they were. `-[a-z]*[ce]` missed `node -p`,
+# `node --eval`, `deno eval`, `php -r` and `bash --command`, and each deletes.
+flag_3b='(^|[[:space:]])(-[a-z]*[cepr]|--eval|--print|--command|eval)([[:space:]"'"'"'=]|$)'
+inline_delete=""
 while IFS= read -r seg; do
   [ -z "${seg// /}" ] && continue
   v="$(verb_of "$seg")"
   grep -qxE "$interpreters" <<<"$v" || continue
-  grep -qE '(^|[[:space:]])-[a-z]*[ce]([[:space:]"'"'"']|$)' <<<"$seg" || grep -q '<<' <<<"$seg" || continue
-  grep -qiE "$delete_words" <<<"$seg" && hits="$hits$seg"$'\n'
+  grep -qE "$flag_3b" <<<"$seg" || grep -q '<<' <<<"$seg" || continue
+  grep -qiE "$delete_words" <<<"$seg" && { hits="$hits$seg"$'\n'; inline_delete=yes; }
 done < <(segments "$cmd")
+delete_note=""
+[ -n "$inline_delete" ] && delete_note=" A delete word was found inside inline interpreter code, which is read as text, so a word in a string counts too. To put text that mentions a deletion into a file, use the Edit or Write tool."
 
 if [ -n "$hits" ]; then
   targets="$(printf '%s' "$hits" \
@@ -1046,7 +1066,7 @@ if [ -n "$hits" ]; then
     | grep -viE '^('"$delete_verbs"'|rmtree|rmsync|remove_tree|removedirs|remove|find|xargs|env|command|sudo|doas|nohup|time|nice|exec|builtin|'"$interpreters"'|import|from|os|shutil|fs|glob|do|done|then|else|fi|-[a-z-]*|[0-9]*>>?.*|[0-9]*<.*|&&|\|\||\{\}|\+|\\;)$' || true)"
 
   if [ -z "$targets" ]; then
-    deny "Could not determine what this delete targets; denying by default. Use explicit paths under the session scratchpad."
+    deny "Could not determine what this delete targets; denying by default. Use explicit paths under the session scratchpad.$delete_note"
   fi
 
   while IFS= read -r t; do
@@ -1078,7 +1098,7 @@ if [ -n "$hits" ]; then
     # different from the boundary and outside it entirely — which is the exact
     # class of mistake this section exists to refuse.
     if [ "$resolved" != "$scratchpad_root" ] && [[ "$resolved" != "$scratchpad_root"/* ]]; then
-      deny "Destructive delete ($t) targets a path outside the session scratchpad ($scratchpad_root); only temp files created this session may be deleted this way."
+      deny "Destructive delete ($t) targets a path outside the session scratchpad ($scratchpad_root); only temp files created this session may be deleted this way.$delete_note"
     fi
   done <<<"$targets"
 fi
