@@ -41,6 +41,6 @@ Exceptions run one way only: a question that asked for prose gets prose, and a
 document whose form is fixed elsewhere — a rule file, a changelog entry, a
 retrospective's mandatory tables — keeps its own form.
 
-**Related:** the rule that retrospectives always use their table format is the
-same law narrowed to one document. The rule that you name the members rather
+**Related:** the rule that an umbrella's closer posts the phase retrospective is
+the same law narrowed to one document. The rule that you name the members rather
 than the count is what keeps a table honest once you have drawn it.

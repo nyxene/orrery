@@ -9,6 +9,46 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.29.0
+
+**Minor.** One rule leaves the product: it is merged into another. That
+changes which rule lines the loader puts into a session.
+
+### The retrospective format joins the umbrella rule
+
+The process rule `retrospectives-always-use-the-table-format` is removed. Most
+of what it asked for no longer needs a rule, because the tools enforce it:
+
+- `skills/build/close-issue.sh` generates an ordinary issue's retrospective:
+  the header, the spend table and one line of what happened.
+- `hooks/process-guard.sh` refuses a bare `gh issue close` and points to that
+  script.
+- `install/ci/retrospective-on-close.yml` reopens an issue that a merge closed
+  without a retrospective.
+
+The one part nothing generates is the phase retrospective on an umbrella issue,
+and `rules/git/closing-an-umbrella-posts-the-phase-retrospective.md` already
+listed its four parts. That rule now carries the rest:
+
+- never prose alone;
+- say which numbers are agent compute and which are wall-clock time;
+- never add a harness-reported token total to a transcript-summed one without
+  saying they measure different things.
+
+Its rule line now names the four-part table form, because that line is what the
+loader shows a session.
+
+`skills/build/SKILL.md`, `close-issue.sh`, `retrospect.sh` and the report-shape
+rule now point at the umbrella rule or at `retrospect.sh` instead of the removed
+file.
+
+**What you need to do:** nothing. If you copied the removed rule into
+`.claude/rules/`, you can delete your copy; the umbrella rule carries it.
+
+**This release removes one file from the product:**
+the process rule `retrospectives-always-use-the-table-format`. No deny rule is
+added or withdrawn.
+
 ## 0.28.0
 
 **Minor.** A session that starts without the canon now says so. And on the

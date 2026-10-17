@@ -166,9 +166,9 @@ otherwise.
    `install/ci/retrospective-on-close.yml` reopens it in that window.
 
 9. **Retrospective logging**, in the table format
-   `rules/process/retrospectives-always-use-the-table-format.md` fixes: the
-   machine-readable header, the tokens and tool-calls table, real `gh`-queried
-   timestamps, and the numbered step list. Post it on **the issue that is
+   `skills/build/retrospect.sh` generates: the machine-readable header, the
+   tokens and tool-calls table, real `gh`-queried timestamps, and the numbered
+   step list. Post it on **the issue that is
    closing** — this task's issue, never a sub-PR and never the umbrella, which
    gets its own assembled one when it closes. `skills/build/close-issue.sh <N>
    --what "<one line>"` does the minimum form and closes the issue in one act,
