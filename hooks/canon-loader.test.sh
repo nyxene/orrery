@@ -75,15 +75,23 @@ else
   ok "quotes, backslashes and newlines survive the emission"
 fi
 
-# --- no canon is not an error -----------------------------------------------
-empty="$tmp/empty"; mkdir -p "$empty"
+# --- no canon is said, not swallowed -----------------------------------------
+# CANON.md ships with the plugin, so a root without one is a broken install or a
+# wrong root — and a session started without the canon looks, from inside,
+# exactly like one started with it. This case used to pin that silence.
+# The path goes through jq, so a quote in it cannot break the payload.
+empty="$tmp/em\"pty"; mkdir -p "$empty"
 out="$(run "$empty")"; rc=$?
-if [ -n "$out" ]; then
-  bad "a root with no CANON.md stays quiet" "it printed: $out"
+if ! jq -e . >/dev/null 2>&1 <<<"$out"; then
+  bad "a root with no CANON.md is announced" "output is not valid JSON: $out"
+elif ! grep -q 'WARNING' <<<"$(context "$out")"; then
+  bad "a root with no CANON.md is announced" "no WARNING in additionalContext: $out"
+elif ! grep -qF "$empty/CANON.md" <<<"$(context "$out")"; then
+  bad "a root with no CANON.md is announced" "the path looked at is not named: $out"
 elif [ "$rc" -ne 0 ]; then
-  bad "a root with no CANON.md stays quiet" "exit $rc"
+  bad "a root with no CANON.md is announced" "exit $rc — a loader cannot deny"
 else
-  ok "a root with no CANON.md prints nothing and exits 0"
+  ok "a root with no CANON.md is announced with its path, in valid JSON, exit 0"
 fi
 
 # --- an unset root falls back to the hook's own directory -------------------
