@@ -174,12 +174,18 @@ A non-APPROVE verdict revises the plan. It does not restart the pass.
 - **Critic** re-checks **its own prior findings** and anything the revision newly
   touched. Not a fresh full pass — the plan it already read has not changed
   underneath it.
-- **Architect** re-runs **only if the approach changed** — or if the revision
-  rejected its antithesis. A finding about a missing function name does not
-  warrant re-arguing the direction; a rejected argument does, because nobody else
-  can weigh it. The critic never saw the antithesis, by design, so a rejection
-  the architect does not re-read is an argument that dies unopposed after being
-  answered once by the party it was aimed at.
+- **Architect** re-checks **its own prior findings** whenever it raised any —
+  narrowly, like the critic: did each fix hold. Nobody else reads them. The
+  critic re-checks only its own, so without this an accepted architect finding
+  is marked answered by the draft that answered it and verified by no one — a
+  trust-boundary plan once went to build on four of them that way, and the
+  security audit afterwards found three high-severity holes in the same area.
+- It **re-argues the direction only if the approach changed** — or if the
+  revision rejected its antithesis. A finding about a missing function name
+  does not warrant re-arguing the direction; a rejected argument does, because
+  nobody else can weigh it. The critic never saw the antithesis, by design, so a
+  rejection the architect does not re-read is an argument that dies unopposed
+  after being answered once by the party it was aimed at.
 - A rejection the architect **accepts** ends it. It says so in one line and the
   iteration closes.
 

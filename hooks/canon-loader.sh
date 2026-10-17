@@ -30,7 +30,14 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-[ -f "$canon" ] || exit 0
+# A missing file is the same silent start by another cause, and it was let through
+# here before. CANON.md ships with the plugin, so its absence is a broken
+# install or a wrong root — named with the path, which jq quotes.
+if [ ! -f "$canon" ]; then
+  jq -n --arg p "$canon" '{hookSpecificOutput: {hookEventName: "SessionStart",
+    additionalContext: ("WARNING: the canon could not be loaded — this project ships CANON.md as the non-negotiable core of how work is done, and the loader found no file at " + $p + ". The install is broken or its root is wrong; reinstall, then restart the session. Until then you are working without it, and should say so rather than guess at its contents.")}}'
+  exit 0
+fi
 
 jq -n --arg c "$(cat "$canon")" '{
   hookSpecificOutput: {

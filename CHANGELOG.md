@@ -9,6 +9,39 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.28.0
+
+**Minor.** A session that starts without the canon now says so. And on the
+plan route with two checkers, the architect re-checks its own findings after
+every revision, not only when the approach changed.
+
+### A missing canon is announced
+
+The canon loader already warned when `jq` was missing. When `CANON.md` itself
+was missing, it printed nothing and the session started without the canon. From
+inside, that session looks exactly like one that loaded it. The plugin always
+ships the file, so a missing one means a broken install or a wrong plugin root.
+
+Now the session receives a warning that names the path the loader looked at and
+says to reinstall and restart. The loader still exits 0: a session-start hook
+cannot block, so it reports instead.
+
+### The architect re-checks its own findings
+
+On the consensus route, after a non-APPROVE verdict the critic re-checks only
+its own findings. The architect used to re-run only when the approach changed.
+So an architect finding that the revision claimed to fix was checked by no one.
+Now the architect re-checks each of its prior findings whenever it raised any,
+narrowly: did the fix hold. It still re-argues the direction only when the
+approach changed or the revision rejected its antithesis.
+
+**What it costs:** one more short architect pass on revisions it had findings
+on.
+
+**What you need to do:** nothing.
+
+No file leaves the product. No deny rule is added or withdrawn.
+
 ## 0.27.0
 
 **Minor.** The Bash guard refuses five kinds of inline deletion it used to
