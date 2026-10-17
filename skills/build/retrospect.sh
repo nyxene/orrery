@@ -3,9 +3,8 @@
 #
 #   skills/build/retrospect.sh [session-id] [--since <iso8601>]
 #
-# The rule this feeds — rules/process/retrospectives-always-use-the-table-format.md
-# — used to say subagent token and tool-call data "does not persist anywhere once
-# a conversation ends". That was wrong, and it was the reason the format demanded
+# The retrospective rule this feeds used to say subagent token and tool-call
+# data "does not persist anywhere once a conversation ends". That was wrong, and it was the reason the format demanded
 # numbers nothing instructed anyone to capture. Every spawned agent leaves a
 # transcript under ~/.claude/projects/<project>/<session>/subagents/ with its
 # usage block, its tool calls and its timestamps, and a sibling .meta.json naming

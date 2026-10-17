@@ -35,9 +35,10 @@
 #
 # ## The minimum form, and why it is smaller than the phase one
 #
-# `rules/process/retrospectives-always-use-the-table-format.md` fixes four
-# parts: the machine-readable header, the spend table, a `gh`-queried wall-clock
-# table and a numbered list of what happened. All four are right for a phase
+# A phase retrospective has four parts, per
+# `rules/git/closing-an-umbrella-posts-the-phase-retrospective.md`: the
+# machine-readable header, the spend table, a `gh`-queried wall-clock table and
+# a numbered list of what happened. All four are right for a phase
 # closing over sixteen pull requests. Demanding all four on a one-line fix is
 # how a rule gets routed around — and a rule nobody follows measured 2
 # retrospectives against 179 closed issues.
