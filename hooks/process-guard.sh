@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
-# PreToolUse guard for the Bash tool. Refuses to close an issue that is not
-# carrying its retrospective, and names the command that does both.
+# PreToolUse guard for the Bash tool. Two acts, each refused until its
+# obligation is met: closing an issue that is not carrying its retrospective —
+# the refusal names the command that does both — and, where the project keeps a
+# call log, opening a pull request when no auditor has run in this session since
+# its last one.
+#
+# The pull-request half does not reach: a pull request opened by a person, in
+# the web UI, through `gh api`, or by a spelling its matcher misses; a heredoc
+# fed to a shell (`bash <<EOF`), whose body runs although it is read as text; a
+# host with no call log, where the text in `plan` and `build` is all there is;
+# commits pushed to a pull request after its audit; and a merge that needs no
+# pull request where a project allows one. It refuses falsely on a line of a
+# multi-line quoted string that begins with `gh pr create` — it reads lines, not
+# shell quoting — which costs an argument, not a boundary.
 #
 # ## Why a separate file from hooks/bash-guard.sh
 #
@@ -62,9 +74,13 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
 
+# Every refusal ends with the rule that governs it; see the same line in
+# `bash-guard.sh` for why it is carried here rather than left to the loader.
+refusal_note="A refusal is the person's to rule on, not yours. If you think this one is wrong, stop, quote it to them and say why. Do not reach the same outcome another way — another tool, a script file, a respelling, a split command — unless this message names that way."
+
 deny() {
-  jq -n --arg r "$1" \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  jq -n --arg r "$1" --arg note "$refusal_note" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:($r + "\n\n" + $note)}}'
   exit 0
 }
 
@@ -155,20 +171,50 @@ xargsform="xargs[[:space:]]+${ghflags}gh[[:space:]]+${ghflags}issue[[:space:]]+c
 # broke visibly; the guard was simply erroring thousands of times a day, and
 # the line below it was dead code. Found by the mutation pass the moment it
 # stopped being able to kill mutants by their own location.
-matched="$(grep -oE "${pos}(${close}|${api}|${xargsform})" <<<"$cmd" | head -1 || true)"
-[ -n "$matched" ] || exit 0
+# Heredoc bodies are text, never commands. `^` in `pos` matches at the start of
+# every line, so a document written through `cat > f <<'EOF'` whose line reads
+# `ORRERY_WAIVE="…" gh pr create` was a command here — refused, or worse,
+# recorded as a waiver nobody issued. Everything between `<<WORD` and `WORD` is
+# dropped before either matcher reads the command. `<<<` is a here-string and
+# untouched; `<<-` strips leading tabs from the terminator, as bash does; a body
+# with no terminator runs to the end. One heredoc per line is read — a second
+# on the same line is the rare spelling this leaves to the matchers. A heredoc
+# fed to a shell (`bash <<EOF`) runs its body, and this lets it through: that is
+# the fail-open direction, and the header names it.
+scan="$(awk -v sq="'" '
+  hd { t = $0; if (dash) sub(/^\t+/, "", t); if (t == delim) hd = 0; next }
+  { print; s = $0; gsub(/<<</, "\001", s)
+    if (match(s, "<<-?[ \t]*[\"" sq "]?[A-Za-z_][A-Za-z0-9_]*")) {
+      m = substr(s, RSTART, RLENGTH); dash = (m ~ /^<<-/)
+      sub("^<<-?[ \t]*[\"" sq "]?", "", m); delim = m; hd = 1 } }' <<<"$cmd" 2>/dev/null || printf '%s' "$cmd")"
 
-# The escape, and the record, are the same act. Without this line the gate has
-# no supported way past it, and a gate with no supported way past it is removed
-# rather than obeyed.
-if grep -q 'ORRERY_WAIVE=' <<<"$matched"; then
-  cmd="$matched"
+# The fingerprint `hooks/call-log.sh` writes, computed the same way, byte for
+# byte — including `nosession` and `nohash` — because the pull-request gate
+# below looks this session up in that log, and a different spelling of the same
+# session finds nothing there and refuses forever.
+fingerprint() {
+  local s fp=""
+  s="$(jq -r '.session_id // "nosession"' <<<"$input" 2>/dev/null || true)"
+  if command -v shasum >/dev/null 2>&1; then
+    fp="$(printf '%s' "$s" | shasum -a 256 2>/dev/null | cut -c1-8 || true)"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    fp="$(printf '%s' "$s" | sha256sum 2>/dev/null | cut -c1-8 || true)"
+  fi
+  printf '%s' "${fp:-nohash}"
+}
+
+# The escape, and the record, are the same act. Without this the gate has no
+# supported way past it, and a gate with no supported way past it is removed
+# rather than obeyed. Shared by both acts this guard gates, so the protections
+# below hold for each: $1 is the matched segment, $2 the act as recorded.
+waive() {
+  local rest reason record
   # Parameter expansion rather than sed, after the sed version accepted `""` as
   # a reason: the quoted branch returned empty, the unquoted fallback then
   # captured the two quote characters themselves, and an empty waiver was
   # recorded as a real one. The three cases are the three ways a shell value is
   # written, and each has to end at its own delimiter.
-  rest="${cmd#*ORRERY_WAIVE=}"
+  rest="${1#*ORRERY_WAIVE=}"
   case "$rest" in
     '"'*) reason="${rest#\"}"; reason="${reason%%\"*}" ;;
     "'"*) reason="${rest#\'}"; reason="${reason%%\'*}" ;;
@@ -180,16 +226,98 @@ if grep -q 'ORRERY_WAIVE=' <<<"$matched"; then
 A waiver with an empty reason records that something was skipped and not why,
 which is the silence the waiver exists to end. Write the reason:
 
-  ORRERY_WAIVE=\"owner said to skip it, we are mid-incident\" gh issue close <N>"
+  ORRERY_WAIVE=\"owner said to skip it, we are mid-incident\" $2"
   fi
-  session="$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null || true)"
-  if [ -n "$session" ]; then
-    if command -v shasum >/dev/null 2>&1; then
-      session="$(printf '%s' "$session" | shasum -a 256 2>/dev/null | cut -c1-8 || true)"
-    elif command -v sha256sum >/dev/null 2>&1; then
-      session="$(printf '%s' "$session" | sha256sum 2>/dev/null | cut -c1-8 || true)"
+  # `command`, never `typed`. The field says *how* the waiver arrived, and on
+  # this path the token was spelled by whichever agent composed the Bash call —
+  # not by the owner. Hardcoding the strongest provenance class here asserted
+  # owner authorization for a self-authorized skip, in the one file whose value
+  # is that its rows are true. `stated` is for a human running waiver.sh.
+  #
+  # And the record is what permits, rather than something attempted beside it.
+  # This was `|| true` with stderr discarded, so a recording that failed — no
+  # project root, an unwritable directory — granted the exemption silently and
+  # left nothing at all. Fail open on input this cannot read; fail closed on a
+  # record it cannot write. Those are different questions and they get opposite
+  # answers on purpose.
+  if ! record="$(ORRERY_WAIVE_SESSION="$(fingerprint)" \
+        bash "$here/waiver.sh" "$2" "$reason" command 2>&1)"; then
+    deny "The waiver could not be recorded, so the exemption is not granted.
+
+$record
+
+An unrecorded skip is the silence this gate exists to end — it cannot be handed
+out on the strength of having tried."
+  fi
+}
+
+# --- a pull request is opened only after an auditor ran --------------------
+# `build` held the only "auditor before commit", and told its reader to skip
+# itself for small changes; `plan` said to implement at once with script gates
+# only. So a change smaller than `build` reached `main` with nothing asking for
+# an auditor, and one sharpen pass counted at least nine that did. Opening a pull
+# request is the gated act rather than a commit: under a protected `main` it is
+# where a change heads there, once per change — a commit gate refused every plan
+# commit, every follow-up and every retry, each wanting a waiver the agent wrote
+# for itself.
+#
+# Readable only where the project keeps a call log, because that is the only
+# record of what this session spawned. No log, or one this cannot read → pass
+# through, per the header; the text in `plan` and `build` carries it there.
+#
+# "Since the last one" comes from a state file this guard appends to whenever it
+# lets `gh pr create` through, in git's common directory — outside every working
+# tree, so `git add -A` never stages it and no host needs an ignore line. A row
+# counts only if the call log holds `ran` for its id: a create that failed did
+# not open anything, and must not consume the audit.
+#
+# What this proves is that an auditor was spawned, not that its verdict was
+# read — a background spawn is `ran` the moment it launches.
+pr="gh[[:space:]]+${ghflags}pr[[:space:]]+create\\b"
+prmatch="$(grep -oE "${pos}${pr}" <<<"$scan" | head -1 || true)"
+if [ -n "$prmatch" ]; then
+  log="${ORRERY_CALL_LOG:-}"
+  case "$log" in
+    ''|/*) ;;
+    *) if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then log="$CLAUDE_PROJECT_DIR/$log"; else log=""; fi ;;
+  esac
+  gitdir="$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [ -n "$log" ] && [ -r "$log" ] && [ -n "$gitdir" ]; then
+    state="$gitdir/orrery-pr-gate"
+    fp="$(fingerprint)"
+    since=""
+    [ ! -f "$state" ] || since="$(awk -F'\t' -v fp="$fp" '
+      NR == FNR { if ($6 == "ran") ran[$7] = 1; next }
+      $2 == fp && ($3 in ran) { s = $1 } END { print s }' "$log" "$state" 2>/dev/null || true)"
+    if grep -q 'ORRERY_WAIVE=' <<<"$prmatch"; then
+      waive "$prmatch" "gh pr create"
+    elif ! awk -F'\t' -v fp="$fp" -v since="$since" '
+        $2 == fp && $3 == "Agent" && ($4 == "auditor" || $4 ~ /:auditor$/) &&
+        $6 == "ran" && $1 > since { found = 1 } END { exit !found }' "$log"; then
+      deny "Opening a pull request is where a change heads for main, and no auditor has
+run in this session since its last pull request.
+
+Spawn the auditor agent against the plan, or the change's stated intent, read
+its verdict, and then open the pull request. This guard sees only that an
+auditor was spawned — reading what it said is yours.
+
+If the owner told you in this session to skip the audit, quote them:
+
+  ORRERY_WAIVE=\"owner: <their words>\" gh pr create …
+
+That is recorded in .claude/orrery-waivers.tsv, which the next sharpen pass
+reads. Your own judgement that this change needs no audit is not a reason it
+accepts."
     fi
+    { printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$fp" \
+        "$(jq -r '.tool_use_id // "-"' <<<"$input" 2>/dev/null || true)" >>"$state"; } 2>/dev/null || true
   fi
+fi
+
+matched="$(grep -oE "${pos}(${close}|${api}|${xargsform})" <<<"$scan" | head -1 || true)"
+[ -n "$matched" ] || exit 0
+
+if grep -q 'ORRERY_WAIVE=' <<<"$matched"; then
   # The number, so a row can be reconciled against the issue it belongs to.
   # Without it every row read `gh issue close` and you could not go and look.
   # Trim to the argument first, then read from its start. A leading `.*` is
@@ -211,28 +339,7 @@ which is the silence the waiver exists to end. Write the reason:
     *)         n="" ;;
   esac
   [ -n "$n" ] || n="$(sed -n 's/^[[:space:]]*[^0-9#]*#\{0,1\}\([0-9][0-9]*\).*/\1/p' <<<"$tail" | head -1)"
-
-  # `command`, never `typed`. The field says *how* the waiver arrived, and on
-  # this path the token was spelled by whichever agent composed the Bash call —
-  # not by the owner. Hardcoding the strongest provenance class here asserted
-  # owner authorization for a self-authorized skip, in the one file whose value
-  # is that its rows are true. `stated` is for a human running waiver.sh.
-  #
-  # And the record is what permits, rather than something attempted beside it.
-  # This was `|| true` with stderr discarded, so a recording that failed — no
-  # project root, an unwritable directory — granted the exemption silently and
-  # left nothing at all. Fail open on input this cannot read; fail closed on a
-  # record it cannot write. Those are different questions and they get opposite
-  # answers on purpose.
-  if ! record="$(ORRERY_WAIVE_SESSION="${session:-}" \
-        bash "$here/waiver.sh" "gh issue close${n:+ #$n}" "$reason" command 2>&1)"; then
-    deny "The waiver could not be recorded, so the exemption is not granted.
-
-$record
-
-An unrecorded skip is the silence this gate exists to end — it cannot be handed
-out on the strength of having tried."
-  fi
+  waive "$matched" "gh issue close${n:+ #$n}"
   exit 0
 fi
 

@@ -21,7 +21,7 @@ tmp="${TMPDIR:-/tmp}/orrery-bash-guard-test.$$"
 # A PATH shadow holding one fake `uname`, so the unmodelled-platform branch can
 # be exercised as written rather than by asking the guard to pretend.
 fakebin="$tmp.bin"
-trap 'rm -rf "$tmp" "$fakebin"' EXIT
+trap 'rm -rf "$tmp" "$tmp".* "$fakebin"' EXIT
 mkdir -p "$fakebin"
 printf '#!/bin/sh\necho Plan9\n' > "$fakebin/uname"
 chmod +x "$fakebin/uname"
@@ -123,16 +123,29 @@ probes() { # $1 = guard path — prints how many it gets wrong
     | bash "$1" 2>/dev/null || true)"
   grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
   grep -q '(~/dev/x)' <<<"$out" || fails=$((fails + 1))
+  # And every refusal carries the rule that governs it, because the rule file is
+  # not loaded when this guard refuses. Without this line it could be dropped
+  # and nothing would go red.
+  grep -q "the person's to rule on" <<<"$out" || fails=$((fails + 1))
   echo "$fails"
 }
 
 trap_fails=0
-report_probes "$guard" "the Bash guard" "bad input, unknown platform, a loop body's refusal names the path" \
+report_probes "$guard" "the Bash guard" "bad input, unknown platform, a loop body's refusal names the path, and carries the refusal rule" \
   || trap_fails=$((trap_fails + $?))
 
 total="$(grep -cE '^(deny|allow)	' "$CASES")"
 fails="$(VERBOSE=1 corpus "$guard")"
 printf '%s cases, %s failing\n' "$total" "$fails"
+
+# The parser `--changed` relies on. Every hunk-header form, because reading an
+# omitted length as zero mutates nothing and reports green.
+h=""
+[ "$(printf '@@ -10 +12 @@\n' | changed_lines | tr '\n' ' ')" = "12 " ] || h="$h omitted-length"
+[ -z "$(printf '@@ -10,2 +12,0 @@\n' | changed_lines)" ] || h="$h deletion-only"
+[ "$(printf '@@ -1,3 +1,3 @@ x\n@@ -40 +41,2 @@\n' | changed_lines | tr '\n' ' ')" = "1 2 3 41 42 " ] || h="$h ranges"
+if [ -z "$h" ]; then printf '\033[32m✓\033[0m the changed-line parser reads every hunk-header form\n'
+else printf '\033[31m✗\033[0m the changed-line parser misreads:%s\n' "$h"; trap_fails=$((trap_fails + 1)); fi
 
 if [ "${1:-}" != "--mutate" ]; then
   [ "$fails" -eq 0 ] && [ "$trap_fails" -eq 0 ] || exit 1
@@ -140,6 +153,29 @@ if [ "${1:-}" != "--mutate" ]; then
 fi
 
 [ "$fails" -eq 0 ] || { echo "corpus is red; fix it before mutating" >&2; exit 1; }
+# The probes and the parser checks too: a parser that misreads hunks would turn
+# `--changed` into a green pass that mutated nothing.
+[ "$trap_fails" -eq 0 ] || { echo "a probe or the parser check is red; fix it before mutating" >&2; exit 1; }
+
+# `--changed`, the pre-commit mode: mutate only the decision lines this change
+# touched in the guard, read from `git diff HEAD` against the working-tree file
+# this suite mutates — so partial staging cannot point it at the wrong lines.
+# The full pass runs instead when the corpus lost or changed a line, or the
+# suite or the harness changed: an added case can only raise kills, a removed one
+# can unpin lines nobody touched. CI runs the full pass on the pull request.
+if [ "${2:-}" = --changed ]; then
+  repo="$(cd "$here/.." && pwd -P)"
+  removed="$(git -C "$repo" diff HEAD --numstat -- hooks/cases.tsv | awk '{ s += $2 } END { print s + 0 }')"
+  if [ "$removed" -gt 0 ] || ! git -C "$repo" diff --quiet HEAD -- hooks/bash-guard.test.sh hooks/guard-test-lib.sh; then
+    echo "the corpus lost a line, or the suite or the harness changed — the full pass runs"
+  else
+    MUTATE_LINES="$(git -C "$repo" diff --no-color HEAD -U0 -- hooks/bash-guard.sh | changed_lines | tr '\n' ' ')"
+    export MUTATE_LINES
+  fi
+fi
 
 echo
+# This guard keeps no state between calls, so its mutants run side by side,
+# one per core: the full pass was 14.5 minutes on CI one at a time.
+MUTATE_JOBS="${MUTATE_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
 mutation_pass "$guard" "$tmp"

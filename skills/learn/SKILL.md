@@ -29,7 +29,10 @@ copied off the internet — which is exactly how it gets dismissed as stale.
 ## When to invoke
 
 - Something broke, and the cause was a way of working rather than a one-off typo.
-- The user corrected how you work, or told you to do something differently.
+- The user corrected how you work and meant it to last — said "always" or "from
+  now on", or repeated a correction already made. One correction of one output
+  is a preference, not a rule: `sharpen` calls it noise for the same reason, and
+  filing it writes a rule against the user.
 - A tool, harness, or framework behaved contrary to a reasonable expectation.
 - You caught yourself about to repeat a mistake you have made before — that
   means the rule does not exist yet, or does not say what it needs to.

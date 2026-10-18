@@ -1,6 +1,6 @@
 ---
 name: auditor
-description: Independent pre-commit auditor — verifies an implementation against its plan, checks math/science claims against primary sources, and screens for licensing/IP exposure. READ-ONLY. Used by the `build` skill's mandatory pre-commit gate.
+description: Independent pre-commit auditor — verifies an implementation against its plan, checks math/science claims against primary sources, and screens for licensing/IP exposure. READ-ONLY. Used by the `build` skill's mandatory pre-commit gate and by `review`.
 tools:
   - Read
   - Grep

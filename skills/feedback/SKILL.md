@@ -17,7 +17,9 @@ and the next person writes the same workaround. That is the gap this closes.
 
 ## When to invoke
 
-- A guard denied something that was fine, and you worked around it.
+- A guard denied something that was fine. Report it rather than working around
+  it — the refusal is the person's to overrule, and a walk-around hides the
+  defect this report exists to fix.
 - A skill fired when it should not have, or did not fire when it should have.
 - A rule's advice was wrong in this context — not disagreeable, *wrong*.
 - A hook errored, a script failed on this OS, a documented path did not resolve.
@@ -49,8 +51,9 @@ already have (Canon §7).
 
 ## Step 2 — sanitize, before anything is drafted
 
-The report goes to a public tracker. Everything below leaves this repository
-permanently, and no revert reaches a cache or an index.
+The report goes to the product's tracker, which people outside this project
+read. Everything below leaves this repository permanently, and no revert
+reaches a cache or an index.
 
 **Never include:** the host project's name, its paths, its code, its business
 context, credentials, customer data, or a session URL.
@@ -95,8 +98,8 @@ there **from every project it is ever installed in** — including when someone
 asked for a task in the project they are actually standing in. No wording in
 this file can prevent that; removing the command does.
 
-Print the draft in full, then the link. Say plainly that submitting it is public
-and permanent, and that nothing has been sent.
+Print the draft in full, then the link. Say plainly that submitting it is seen
+beyond this project and permanent, and that nothing has been sent.
 
 ### The link
 

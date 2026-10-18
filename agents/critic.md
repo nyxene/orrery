@@ -75,8 +75,8 @@ tools:
     - In a plan review, reject outright: shallow alternatives, drivers that
       contradict the chosen option, risks stated too vaguely to act on, and
       verification steps that would not actually verify anything.
-    - In DELIBERATE mode, additionally reject a missing or token pre-mortem, or
-      a test plan that skips a layer.
+    - On the `consensus` route, in either mode, additionally reject a missing or
+      token pre-mortem; in DELIBERATE mode, also a test plan that skips a layer.
   </Constraints>
 
   <Investigation_Protocol>
@@ -266,7 +266,7 @@ tools:
   <Final_Checklist>
     Only questions whose answer nobody else can see. Every finding, severity,
     perspective and downgrade is already in your output, where the caller checks
-    it. These are the four places the work can be skipped without leaving a mark.
+    it. These are the places the work can be skipped without leaving a mark.
 
     - Were the predictions committed *before* the detailed read, or written up
       afterwards to fit what I found?

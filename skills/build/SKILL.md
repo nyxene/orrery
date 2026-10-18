@@ -49,7 +49,7 @@ model release then changes one paragraph instead of a table.
 | Core | The strongest available | The bulk of substantive logic once architecture is set — scoped work that is not in the critical tier. |
 | Routine | The cheap tier | Wiring, glue code, mechanical repetition, tests over already-understood shapes, boilerplate. |
 | Data collection | The cheap tier | Gathering reference values, transcribing source material, building fixtures and goldens — collecting facts, not deciding how to compute something. |
-| Audit | **Its own session**; a different model family where the stake earns it | Independent, read-only, adversarial — spawned via the `auditor` agent type, whose frontmatter pins its own model. Always after implementation, before commit. |
+| Audit | **Its own session**; a different model family where the stake earns it | Independent, read-only, adversarial — spawned via the `auditor` agent type, whose frontmatter pins its own model. Always after implementation, before the pull request — on every change, this skill or not. |
 
 The host project declares which model serves each tier (see the declarations in
 install/into-project.md); when nothing is declared, use the session's default
@@ -77,12 +77,14 @@ otherwise.
    scope, files touched, acceptance criteria, and any open questions the plan
    already flagged.
 
-   **Commit the plan document to the default branch before any worktree agent
-   launches.** A worktree is created from a commit; a plan that exists only in
-   the working tree is not in it, so every isolated agent starts without the
-   document it was told to follow. This has bitten twice in one session and was
-   caught both times by something unrelated, which is the shape of a defect that
-   otherwise ships.
+   **Commit the plan document to the task's own branch before any worktree
+   agent launches, and branch every agent's worktree from that commit.** A
+   worktree is created from a commit; a plan that exists only in the working
+   tree is not in it, so every isolated agent starts without the document it
+   was told to follow. Never the default branch: where it is protected the
+   commit is refused, and where it is not, the plan reaches it unreviewed. This has
+   bitten twice in one session and was caught both times by something
+   unrelated, which is the shape of a defect that otherwise ships.
 
    **In a chained run, wait for the previous task's PR to actually merge**
    before intake on the next one. Not "the workflow reported success" — the
@@ -101,6 +103,9 @@ otherwise.
      refactors elsewhere).
    - Leaves a runnable check behind for non-trivial logic, per this repo's
      normal testing conventions.
+   - Leaves nothing running: stops every process it started, children
+     included, before it reports, and its output names anything it could not
+     stop. Check the process table after it returns rather than its word for it.
    - Returns structured output: files touched, a summary, and `decisions[]`
      — any genuinely open/disputed question it resolved itself, each with a
      unique id, the question, the decision made, the options considered, and
@@ -168,9 +173,12 @@ otherwise.
 9. **Retrospective logging**, in the table format
    `skills/build/retrospect.sh` generates: the machine-readable header, the
    tokens and tool-calls table, real `gh`-queried timestamps, and the numbered
-   step list. Post it on **the issue that is
+   step list. Both scripts named here ship in the plugin, not in the host
+   repository: run them from the base directory this skill was loaded from
+   (`<that directory>/retrospect.sh`), not from the project root, where
+   `skills/build/` does not exist. Post it on **the issue that is
    closing** — this task's issue, never a sub-PR and never the umbrella, which
-   gets its own assembled one when it closes. `skills/build/close-issue.sh <N>
+   gets its own assembled one when it closes. `close-issue.sh <N>
    --what "<one line>"` does the minimum form and closes the issue in one act,
    which is what `hooks/process-guard.sh` refuses a bare `gh issue close` in
    favour of. Where a merge will do the closing, add `--no-close` and run it
@@ -182,7 +190,7 @@ otherwise.
    one was invented, and "the issue or PR" was itself two readings that between
    them produced no retrospective at all.
 
-   Run `skills/build/retrospect.sh` for the first two: it reads this session's
+   Run `retrospect.sh` for the first two: it reads this session's
    transcripts — the main session and every agent it spawned — and prints the
    header block and the per-stage table. **No step above records anything for
    it** — the transcripts already hold the usage, the tool calls and the
@@ -193,7 +201,8 @@ otherwise.
 
 10. **Final report — in chat, in the project's configured output language**
    (Canon §8; English unless the project declares otherwise). Summarize what
-   was built and the audit outcome (tests run, verdict), then the mandatory
+   was built and the audit outcome (tests run, verdict), what the run left
+   running — read from `ps` and `lsof`, ideally nothing — then the mandatory
    decision-log table covering every autonomously-resolved question from
    any step that produced one (including ones the audit merely confirmed, not just ones it
    disputed — and never omitting a licensing decision, however minor it
@@ -225,4 +234,5 @@ otherwise.
   parallel agents and a real audit gate — multi-file features, anything with
   a math/science core, anything touching third-party data.
 - Skip for: trivial single-file changes, or when no plan exists yet (run
-  `plan` first).
+  `plan` first). What a small change skips is the parallel agents, never the
+  audit: `plan` §Ship runs `auditor` before its pull request too.

@@ -66,13 +66,12 @@ their tier and the scope, then wait for the go-ahead. One agent does not need it
    **Name the route in `critic`'s vocabulary, not this skill's.** The agent
    knows `pair` and `consensus`, sets its own effort from them, and assumes
    `consensus` when the route it is handed means nothing to it — so a brief
-   saying `gate` silently buys maximum effort on every ordinary review, and
-   never turns on the devil's-advocate pass that `pair` exists to trigger. The
+   saying `gate` silently buys maximum effort on every ordinary review. The
    two vocabularies line up exactly, because they measure the same thing:
 
    | This skill's route | Tell `critic` | Why it matches |
    |---|---|---|
-   | `gate` | `pair` | One checker, so it must argue the other side itself |
+   | `gate` | `pair` | One checker at an ordinary stake, so high effort rather than maximum |
    | `audited` | `consensus` | A second checker runs in parallel, and the stake earns maximum effort |
 
    Whatever the route, say so explicitly when data, money, security or

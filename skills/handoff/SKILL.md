@@ -91,7 +91,7 @@ is a `learn` rule instead.
 
 **4. Next step.** One concrete action, precise enough to start on without
 re-reading anything — and the skill that action starts with, where one applies.
-The resuming session has lost the context that would tell it which of the ten
+The resuming session has lost the context that would tell it which skill
 fits.
 
 State behaviour, not coordinates: `SkillConfig should accept an optional
@@ -121,7 +121,8 @@ writing a new one — same command `resume` uses — and copy its dead ends acro
 A second handoff written without looking at the first silently drops the one
 section the skill exists to preserve.
 
-That single exception is deliberate. Carrying *everything* forward is precisely
+That exception, and the flagged follow-up below, are deliberate. Carrying
+*everything* forward is precisely
 how a handoff turns into a 100-line document that nobody opens.
 
 **If the tried-and-failed list passes four entries, stop and say so.** Four
@@ -173,8 +174,9 @@ The failure this prevents is quiet: an item mentioned once, agreed to be
 important, and never spoken of again. Nothing errors. It simply stops existing,
 and the person who flagged it assumes it is in hand.
 
-This is the one thing that survives a handoff being rewritten. Everything else
-in the note replaces; a flagged open follow-up carries forward the way a dead
+Beside the dead ends, this is the only thing that survives a handoff being
+rewritten. It rides at the end of section 1 as `Still flagged: #N — …`, one
+line each. Everything else in the note replaces; a flagged open follow-up carries forward the way a dead
 end does, for the same reason — it costs one line and its absence costs the
 item.
 

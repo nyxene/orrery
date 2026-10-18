@@ -18,7 +18,8 @@ default; `--interactive` adds human checkpoints.
 `rules/agents/confirm-scope-before-parallel-agents.md` gates: name the agents,
 their tier and the scope, then **wait for the go-ahead** before launching. Inside
 an approved auto-continue chain the approval already covers it, so the statement
-is made and the run proceeds.
+is made and the run proceeds. One agent is not a fan-out: the rule exempts a
+single delegation, so `pair`'s lone critic is spawned without the wait.
 
 ## Route first — how many agents this work earns
 
@@ -69,7 +70,8 @@ costs the most.
 **`inline` still finishes the job.** Plan it here, say you did and why the route
 was inline, then build it, then prove it with `verify` before claiming anything.
 Taking `inline` is a decision about how many checkers the work earns — never a
-decision to skip the gate at the end.
+decision to skip the gate at the end, and that gate includes `auditor` before
+the pull request, as on every route (§Ship).
 
 **`consensus` reached by a risk signal is DELIBERATE.** Reaching it because the
 approach is merely uncertain is not. The difference is what the plan must carry:
@@ -220,8 +222,11 @@ owes is one line naming the decision and why the route was inline, then the same
   a question — are not planned, not decomposed, and not argued about. The loop
   burns its iterations trying to sharpen these; keeping them in their own section
   is what stops it.
-- Default: proceed to implementation immediately in this session. Quality gates
-  stay script-only (pre-push + CI).
+- Default: proceed to implementation immediately in this session, and before the
+  pull request spawn `auditor` against this plan — `build`'s audit gate without
+  its parallel agents. No route skips it. Where the project keeps a call log,
+  `hooks/process-guard.sh` refuses `gh pr create` until one has run; only the
+  owner's quoted word, as `ORRERY_WAIVE`, gets past.
 - *(--interactive only)*: ask first — approve / request changes / reject.
 - An open question that materially changes scope, or is destructive or
   irreversible, goes to the owner before that part is built, in any mode.

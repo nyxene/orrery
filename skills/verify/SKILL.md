@@ -46,8 +46,8 @@ for a regression test: break what it guards, watch it deny, put it back.
 The fifth is the one that is invisible when it fails. The other four are
 properties of the command and can be inspected by reading it; the fifth is a
 property of everything the command *reaches*, and a command reaching the wrong
-thing satisfies all four with full confidence. Four rules in this library exist
-because that happened:
+thing satisfies all four with full confidence. Each row below is a rule, or part
+of one, in this library, because it happened:
 
 | what it read instead | how it presented |
 |---|---|

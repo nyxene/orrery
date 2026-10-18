@@ -217,6 +217,35 @@ allow	git commit -m "fix: git checkout ./ slipped both layers"
 allow	gh pr create --title "the dot family, not just the dot"
 allow	grep -rn "git push --force" docs/
 #
+# The global-option form as text: a script being edited, a search, an issue
+# body. Judged per segment, so a verb that only carries text is not read. Each
+# allow was refused before; the denies pin that a runner of its arguments is
+# still read whole, and that the next segment is still judged.
+allow	sed -i '' 's/git -C "$root" branch -D "$branch"/x/' tools/tidy.sh
+allow	grep -n 'git -C /x reset --hard' hooks/bash-guard.sh
+allow	gh issue comment 1 --body 'git --git-dir=/x/.git clean -fdx'
+deny	bash -c 'git -C /Users/someone/dev reset --hard'
+deny	find . -name .git -execdir git -C .. clean -fdx \;
+deny	sed -n 1p f && git -C /Users/someone/dev branch -D x
+# And a skipped verb feeding something that runs text is not skipped: the split
+# let each of these through until the audit of the change read the segmenter.
+deny	echo 'git -C /Users/someone/dev reset --hard' | sh
+deny	echo 'git -C /Users/someone/dev clean -fdx' > s.sh; bash s.sh
+deny	gh alias set rh '!git -C /Users/someone/dev reset --hard' && gh rh
+deny	echo 'git -C /Users/someone/dev reset --hard' | timeout 5 sh
+deny	echo 'git -C /Users/someone/dev reset --hard' > s.sh; chmod +x s.sh; ./s.sh
+deny	echo 'git -C /Users/someone/dev reset --hard' > s.sh; source s.sh
+deny	echo 'rh: "!git -C /Users/someone/dev reset --hard"' | gh alias import -
+deny	echo 'git -C /Users/someone/dev reset --hard' | ksh
+deny	echo 'git -C /Users/someone/dev reset --hard' | SH
+deny	echo 'git -C /Users/someone/dev reset --hard' | xargs env
+deny	/opt/homebrew/bin/gh alias set rh '!git -C /Users/someone/dev reset --hard' && gh rh
+deny	echo 'git -C /Users/someone/dev reset --hard' > s; chmod +x s; ./s
+deny	echo 'import os; os.system("git -C /Users/someone/dev reset --hard")' | python3.12
+allow	cd hooks && grep -n 'git -C /x reset --hard' bash-guard.sh
+deny	sed -i '1a git -C /Users/someone/dev reset --hard' .githooks/pre-commit && git commit --allow-empty -m x
+deny	sed -i '$a x = !git -C /Users/someone/dev reset --hard' .git/config && git x
+#
 # The same prose over more than one line. Every case above is a single line, and
 # that is exactly why the defect below lived here unnoticed: a newline surviving
 # inside a segment split it at the reader, so the quoted line was judged as a

@@ -113,6 +113,19 @@ news.
 - **Family: an unknown member** — something else installed whose name starts
   with `orrery`. Reported rather than judged: this doctor knows two plugins, and
   a third is either new or is not ours.
+- **Usage: no log** — the call log is off, so nothing can say what ran here.
+  Not an install fault: set `ORRERY_CALL_LOG` per `install/into-project.md`
+  if the project wants the answer.
+- **Usage: no skills in N days** — the plugin loads and nothing invokes it.
+  Nothing to repair in the install; say it to whoever directs the work, since
+  a library nobody calls still spends every session's context.
+- **Spawns: k/n untyped** — those agents ran with no type or as
+  `general-purpose`, so no role's model or tool list applied. Pass the role as
+  `subagent_type` (`orrery:critic`, `orrery:auditor`, …) when spawning.
+- **PR gate: missing** — nothing in the host's workflows refuses a pull request
+  that names no issue, and no hook can see a merge. Install it per
+  `install/into-project.md`. **own (unverified)** means a workflow reads the
+  pull request body — likely the project's own gate; read it to confirm.
 - **Deny-list: unknown** — the comparison could not be made: a settings file
   that will not parse, an unreadable shipped list, no `jq`. The message says
   which. This is **not** a drift finding and must not be repeated as one — fix

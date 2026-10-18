@@ -1,6 +1,6 @@
 ---
 name: debt
-description: File a technical-debt issue mid-work, or pick the ones to pay off for the current task. Invoke the MOMENT you notice mess you are choosing not to fix right now, and at a task's start or end to select the debt issues it must close. Do NOT use for deferred features or product scope — those belong on the roadmap as feature requests, not here.
+description: File a technical-debt issue mid-work, or pick the ones to pay off for the current task. Invoke the MOMENT you notice mess you are choosing not to fix right now, and at a task's start or end to select the debt issues it must close. Do NOT use for something wrong — a stale comment, a test that cannot fail, a gate that missed — which is fixed now, per Canon §2; nor for deferred features or product scope, which belong on the roadmap.
 argument-hint: "[pay] — omit to file new debt; 'pay' to pick this task's quota"
 ---
 
@@ -32,10 +32,14 @@ This is the whole discipline, and it is the part that transfers between
 projects unchanged. Answer honestly — miscounting a feature as debt is what
 makes the pay-off rule meaningless.
 
-- **Debt** — mess *we left behind*. A shortcut taken knowingly, a duplication we
-  created, a comment that no longer describes the code, a test that passes
-  whatever the production code does, a gate that failed to catch something, an
-  error path nobody handled.
+- **Debt** — mess *we left behind* that is not wrong. A shortcut taken
+  knowingly, a duplication we created, an error path nothing reaches yet.
+- **NOT debt — a defect.** Something *wrong*: a comment that no longer
+  describes the code, a test that passes whatever the production code does, a
+  gate that failed to catch something. Canon §2 has it fixed in the change you
+  are already making, at whatever size — so it never reaches this skill, and
+  deciding not to fix it is not one of the choices. The one exception is code
+  outside this repository, which is filed where it lives.
 - **NOT debt — a deferred feature.** Something not built yet. It ships on the
   roadmap as a feature request. The tell is that it came out of a task and is
   scope of the product itself: nobody made a mess, the work simply has not happened.
@@ -102,8 +106,10 @@ A host project may declare a per-task debt quota; when declared, every feature
 task closes that many debt issues from the active pool. When none is declared,
 the skill only tracks and reports.
 
-**The pool is narrow on purpose.** Each project declares its own pool — the one
-active area whose debt feeds this rule — in its `CLAUDE.md`. Debt outside that
+**The pool is narrow on purpose.** Each project declares its own pool — the
+area labels whose debt feeds this rule — in its `CLAUDE.md`. Query once per
+pool label: repeated `--label` flags are ANDed, so two in one call ask for
+issues carrying both. Debt outside that
 area is real and stays tracked, but does NOT feed the per-task quota. If the
 project declares no pool, the pool is the area the current task touches.
 

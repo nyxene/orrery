@@ -25,6 +25,11 @@ runnable unattended, reading the real thing — with one inversion: there,
 red-capable means it *would* fail if the claim were false; here it means it
 **fails now**, and you have the failing output in front of you.
 
+**A slowdown is made deterministic by a threshold.** One timing is noise. Time
+the path at least five times on one machine, take the median, do the same on a
+known-good revision when there is one, and fail when the median crosses a
+threshold set between the two. That command is the red one.
+
 If you catch yourself opening files to work out what might be wrong, stop. That
 is the failure this skill exists to prevent, and it is the one that feels most
 like progress.
@@ -112,7 +117,11 @@ hypothesis of your own.
 ## Fix it, at the size the cause turns out to be
 
 The cause decides the shape of the change, and the loop already told you where
-it is:
+it is — **after `plan`'s disqualifier, which size never answers.** A fix that
+touches data, money, security or auth, a migration, a production incident or a
+public API, or that is hard to reverse, takes `plan`'s `consensus` route however
+local it looks: a one-line fix to a login check after a bad deploy is all of
+those at once. Only past that does the shape below apply:
 
 - **Local and obvious** — fix it here, and add the regression test in the same
   change. This is not a skipped plan: it is `plan`'s `inline` route, which is
