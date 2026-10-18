@@ -23,6 +23,33 @@ than strand a session.
 `orrery:handoff` writes to the task's GitHub issue, so the project needs `gh`
 authenticated and an issue per task — which the flow already assumes.
 
+## Updates arrive only once you switch them on
+
+Claude Code updates plugins in the background only from Anthropic's own
+marketplace. For every other one, this one included, auto-update is **off** by
+default, so an install stays on the version it was installed at until someone
+updates it by hand. Switch it on once per machine:
+
+1. In any session: `/plugin` → Marketplaces → `orrery` → Enable auto-update.
+2. The repository is private, so the background check has to reach it without
+   prompting. With the GitHub CLI that is one command in a terminal:
+
+   ```bash
+   gh auth setup-git
+   ```
+
+   Without a credential helper the check fails quietly and the old version
+   stays — nothing reports it.
+
+A new version is then fetched in the background and loads on the next launch of
+Claude Code, in every project where the plugin is installed at user scope. To
+update by hand instead, after each release:
+
+```bash
+claude plugin marketplace update orrery
+claude plugin update orrery@orrery --scope user
+```
+
 ## What the project declares
 
 Orrery holds the method. The project holds its own facts, declared in its
@@ -33,7 +60,7 @@ Orrery holds the method. The project holds its own facts, declared in its
 | `Output language: <language>` — terminal conversation only | Canon §8, `build` | Everything stays English |
 | Plan directory | `plan` | Falls back to `docs/planning/plans/` |
 | Debt labels — the label that marks debt, the scope labels, the priority labels, in the project's own spelling | `debt` | Its queries match nothing, and an empty pool is indistinguishable from a clean one |
-| Debt pool — the one active area whose debt feeds the per-task quota | `debt` | Falls back to the area the current task touches, which in a repository with several areas is close to no narrowing at all |
+| Debt pool — the area labels whose debt feeds the per-task quota | `debt` | Falls back to the area the current task touches, which in a repository with several areas is close to no narrowing at all |
 | Debt quota — how many debt issues a feature task also closes | `debt`, `build` | No quota; the skill tracks and reports only |
 | Model tiers — which model serves each build tier | `build` | The session's default model throughout |
 | Quality gates — the commands that prove the work | `build`, Canon §3 | The agent has no proving command to run |
@@ -145,8 +172,9 @@ once per rule.
 
 **Then merge it again after an update.** This is not a step you finish. Every
 release that adds a deny rule adds it to the file you copied by hand — the plugin
-updates itself, your copy does not. Your install can sit a release or more behind
-the shipped list with every health check green, and the rules likeliest to be
+updates once auto-update is on (see above), your copy does not. Your install
+can sit a release or more behind the shipped list with every health check
+green, and the rules likeliest to be
 missing are the ones a release moved here out of the Bash guard, which was shrunk
 because this list had picked them up. It had, in the plugin. In a settings file
 nobody re-merged, it had not.
@@ -408,6 +436,26 @@ is to pass the text through a file — `git commit -F msg.txt`, `gh pr comment
 --body-file` — and the alternative is a heuristic that would become a bypass.
 
 It covers what a session types, and it is a nudge rather than a boundary.
+
+## Opening a pull request needs an auditor first, where a call log is kept
+
+Where `ORRERY_CALL_LOG` is set, `hooks/process-guard.sh` also refuses
+`gh pr create` until an `auditor` agent has run in this session since its last
+pull request. Every route in `plan`, the smallest included, ends with that
+audit before the change heads for the default branch; the guard is what makes
+the sentence hold where it can see the session. With no call log it passes
+everything through, and the skills' text is all there is.
+
+It sees that an auditor was spawned, not what it said. The way past it is the
+owner's word, quoted:
+
+```
+ORRERY_WAIVE="owner: ship it now" gh pr create …
+```
+
+which is recorded in `.claude/orrery-waivers.tsv` like a waived close. An
+agent's own view that a change needs no audit is not a reason it takes.
+
 ## Copy in the one gate a hook cannot be
 
 ```bash

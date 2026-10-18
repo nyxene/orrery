@@ -61,10 +61,13 @@ fi
 
 reason='Agent spawned with name="'"$name"'" and a brief that never tells it to send its deliverable back. A named agent is an in-process teammate: its final text is NOT returned as the tool result, so the report gets written, sent, and lost — which looks exactly like a hang. Either drop `name`, and the final text becomes the return value; or keep it and add to the brief: finish by calling SendMessage({to: "main", ...}) with the FULL deliverable as the body. Address "main" — "team-lead" and every other name dead-letter silently.'
 
-jq -n --arg r "$reason" '{
+# The rule that governs every refusal, carried in it; see `bash-guard.sh`.
+note="A refusal is the person's to rule on, not yours. If you think this one is wrong, stop, quote it to them and say why. Do not reach the same outcome another way — another tool, a script file, a respelling, a split command — unless this message names that way."
+
+jq -n --arg r "$reason" --arg note "$note" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "deny",
-    permissionDecisionReason: $r
+    permissionDecisionReason: ($r + "\n\n" + $note)
   }
 }'

@@ -42,6 +42,8 @@ for every task picked up under it. No per-task grant is needed inside that run.
 And it is wider than it looks. It authorises deciding **every** choice point
 autonomously — not only the domain and convention questions that are yours
 anyway, but the product and commercial forks that would otherwise stop the run.
+Not a licence: Canon §7 calls that answer structurally theirs, inside a run as
+anywhere else, so a licensing fork stops the run.
 Applying only the narrower rule still pauses at those, which defeats the point of
 an unattended chain: what was asked for is one consolidated decision log at the
 end, not a gate at every branch.

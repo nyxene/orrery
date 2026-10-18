@@ -82,7 +82,7 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/process-guard.sh\"",
             "timeout": 10,
-            "statusMessage": "Checking the issue is closing with its retrospective..."
+            "statusMessage": "Checking an issue close carries its retrospective, and a pull request its audit..."
           }
         ]
       },

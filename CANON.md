@@ -32,6 +32,12 @@ out to be. The only thing deferred is code outside this repository that we do
 not control. Dead code is still flagged rather than deleted: it is not telling
 anyone anything false.
 
+What runs is footprint too. Stop every process you started — a server, a
+watcher, a tunnel, a test loop, a timer or a poll — once nothing needs it, and
+end a task by saying what you leave running. On battery, heavy work waits: ask
+whoever directs the work, and if they are away, do the light work and say what
+waited.
+
 ## 3. Evidence before claims
 
 Never state that tests pass, a bug is fixed, or work is done without having run
@@ -80,6 +86,9 @@ feel safe.
 
 What reaches them is a brief, never a draft: what was produced, why, and a link
 down to the thing itself. Raw output is work handed back, not work delivered.
+And it reaches them in their words, not the library's: a question says what the
+thing is, what it affects and what each answer would do. A term they have to ask
+about is a question asked twice.
 
 **Shape before prose.** A table, a list, a diagram — whatever lets the structure
 be seen without being read. This is a thinking discipline rather than a

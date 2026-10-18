@@ -31,5 +31,7 @@ to do for an umbrella that already carries a link.
 `gh issue view <N> --json state` after each non-final PR merges. If it
 auto-closed, reopen it immediately with `gh issue reopen <N> --comment "..."`
 explaining which PR closed it and what's still outstanding. Only let it close
-for real on the PR that finishes the issue's full scope — use a real
-`Closes #N` there and let it stay closed.
+for real on the PR that finishes the issue's full scope — and post the phase
+retrospective first, per
+`rules/git/closing-an-umbrella-posts-the-phase-retrospective.md`. A bare
+`Closes #N` that closes it with none is reopened by the close gate in CI.

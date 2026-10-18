@@ -90,12 +90,22 @@ fi
 cmd="$(jq -r '.tool_input.command // empty' <<<"$input")"
 [ -z "$cmd" ] && exit 0
 
+# Every refusal ends with the rule that governs it, because the rule file does
+# not load here: `rules-loader.sh` enters the scope that holds it only on a `gh`
+# command, so a refused `rm` or `cat` arrived with nothing saying the refusal is
+# the person's to overrule — and one host's session moved a refused edit into a
+# script file this guard does not read. The sentence costs a line per refusal;
+# the walk-around it names cost the owner finding it by screenshot. The two
+# printf denials above do not carry it, on purpose: they report the guard
+# failing, not a ruling, and there is no policy in them to argue with.
+refusal_note="A refusal is the person's to rule on, not yours. If you think this one is wrong, stop, quote it to them and say why. Do not reach the same outcome another way — another tool, a script file, a respelling, a split command — unless this message names that way."
+
 deny() {
-  jq -n --arg reason "$1" '{
+  jq -n --arg reason "$1" --arg note "$refusal_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: $reason
+      permissionDecisionReason: ($reason + "\n\n" + $note)
     }
   }'
   exit 0
@@ -897,14 +907,48 @@ fi
 #
 # `+` rather than `*` is the entire change, and it is worth reading twice: with
 # `*` the option run was optional, which is what made this match the plain form.
+#
+# And it is judged per segment, skipping a segment whose verb only carries text.
+# Prose does spell `git -C <path>` once it is a script being edited: a `sed`
+# rewriting a line of `tools/tidy.sh` that held `git -C "$root" branch -D` was
+# refused, and so was the command reproducing that refusal.
+#
+# The skip holds only when **every** segment's verb is one of those, `git` or
+# `cd`. Text skipped in one segment can run in the next — `echo '…' | sh`, a
+# file written then run, `xargs env`, a `gh` alias — and three audit rounds
+# each found runners a list of runners had missed (`ksh`, `SH` on a
+# case-insensitive disk, `python3.12`). So nothing names runners: any verb not
+# known to carry text, an empty one included, turns the skip off, and a word
+# missing from the list costs a false refusal, never a pass. What stays unread
+# is GNU `sed`'s `e` flag, and a file written in one call and run in a later
+# one, which the Edit tool can do as well and no Bash guard sees.
 gitpre='git([[:space:]]+(-c[[:space:]]*[^[:space:]]+|-C[[:space:]]*[^[:space:]]+|--git-dir[= ][^[:space:]]+|--work-tree[= ][^[:space:]]+|--no-pager|--paginate|--bare))+'
-if grep -qE "$gitpre"'[[:space:]]+reset[[:space:]]+.*--hard' <<<"$lower" \
-  || grep -qE "$gitpre"'[[:space:]]+push[[:space:]]+.*(--force([^-]|$)|--force-with-lease|-f([[:space:]]|$))' <<<"$lower" \
-  || grep -qE "$gitpre"'[[:space:]]+clean[[:space:]]+.*-[a-z]*f' <<<"$lower" \
-  || grep -qE "$gitpre"'[[:space:]]+filter-branch' <<<"$lower" \
-  || grep -qE "$gitpre"'[[:space:]]+(checkout|restore)[[:space:]]+([^|;&]*[[:space:]])?\.\.?/*([[:space:]]|$)' <<<"$lower" \
-  || grep -qE "$gitpre"'[[:space:]]+branch[[:space:]]+([^|;&]*[[:space:]])?-[a-zA-Z]*D' <<<"$cmd" \
-  || grep -qE "$gitpre"'[[:space:]]+(update-ref|symbolic-ref)[[:space:]]+([^|;&]*[[:space:]])?(-d([[:space:]]|$)|--delete)' <<<"$lower"; then
+text_verbs='echo|printf|grep|egrep|fgrep|rg|sed|jq|gh|cat|head|tail'
+git_hit=""
+skip_text=yes
+while IFS= read -r seg; do
+  [ -z "${seg// /}" ] && continue
+  seg_lower="$(tr '[:upper:]' '[:lower:]' <<<"$seg")"
+  grep -qxE "$text_verbs|git|cd" <<<"$(verb_of "$seg_lower")" || skip_text=""
+  grep -qE '[[:space:]]alias[[:space:]]+(set|import)' <<<"$seg_lower" && skip_text=""
+  # A file git runs, written by `sed -i` and run by the `git` beside it.
+  grep -qE '\.git/|\.githooks|\.gitconfig|\.gitmodules' <<<"$seg_lower" && skip_text=""
+done < <(segments "$cmd")
+while IFS= read -r seg; do
+  [ -z "${seg// /}" ] && continue
+  seg_lower="$(tr '[:upper:]' '[:lower:]' <<<"$seg")"
+  [ -n "$skip_text" ] && grep -qxE "$text_verbs" <<<"$(verb_of "$seg_lower")" && continue
+  if grep -qE "$gitpre"'[[:space:]]+reset[[:space:]]+.*--hard' <<<"$seg_lower" \
+    || grep -qE "$gitpre"'[[:space:]]+push[[:space:]]+.*(--force([^-]|$)|--force-with-lease|-f([[:space:]]|$))' <<<"$seg_lower" \
+    || grep -qE "$gitpre"'[[:space:]]+clean[[:space:]]+.*-[a-z]*f' <<<"$seg_lower" \
+    || grep -qE "$gitpre"'[[:space:]]+filter-branch' <<<"$seg_lower" \
+    || grep -qE "$gitpre"'[[:space:]]+(checkout|restore)[[:space:]]+([^|;&]*[[:space:]])?\.\.?/*([[:space:]]|$)' <<<"$seg_lower" \
+    || grep -qE "$gitpre"'[[:space:]]+branch[[:space:]]+([^|;&]*[[:space:]])?-[a-zA-Z]*D' <<<"$seg" \
+    || grep -qE "$gitpre"'[[:space:]]+(update-ref|symbolic-ref)[[:space:]]+([^|;&]*[[:space:]])?(-d([[:space:]]|$)|--delete)' <<<"$seg_lower"; then
+    git_hit=yes
+  fi
+done < <(segments "$cmd")
+if [ -n "$git_hit" ]; then
   deny "A destructive git verb behind a global option (git -C, --git-dir, --work-tree, ...). The deny-list matches by command prefix and cannot see this form, so it is refused here. The plain spelling is refused by the deny-list instead."
 fi
 

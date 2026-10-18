@@ -25,7 +25,7 @@ tmp="${TMPDIR:-/tmp}/orrery-agent-guard-test.$$"
 # `cat` and `bash` are the only other things the guard reaches before it gives
 # up, so they are the only things this shadow has to carry.
 fakebin="$tmp.bin"
-trap 'rm -rf "$tmp" "$fakebin"' EXIT
+trap 'rm -rf "$tmp" "$tmp".* "$fakebin"' EXIT
 mkdir -p "$fakebin"
 ln -s "$(command -v cat)" "$fakebin/cat"
 ln -s "$(command -v bash)" "$fakebin/bash"
@@ -56,11 +56,15 @@ probes() { # $1 = guard path — prints how many it gets wrong
   out="$(jq -n '{tool_input:{name:"reviewer",prompt:"no send here"}}' \
     | PATH="$fakebin" "$fakebin/bash" "$1" 2>/dev/null || true)"
   grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
+  # A real refusal carries the rule that governs refusals; the rule file is not
+  # loaded at this moment, so this sentence is the only place it arrives.
+  out="$(jq -n '{tool_input:{name:"reviewer",prompt:"no send here"}}' | bash "$1" 2>/dev/null || true)"
+  grep -q "the person's to rule on" <<<"$out" || fails=$((fails + 1))
   echo "$fails"
 }
 
 trap_fails=0
-report_probes "$guard" "the Agent guard" "bad input, no jq" \
+report_probes "$guard" "the Agent guard" "bad input, no jq, the refusal rule" \
   || trap_fails=$((trap_fails + $?))
 
 total="$(grep -cE '^(deny|allow)	' "$CASES")"

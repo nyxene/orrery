@@ -1,6 +1,6 @@
 ---
 name: sharpen
-description: Improve the library itself from accumulated evidence. Invoke periodically, or at the end of a session that went badly — reads corrections and friction from recent sessions, finds the patterns, and proposes changes to canon, skills, agents, rules or guards, one at a time.
+description: Improve the library itself from accumulated evidence. Invoke periodically, or at the end of a session that went badly — reads corrections and friction from past sessions, finds the patterns, and proposes changes to canon, skills, agents, rules or guards, one at a time.
 argument-hint: "[optional: an area to weight more heavily]"
 ---
 
@@ -72,6 +72,12 @@ friction is still legible.
    this project, after that change, the ratio moved" and never "the change
    works".
 
+   **And the waiver log** — `.claude/orrery-waivers.tsv` unless `ORRERY_WAIVER_LOG`
+   names another — where every deliberate skip of a gate is a row with its
+   reason. Read the reasons, not only the count: a waiver whose reason is an
+   agent's own judgement rather than the owner's words is the skip the gate
+   exists to stop.
+
 4. **The rule set itself** — clusters are the real signal. See below.
 5. **What the last run promised.** Every accepted change from the previous
    sharpen: did it actually land? Canon §3 applies to this skill too, and a
@@ -130,9 +136,10 @@ remove something or state why it earns its place.
 
 ## Procedure
 
-**1. Pick the scope** — ask, do not assume:
+**1. Read the sharpen log, then pick the scope.** The log first, before
+gathering anything — step 6 says why. Then the scope: ask, do not assume:
 - this conversation only
-- recent sessions plus this one
+- past sessions plus this one — all of them, per the list above
 - the library itself, with no conversation analysis (a standalone health pass)
 
 **2. Gather.** For the transcript scan, spawn a background agent; it is a lot of

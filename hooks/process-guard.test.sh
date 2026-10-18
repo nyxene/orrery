@@ -37,6 +37,12 @@
 # nothing.
 set -uo pipefail
 
+# The probes build a git repository for the pull-request gate's state, and this
+# suite runs as a pre-commit gate, where git exports GIT_DIR into the hook: an
+# inherited one wins over `git -C`, and the fixture would be written into the
+# repository being committed.
+while IFS='=' read -r _var _; do unset "$_var"; done < <(env | grep '^GIT_')
+
 here="$(cd "$(dirname "$0")" && pwd -P)"
 guard="$here/process-guard.sh"
 CASES="$here/process-cases.tsv"
@@ -53,7 +59,7 @@ CASES="$here/process-cases.tsv"
 # were about something else entirely. Blanking any of these leaves the variable
 # unset under `set -u`, the guard exits non-zero, and every `deny` case in the
 # corpus goes red, which is a real kill rather than an artifact.
-MUTANTS_RE='^[[:space:]]*(if )?grep -q|^matched=|^\[ -n "\$matched" \]|^[[:space:]]*if \[ -z "\$reason" \]|^(assign|pos|ghflags|close|api|xargsform)='
+MUTANTS_RE='^[[:space:]]*(if )?grep -q|^matched=|^\[ -n "\$matched" \]|^[[:space:]]*if \[ -z "\$reason" \]|^(assign|pos|ghflags|close|api|xargsform)=|^[[:space:]]*(scan|pr|prmatch|since|gitdir|log|state)=|^[[:space:]]*fp="\$\(fingerprint\)"|^if \[ -n "\$prmatch" \]|^[[:space:]]*if \[ -n "\$log" \]|^[[:space:]]*elif ! awk|^[[:space:]]*waive "|^[[:space:]]*if grep -q .ORRERY_WAIVE|^[[:space:]]*\[ ! -f "\$state" \]|^[[:space:]]*\$2 == fp|^[[:space:]]*\$6 == "ran"|^[[:space:]]*hd \{|^[[:space:]]*if \(match'
 
 tmp="${TMPDIR:-/tmp}/orrery-process-guard-test.$$"
 mutdir="$tmp.mut"
@@ -62,7 +68,7 @@ fakebin="$tmp.bin"
 # repository's own log. A suite that writes to the file it is testing leaves
 # evidence of skips that never happened.
 export ORRERY_WAIVER_LOG="$tmp.waivers"
-trap 'rm -rf "$tmp" "$mutdir" "$fakebin" "$ORRERY_WAIVER_LOG"' EXIT
+trap 'rm -rf "$tmp" "$tmp.repo" "$mutdir" "$fakebin" "$ORRERY_WAIVER_LOG"' EXIT
 mkdir -p "$fakebin" "$mutdir"
 cp "$here/waiver.sh" "$mutdir/waiver.sh"
 ln -s "$(command -v cat)" "$fakebin/cat"
@@ -71,9 +77,30 @@ ln -s "$(command -v bash)" "$fakebin/bash"
 # shellcheck source=hooks/guard-test-lib.sh
 . "$here/guard-test-lib.sh"
 
-payload() { # $1 = command
-  jq -n --arg c "$1" '{session_id:"test-session",tool_input:{command:$c}}'
+payload() { # $1 = command, $2 = tool_use_id
+  jq -n --arg c "$1" --arg u "${2:-toolu_test}" \
+    '{session_id:"test-session",tool_use_id:$u,tool_input:{command:$c}}'
 }
+
+# The pull-request gate reads the session's call log and keeps its state in
+# git's common directory. Neither may be this repository's: a session here has
+# ORRERY_CALL_LOG set and CI does not, so an inherited one made the corpus mean
+# different things in the two places. The corpus runs with no log at all —
+# every `gh pr create` in it passes, as it does in a host that keeps none — and
+# the probes below build the log they need.
+unset ORRERY_CALL_LOG
+repo="$tmp.repo"
+mkdir -p "$repo"
+git init -q -b main "$repo"
+git -C "$repo" config user.email test@example.invalid
+git -C "$repo" config user.name process-guard-test
+export CLAUDE_PROJECT_DIR="$repo"
+fp="$(printf '%s' test-session | shasum -a 256 2>/dev/null | cut -c1-8)"
+[ -n "$fp" ] || fp="$(printf '%s' test-session | sha256sum | cut -c1-8)"
+# Fixture times, generated rather than written: a literal date in a shipped file
+# is residue to `sanitize-scan.sh`. Only their order matters.
+d="$(date -u +%Y)-01-01T00:00:0"
+row() { printf '%s\t%s\t%s\t%s\tno\t%s\t%s\n' "$1" "$fp" "$2" "$3" "$4" "$5"; }
 
 pass=0 fail=0
 ok()  { pass=$((pass + 1)); printf '\033[32m✓\033[0m %s\n' "$1"; }
@@ -128,6 +155,55 @@ probes() { # $1 = guard path — prints how many it gets wrong
     | ORRERY_WAIVER_LOG=/dev/null/nope/waivers.tsv bash "$1" 2>/dev/null || true)"
   grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
 
+  # --- the pull-request gate. Each probe states the log it is read against.
+  local calls="$tmp.calls" state="$repo/.git/orrery-pr-gate" pr='gh pr create --fill'
+  rm -f "$state"
+  # No log: passes, as it does in a host that keeps none.
+  out="$(payload "$pr" | bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" && fails=$((fails + 1))
+  # A log with no auditor in it: refused.
+  : > "$calls"
+  row ${d}1Z Bash - call toolu_b >> "$calls"
+  out="$(payload "$pr" | ORRERY_CALL_LOG="$calls" bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
+  # Another session's auditor does not count for this one.
+  printf '%s\tffffffff\tAgent\tauditor\tno\tran\ttoolu_x\n' "${d}2Z" >> "$calls"
+  out="$(payload "$pr" | ORRERY_CALL_LOG="$calls" bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
+  # This session's auditor, in a host's namespaced spelling: passes, and the
+  # pull request is remembered.
+  row ${d}3Z Agent orrery:auditor ran toolu_a >> "$calls"
+  out="$(payload "$pr" toolu_p1 | ORRERY_CALL_LOG="$calls" bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" && fails=$((fails + 1))
+  grep -q 'toolu_p1' "$state" 2>/dev/null || fails=$((fails + 1))
+  # That create never ran — no `ran` row — so it opened nothing, and the same
+  # audit still covers the next attempt.
+  out="$(payload "$pr" toolu_p2 | ORRERY_CALL_LOG="$calls" bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" && fails=$((fails + 1))
+  # Once a create has run, the audit before it is spent.
+  row ${d}4Z Bash - ran toolu_p2 >> "$calls"
+  [ ! -f "$state" ] || sed -i.bak "s/^[^$(printf '\t')]*\(	$fp	toolu_p2\)$/${d}4Z\1/" "$state" && rm -f "$state.bak"
+  out="$(payload "$pr" toolu_p3 | ORRERY_CALL_LOG="$calls" bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
+  # A waiver passes, and is a row.
+  log="$tmp.probe-waivers"; : > "$log"
+  out="$(payload "ORRERY_WAIVE=\"owner: ship it now\" $pr" | ORRERY_CALL_LOG="$calls" \
+    ORRERY_WAIVER_LOG="$log" bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" && fails=$((fails + 1))
+  grep -q 'gh pr create	owner: ship it now' "$log" 2>/dev/null || fails=$((fails + 1))
+  # A heredoc line is text: it neither refuses nor records.
+  : > "$log"
+  out="$(payload "cat > doc.md <<'EOF'
+ORRERY_WAIVE=\"forged\" gh pr create --fill
+EOF" | ORRERY_CALL_LOG="$calls" ORRERY_WAIVER_LOG="$log" bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" && fails=$((fails + 1))
+  [ -s "$log" ] && fails=$((fails + 1))
+  # A close riding behind a create is still the close's to answer for.
+  row ${d}9Z Agent auditor ran toolu_a2 >> "$calls"
+  out="$(payload "$pr && gh issue close 42" toolu_p4 | ORRERY_CALL_LOG="$calls" bash "$1" 2>/dev/null || true)"
+  grep -q 'retrospective' <<<"$out" || fails=$((fails + 1))
+  rm -f "$log" "$calls" "$state"
+
   echo "$fails"
 }
 
@@ -144,14 +220,14 @@ if [ "$n" -eq 0 ]; then
   ok "passes through what it cannot read, and records before it permits"
 else
   bad "passes through what it cannot read, and records before it permits" \
-      "$n of 7 probes wrong"
+      "$n probes wrong"
 fi
 
 if [ "$n0" -eq 0 ]; then
   ok "an unmutated copy in the mutant's own location behaves identically"
 else
   bad "an unmutated copy in the mutant's own location behaves identically" \
-      "$n0 of 7 probes wrong there — every mutation number below is meaningless"
+      "$n0 probes wrong there — every mutation number below is meaningless"
 fi
 
 total="$(grep -cE '^(deny|allow)	' "$CASES")"
@@ -163,7 +239,7 @@ if [ "$fails" -eq 0 ]; then ok "$total corpus cases"; else bad "$total corpus ca
 out="$(payload 'gh issue close 42' | bash "$guard" 2>/dev/null)"
 # `--waive` is the way past that survives a host running the server-side
 # workflow; `ORRERY_WAIVE` alone records a row the server cannot see.
-for want in 'close-issue.sh' '--what' '--waive' 'ORRERY_WAIVE='; do
+for want in 'close-issue.sh' '--what' '--waive' 'ORRERY_WAIVE=' "the person's to rule on"; do
   if grep -q -- "$want" <<<"$out"; then ok "the refusal names $want"
   else bad "the refusal names $want" "not in the message"; fi
 done
@@ -177,4 +253,6 @@ fi
 
 [ "$fail" -eq 0 ] || { echo "corpus is red; fix it before mutating" >&2; exit 1; }
 echo
-mutation_pass "$guard" "$mutdir/process-guard.sh"
+# One at a time whatever the environment says: the probes share a repository,
+# a call log and the gate file.
+MUTATE_JOBS=1 mutation_pass "$guard" "$mutdir/process-guard.sh"
