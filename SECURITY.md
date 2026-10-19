@@ -44,11 +44,11 @@ involved, never the secret.
 
 ## What to expect
 
-- An acknowledgement within 72 hours.
-- An assessment, and where the problem is confirmed, a fix in the next release
-  with the finding credited unless you ask otherwise.
-- If a report turns out not to be a vulnerability, a plain explanation of why,
-  and it becomes an ordinary issue if it is still a defect.
+Orrery is free software under the MIT licence, maintained by one person in
+their own time. It comes with no warranty and no promised response time.
 
-This is a small project maintained by one person. Timelines are honest rather
-than contractual.
+- Reports are read and answered as time allows.
+- Where the problem is confirmed, the fix lands in a later release, with the
+  finding credited unless you ask otherwise.
+- If a report turns out not to be a vulnerability, it gets a plain explanation
+  of why, and becomes an ordinary issue if it is still a defect.
