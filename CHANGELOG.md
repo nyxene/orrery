@@ -9,6 +9,39 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.30.1
+
+**Patch.** Nothing a session runs decides differently. The install
+instructions gain the line a new install could not work without, and the
+doctor's advice for a missing method now names the actual fix.
+
+### Install names both marketplaces
+
+Orrery depends on `orrery-method` and installs it automatically, but only
+from a marketplace of that name. The README and `install/into-project.md`
+never said to add it, so following them left Orrery without its dependency.
+Both now start with:
+
+```bash
+/plugin marketplace add nyxene/orrery-method
+```
+
+### The doctor says what to do when the method is missing
+
+The `family` check's hint said the marketplace "may not allow the
+cross-marketplace reference". The usual cause is simpler: the `orrery-method`
+marketplace was never added. The hint and `doctor`'s skill now say to add it
+and run `/reload-plugins`.
+
+### Contributing
+
+`CONTRIBUTING.md` and the pull request template listed seven gates where
+the pre-commit hook runs eleven. Both now say to run `.githooks/pre-commit`,
+which is the list.
+
+**What you need to do:** nothing, if Orrery already loads for you. A new
+machine needs the marketplace line above before `/plugin install`.
+
 ## 0.30.0
 
 **Minor.** Two guards change what they refuse, and one starts refusing a new

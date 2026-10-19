@@ -18,12 +18,8 @@ will be credited in the release notes.
 
 ## Gates
 
-- [ ] `claude plugin validate . --strict`
-- [ ] `./hooks/bash-guard.test.sh`
-- [ ] `./hooks/agent-guard.test.sh --mutate`
-- [ ] `./hooks/canon-loader.test.sh`, `./hooks/rules-loader.test.sh`, `./hooks/handoff-prompt.test.sh`
-- [ ] `./skills/sharpen/check-claims.sh`
-- [ ] `./hooks/bash-guard.test.sh --mutate` — only if `hooks/bash-guard.sh`, `hooks/cases.tsv` or `hooks/guard-test-lib.sh` changed
+- [ ] `.githooks/pre-commit` — every gate; it is the list
+- [ ] `./hooks/bash-guard.test.sh --mutate` — only if `hooks/bash-guard.sh`, `hooks/cases.tsv`, `hooks/bash-guard.test.sh` or `hooks/guard-test-lib.sh` changed
 
 ## Checks
 

@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.30.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.30.1-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -31,11 +31,18 @@ and `jq`, and on nothing else.
 ## Install
 
 ```bash
+/plugin marketplace add nyxene/orrery-method
 /plugin marketplace add nyxene/orrery
 /plugin install orrery@orrery
 ```
 
 `jq` must be on `PATH` before anything fires.
+
+The first line is not optional. Orrery depends on
+[`orrery-method`](https://github.com/nyxene/orrery-method) — the written method
+its skills implement — and installs it automatically, but only from a
+marketplace of that name. Skip the line and Orrery installs without it and
+fails to load. The method also installs on its own, without this plugin.
 
 Then spend five minutes on **[install/into-project.md](install/into-project.md)**.
 The skills read a handful of facts from your project's `CLAUDE.md` — your
@@ -202,7 +209,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.30.0 · Canon, thirteen skills, three agents, 23 rules, eight hooks
+Version 0.30.1 · Canon, thirteen skills, three agents, 23 rules, eight hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

@@ -107,9 +107,10 @@ news.
 - **Method missing** — `orrery` is installed and `orrery-method` is not. The
   corpus its skills implement is not in the session: every skill still loads and
   every guard still fires, and the method they are written against is simply
-  absent. It installs as a dependency of this plugin, so reaching this state
-  usually means the marketplace refused the cross-marketplace reference — reinstall
-  orrery, and if it recurs, report it.
+  absent. It installs as a dependency of this plugin, but only from a marketplace
+  named `orrery-method`, so reaching this state usually means that marketplace was
+  never added — `/plugin marketplace add nyxene/orrery-method`, then
+  `/reload-plugins`. If it recurs with the marketplace present, report it.
 - **Family: an unknown member** — something else installed whose name starts
   with `orrery`. Reported rather than judged: this doctor knows two plugins, and
   a third is either new or is not ours.

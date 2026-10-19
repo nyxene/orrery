@@ -1,9 +1,14 @@
 # Installing Orrery into a project
 
 ```bash
+/plugin marketplace add nyxene/orrery-method
 /plugin marketplace add nyxene/orrery
 /plugin install orrery@orrery
 ```
+
+The first line is not optional: Orrery depends on `orrery-method`, the written
+method its skills implement, and installs it automatically only from a
+marketplace of that name. Without it Orrery installs and then fails to load.
 
 Skills become available as `orrery:frame`, `orrery:plan`, `orrery:build`,
 `orrery:review`, `orrery:diagnose`, `orrery:pare`, `orrery:verify`,

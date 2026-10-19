@@ -604,7 +604,7 @@ if [ "$have_jq" -eq 1 ] && [ "$have_claude" -eq 1 ] && [ -n "${json:-}" ]; then
     row "family" "orrery + method"
   elif [ "$has_full" -eq 1 ]; then
     bad "orrery is installed and orrery-method is not — the method its skills implement is missing, and nothing else will say so"
-    printf '    the dependency installs with orrery; if it did not, the marketplace may not allow the cross-marketplace reference\n'
+    printf '    it installs with orrery only once its marketplace is added: /plugin marketplace add nyxene/orrery-method, then /reload-plugins\n'
     row "family" "orrery, method missing"
   elif [ "$has_method" -eq 1 ]; then
     ok "orrery-method only — the corpus, without the machinery that executes it"
