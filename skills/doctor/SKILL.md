@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Check whether orrery is actually loaded and current in a host project — enabled on the checked-out branch, cache matching the marketplace source, no conflicting global install, and the method it implements installed alongside it. It also reports whether any of it is actually being *used* here — which skills fired, whether agent spawns carried a type, and whether the pull-request gate a hook cannot be is installed. Invoke on "doctor", "is orrery working", "check the plugin install", "why isn't the plugin loading", "is anyone using this", or periodically as a health check independent of any specific symptom.
+description: Check whether orrery is actually loaded and current in a host project — enabled on the checked-out branch, cache matching the marketplace source, no conflicting global install, and no leftover `orrery-method` plugin. It also reports whether any of it is actually being *used* here — which skills fired, whether agent spawns carried a type, and whether the pull-request gate a hook cannot be is installed. Invoke on "doctor", "is orrery working", "check the plugin install", "why isn't the plugin loading", "is anyone using this", or periodically as a health check independent of any specific symptom.
 argument-hint: "[optional: a project path, default is the current one]"
 ---
 
@@ -49,10 +49,10 @@ hook · the cached git SHA matches the marketplace source's current HEAD (a
 version-string match alone misses a source change that forgot a version bump)
 · the loaded cache's `plugin.json` doesn't redeclare a hooks path (a manifest
 shape that loads nothing while passing validation) · whether this project's
-copy of the deny-list still matches the one the plugin ships · whether
-`orrery-method`, the corpus this plugin's skills implement, is installed with it.
+copy of the deny-list still matches the one the plugin ships · whether an
+`orrery-method` plugin from before the method became text is still installed.
 
-That last one calls `hooks/permissions-check.sh --report` rather than repeating
+The deny-list check calls `hooks/permissions-check.sh --report` rather than repeating
 the comparison; the same script runs as a `SessionStart` hook and says it once
 per session. It exists because the deny rules in `hooks/permissions.json` are
 merged into your project's settings **by hand**: the plugin updates itself,
@@ -104,15 +104,12 @@ news.
   resolved, because the plugin root moves on every update and no document can
   carry it — **it is printed for you to hand over, not to run.** Pass it on
   exactly as printed.
-- **Method missing** — `orrery` is installed and `orrery-method` is not. The
-  corpus its skills implement is not in the session: every skill still loads and
-  every guard still fires, and the method they are written against is simply
-  absent. It installs as a dependency of this plugin, so reaching this state
-  usually means the marketplace refused the cross-marketplace reference — reinstall
-  orrery, and if it recurs, report it.
-- **Family: an unknown member** — something else installed whose name starts
-  with `orrery`. Reported rather than judged: this doctor knows two plugins, and
-  a third is either new or is not ours.
+- **Method plugin: leftover** — `orrery-method` is still installed as a
+  plugin. Until 0.30.0 this plugin depended on it; the method is text now,
+  ships no plugin, and orrery does not use it. Left installed it loads a second
+  canon into every session from a repository that no longer serves it.
+  `/plugin marketplace remove orrery-method` takes out the marketplace and the
+  plugin installed from it.
 - **Usage: no log** — the call log is off, so nothing can say what ran here.
   Not an install fault: set `ORRERY_CALL_LOG` per `install/into-project.md`
   if the project wants the answer.

@@ -115,11 +115,10 @@ else
 fi
 
 # --- this loader carries this plugin's canon and no other -------------------
-# `orrery-method` is a declared dependency, not a vendored copy: its canon is a
-# different document about a different thing, and its own plugin's hook loads
-# it. A canon found under method/ here would mean a second copy of the corpus
-# in this repository — the drift SHIPLIST exists to make impossible — so it is
-# not read, and this case is what would notice if that changed.
+# The written method is text and is not loaded into a session. A canon found
+# under method/ here would mean a second copy of it in this repository — the
+# drift SHIPLIST exists to make impossible — so it is not read, and this case is
+# what would notice if that changed.
 foreign="$tmp/foreign"; mkdir -p "$foreign/method"
 printf 'CONDUCT FIXTURE MARKER\n'   > "$foreign/CANON.md"
 printf 'STRUCTURE FIXTURE MARKER\n' > "$foreign/method/CANON.md"

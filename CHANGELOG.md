@@ -9,6 +9,46 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.30.1
+
+**Patch.** Orrery stops depending on `orrery-method`. Nothing a session runs
+decides differently; one plugin fewer loads beside it.
+
+### The method is text
+
+[Orrery Method](https://github.com/nyxene/orrery-method) is now plain text for
+people to read: the documents, their site and an appendix on applying them. It
+ships no plugin, so Orrery no longer declares it as a dependency, and the
+install is the two lines it always was:
+
+```bash
+/plugin marketplace add nyxene/orrery
+/plugin install orrery@orrery
+```
+
+What an agent must do under the method was always carried by Orrery's skills
+and enforced by its guards. The dependency added only a second canon to every
+session.
+
+### The doctor names a leftover method plugin
+
+Where `orrery-method` is still installed as a plugin from an earlier release,
+`doctor` says so and gives the command that takes it out. The check that
+called orrery without the method a failure is gone with the dependency.
+
+### Contributing
+
+`CONTRIBUTING.md` and the pull request template listed seven gates where the
+pre-commit hook runs eleven. Both now say to run `.githooks/pre-commit`, which
+is the list.
+
+**What you need to do:** if `orrery-method` is installed as a plugin, remove
+its marketplace, which takes the plugin with it:
+
+```bash
+/plugin marketplace remove orrery-method
+```
+
 ## 0.30.0
 
 **Minor.** Two guards change what they refuse, and one starts refusing a new

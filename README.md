@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.30.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.30.1-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -25,8 +25,10 @@ consent before work starts, evidence before a claim is made, and a rule filed
 the moment something breaks — so the next session inherits the lesson instead
 of the wall.
 
-Orrery is that method, shipped as a Claude Code plugin. It depends on GitHub
-and `jq`, and on nothing else.
+Orrery is that method, shipped as a Claude Code plugin. It follows
+[Orrery Method](https://github.com/nyxene/orrery-method), the written method
+it executes, which is text for people to read and installs nothing. The plugin
+depends on GitHub and `jq`, and on nothing else.
 
 ## Install
 
@@ -202,7 +204,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.30.0 · Canon, thirteen skills, three agents, 23 rules, eight hooks
+Version 0.30.1 · Canon, thirteen skills, three agents, 23 rules, eight hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 
