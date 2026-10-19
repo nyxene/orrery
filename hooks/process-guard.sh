@@ -327,7 +327,7 @@ if grep -q 'ORRERY_WAIVE=' <<<"$matched"; then
   # **A URL is tried first, and that order is the whole fix.** The general form
   # below stops at the first digit run anywhere in the argument, which inside a
   # URL is part of the host or the repository name: `.../o/web3-app/issues/42`
-  # recorded `#3`, and `.../nyxene/orrery-v2/issues/306` recorded `#2`. The
+  # recorded `#3`, and `.../o/app-v2/issues/306` recorded `#2`. The
   # `issues/` branch existed but sat behind `[ -n "$n" ] ||`, and the general
   # form always returns something for a URL — so it was unreachable, and
   # deleting it changed no output and left the corpus green. A row pointing at

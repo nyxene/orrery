@@ -45,21 +45,16 @@ clone, which looks exactly like having them:
 git config core.hooksPath .githooks
 ```
 
-Then make sure they pass:
+Then make sure they pass — the hook is the list, so run it rather than a copy
+of it that goes stale:
 
 ```bash
-claude plugin validate . --strict
-./hooks/bash-guard.test.sh
-./hooks/agent-guard.test.sh --mutate
-./hooks/canon-loader.test.sh
-./hooks/rules-loader.test.sh
-./hooks/handoff-prompt.test.sh
-./skills/sharpen/check-claims.sh
+.githooks/pre-commit
 ```
 
-The Agent guard's mutation pass is in that list because it costs seconds. The
-Bash guard's does not: if you changed `hooks/bash-guard.sh`, `hooks/cases.tsv`
-or the shared `hooks/guard-test-lib.sh`, run it too. It takes minutes, and it is
+The quick mutation passes are in it because they cost seconds. The Bash
+guard's is not: if you changed `hooks/bash-guard.sh`, `hooks/cases.tsv`,
+`hooks/bash-guard.test.sh` or the shared `hooks/guard-test-lib.sh`, run it too. It takes minutes, and it is
 the only thing that proves the corpus still pins the guard rather than merely
 running beside it:
 

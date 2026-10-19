@@ -14,12 +14,10 @@ set -euo pipefail
 
 canon="${CLAUDE_PLUGIN_ROOT:-$(dirname "$0")/..}/CANON.md"
 
-# One canon, and only this plugin's. The method's canon is a different document
-# about a different thing — this one is how an agent conducts itself, that one
-# is what structure the work has — and it is loaded by its own plugin's hook,
-# because `orrery-method` is a declared dependency rather than a vendored copy.
-# Loading it from here would mean a second copy of the corpus in this
-# repository, which is the drift SHIPLIST exists to make impossible.
+# One canon, and only this plugin's. The written method is text for people to
+# read, not something loaded into a session: what an agent must do in it is
+# carried by the skills and enforced by the guards. A second canon here would
+# be a copy of that text, which is the drift SHIPLIST exists to make impossible.
 
 # A loader cannot deny, so it says so instead. Without jq this used to exit 127
 # and the session simply started without the file that claims to bind every
