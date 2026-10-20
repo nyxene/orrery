@@ -52,7 +52,7 @@ claude plugin update orrery@orrery --scope user
 
 ## What the project declares
 
-Orrery holds the method. The project holds its own facts, declared in its
+Orrery holds the skills and guards. The project holds its own facts, declared in its
 `CLAUDE.md`, and the skills read them by name:
 
 | Declaration | Used by | If missing |

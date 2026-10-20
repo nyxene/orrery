@@ -2,13 +2,13 @@
 
 # Orrery
 
-**A working method for software written by AI agents and directed by people.**
+**A Claude Code plugin that runs a method for software written by AI agents and directed by people.**
 
 Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.30.2-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.30.3-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -25,10 +25,10 @@ consent before work starts, evidence before a claim is made, and a rule filed
 the moment something breaks — so the next session inherits the lesson instead
 of the wall.
 
-Orrery is that method, shipped as a Claude Code plugin. It follows
-[Orrery Method](https://github.com/nyxene/orrery-method), the written method
-it executes, which is text for people to read and installs nothing. The plugin
-depends on GitHub and `jq`, and on nothing else.
+Orrery is the tool that executes such a method. The method itself is
+[Orrery Method](https://github.com/nyxene/orrery-method): text for people to
+read, which installs nothing. The plugin depends on GitHub and `jq`, and on
+nothing else.
 
 ## Install
 
@@ -64,7 +64,7 @@ its moment arrives.
 | 📮 | **`feedback`** | Report friction with the tooling itself, sanitized, and only on your word |
 | 🤝 | **`handoff`** | Carry the dead ends across a context reset, where they would otherwise evaporate |
 | 🎓 | **`learn`** | Turn an incident into a rule, while the cause is still known |
-| 🪒 | **`sharpen`** | Improve the method itself from accumulated evidence |
+| 🪒 | **`sharpen`** | Improve this plugin's skills and rules from accumulated evidence |
 
 **When two of them seem to fire, the one that names the other is right.** Most
 descriptions carry a *not for this — use that* clause, put there by whichever
@@ -102,7 +102,7 @@ do — is platform-specific in a way the rest of this page is not.
 | Platform | What holds | What proves it |
 |---|---|---|
 | **macOS** | everything above | the maintainer's pre-commit hook, on the machine this is written on |
-| **Linux** | everything above | CI, on every push |
+| **Linux** | everything above | CI, on every pull request and every push to main |
 | **Windows** | **nothing yet — support is planned, see below** | — |
 | **anything else** | **nothing — the Bash guard refuses every command and says why** | a probe the guard's mutation pass scores |
 
@@ -169,9 +169,19 @@ nothing is written outside your repository on its own. **No hook makes a network
 call** — the things that run automatically, before every tool call, never leave
 your machine.
 
-One skill does reach the network, only when you run it: `doctor` asks GitHub for
-this plugin's own current commit, to tell you whether your installed copy has
-drifted from the marketplace source. It sends nothing but that request.
+Some skills reach GitHub, and only when you run them. Nothing goes anywhere
+but GitHub, and nothing is sent to this project.
+
+- **Your own tracker, through your own `gh` login.** `build` posts a
+  retrospective on the issue it finishes and closes it; `debt` files and reads
+  debt issues; `learn` files to an incident inbox repository if your project
+  declares one; `sharpen`'s claims check reads your label list. These are the
+  work you asked for, written where you keep your work.
+- **`doctor`**, two requests: this plugin's own current commit, to tell you
+  whether your installed copy has drifted from the marketplace source, and your
+  project's closed issues, to count how many carry a retrospective.
+- **`feedback`** sends nothing: it hands you a prefilled link to this
+  project's tracker, and you decide whether to open it.
 
 One optional feature writes about your usage, and only if you ask for it: set
 `ORRERY_CALL_LOG` and a hook records which tools were called — never a command,
@@ -204,7 +214,7 @@ Pre-1.0. Skill names and layout may still move between releases; the
 
 <div align="center">
 
-Version 0.30.2 · Canon, thirteen skills, three agents, 23 rules, eight hooks
+Version 0.30.3 · Canon, thirteen skills, three agents, 23 rules, eight hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

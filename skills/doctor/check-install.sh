@@ -661,9 +661,9 @@ fi
 # failure; the second is the part of it somebody decided on purpose, which is a
 # different fact and must not be averaged into the first.
 #
-# This is the one check here that needs the network, and every way it can fail
-# has to be visibly different from a clean answer. A tool in this method shipped the other
-# behaviour once, where a failed fetch and a successful one produced identical
+# This and the drift check above are the two that need the network, and every
+# way this one can fail has to be visibly different from a clean answer. A tool
+# here shipped the other behaviour once, where a failed fetch and a successful one produced identical
 # reports, and a release was prepared twice on the strength of it. Four
 # failure shapes, four distinct words:
 #

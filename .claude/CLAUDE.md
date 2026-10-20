@@ -1,8 +1,8 @@
 # Orrery (product) — project instructions
 
-This repository is the **released product** of the Orrery method: the plugin —
-canon, skills, agents, hooks, rules — and nothing else. The written methodology
-lives in its own repository and is not distributed here. Everything in this one
+This repository is the **released product**: the Orrery plugin — canon,
+skills, agents, hooks, rules — and nothing else. The method it follows is text
+and lives in its own repository, Orrery Method. Everything in this one
 is what consumers install; treat every file as shipped.
 
 **Nothing is developed here.** Changes arrive one of two ways: a promotion PR

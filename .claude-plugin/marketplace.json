@@ -5,13 +5,13 @@
     "url": "https://github.com/nyxene"
   },
   "metadata": {
-    "description": "Methodology and tooling for running AI-agent software projects on GitHub with Claude."
+    "description": "Tooling that runs AI-agent software projects on GitHub with Claude, following Orrery Method."
   },
   "plugins": [
     {
       "name": "orrery",
       "source": "./",
-      "description": "The Orrery methodology library: canon, thirteen skills, three agents, guards and earned rules."
+      "description": "The Orrery plugin: canon, thirteen skills, three agents, guards and earned rules."
     }
   ]
 }

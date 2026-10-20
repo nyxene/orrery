@@ -9,6 +9,29 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.30.3
+
+**Patch.** The README and the plugin's descriptions change; nothing a session
+runs does.
+
+### A tool, not a method
+
+The README's first lines called the plugin a method. Since 0.30.1 the method is
+[Orrery Method](https://github.com/nyxene/orrery-method), text for people to
+read, and Orrery is the tool that executes it. The README, the manifest and the
+marketplace now say so.
+
+### Privacy names every request to GitHub
+
+The README said one skill reaches the network, `doctor`, with one request. In
+fact `doctor` makes two — the plugin's own current commit, and your project's
+closed issues to count retrospectives — and `build`, `debt`, `learn` and
+`sharpen` read or write your own tracker through your `gh` login, while
+`feedback` only hands you a link to this project's tracker. All of it is now named. None of
+it runs unless you run the skill, and none of it goes anywhere but GitHub.
+
+**What you need to do:** nothing.
+
 ## 0.30.2
 
 **Patch.** One file changes, and nothing a session runs.
