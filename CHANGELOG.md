@@ -9,6 +9,19 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.30.2
+
+**Patch.** One file changes, and nothing a session runs.
+
+### No promised response time
+
+`SECURITY.md` promised an acknowledgement of a security report within 72
+hours. Orrery is free software under the MIT licence, maintained by one person
+in their own time, and makes no such promise: reports are read and answered as
+time allows. How to report is unchanged.
+
+**What you need to do:** nothing.
+
 ## 0.30.1
 
 **Patch.** Orrery stops depending on `orrery-method`. Nothing a session runs
