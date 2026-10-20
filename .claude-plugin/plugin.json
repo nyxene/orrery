@@ -1,7 +1,7 @@
 {
   "name": "orrery",
-  "version": "0.30.2",
-  "description": "Methodology library for coding agents: consensus planning, fan-out execution, debt tracking, rules earned from real incidents, and guards that fire before every shell call.",
+  "version": "0.30.3",
+  "description": "A plugin that runs a method for coding agents: consensus planning, fan-out execution, debt tracking, rules earned from real incidents, and guards that fire before every shell call.",
   "author": {
     "name": "Evgeniy Kovrov",
     "url": "https://github.com/nyxene"
