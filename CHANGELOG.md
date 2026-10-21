@@ -9,6 +9,40 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.31.0
+
+**Minor.** A command that used to run is now refused: a session can no longer
+make a worktree with `git worktree add`.
+
+### Worktrees are made by the harness
+
+Where the sandbox is on, it protects the `.claude/` paths every checkout of a
+project carries, so `git worktree add` fails there — and the retry a session
+reaches for is the same command with the sandbox off, which lifts every
+protection for the whole call. The process guard now refuses the command in
+every spelling it can read and names the harness's own ways instead:
+
+- `EnterWorktree` — a worktree for the session itself;
+- `isolation: "worktree"` on the `Agent` tool — a worktree for a subagent.
+
+`git worktree list`, `remove` and `prune` still pass. A person running the
+command in a terminal is not affected: hooks do not reach a terminal.
+
+### Parallel agents
+
+The rule on parallel agents said the `Agent` tool had no isolation and told
+sessions to make worktrees by hand before a batch. Both were wrong. It now says
+to set `isolation: "worktree"` on each writing agent, and that an agent's
+worktree branches from the default branch unless the settings carry
+`worktree.baseRef: "head"` — which is what agents need when they must start
+from a commit on the task branch, such as the build skill's committed plan.
+
+**What you need to do:** if your agents must see commits on the current branch,
+add `"worktree": { "baseRef": "head" }` to the project's settings.
+
+**If you use RTK:** its hook rewrites `git` to `rtk git`, which Claude Code
+refuses inside an isolated worktree. Write `RTK_DISABLED=1 git …` there.
+
 ## 0.30.4
 
 **Patch.** Install instructions lose a step, and releases become verifiable.

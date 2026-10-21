@@ -1,6 +1,6 @@
 {
   "name": "orrery",
-  "version": "0.30.4",
+  "version": "0.31.0",
   "description": "A plugin that runs a method for coding agents: consensus planning, fan-out execution, debt tracking, rules earned from real incidents, and guards that fire before every shell call.",
   "author": {
     "name": "Evgeniy Kovrov",

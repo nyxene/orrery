@@ -59,7 +59,7 @@ CASES="$here/process-cases.tsv"
 # were about something else entirely. Blanking any of these leaves the variable
 # unset under `set -u`, the guard exits non-zero, and every `deny` case in the
 # corpus goes red, which is a real kill rather than an artifact.
-MUTANTS_RE='^[[:space:]]*(if )?grep -q|^matched=|^\[ -n "\$matched" \]|^[[:space:]]*if \[ -z "\$reason" \]|^(assign|pos|ghflags|close|api|xargsform)=|^[[:space:]]*(scan|pr|prmatch|since|gitdir|log|state)=|^[[:space:]]*fp="\$\(fingerprint\)"|^if \[ -n "\$prmatch" \]|^[[:space:]]*if \[ -n "\$log" \]|^[[:space:]]*elif ! awk|^[[:space:]]*waive "|^[[:space:]]*if grep -q .ORRERY_WAIVE|^[[:space:]]*\[ ! -f "\$state" \]|^[[:space:]]*\$2 == fp|^[[:space:]]*\$6 == "ran"|^[[:space:]]*hd \{|^[[:space:]]*if \(match'
+MUTANTS_RE='^[[:space:]]*(if )?grep -q|^matched=|^\[ -n "\$matched" \]|^[[:space:]]*if \[ -z "\$reason" \]|^(assign|pos|ghflags|gitflags|close|api|xargsform)=|^[[:space:]]*(scan|pr|prmatch|since|gitdir|log|state)=|^[[:space:]]*fp="\$\(fingerprint\)"|^if \[ -n "\$prmatch" \]|^[[:space:]]*if \[ -n "\$log" \]|^[[:space:]]*elif ! awk|^[[:space:]]*waive "|^[[:space:]]*if grep -q .ORRERY_WAIVE|^[[:space:]]*\[ ! -f "\$state" \]|^[[:space:]]*\$2 == fp|^[[:space:]]*\$6 == "ran"|^[[:space:]]*hd \{|^[[:space:]]*if \(match'
 
 tmp="${TMPDIR:-/tmp}/orrery-process-guard-test.$$"
 mutdir="$tmp.mut"
@@ -238,10 +238,10 @@ if [ "$fails" -eq 0 ]; then ok "$total corpus cases"; else bad "$total corpus ca
 
 # The refusal is read by a session that has to act on it, so it has to name the
 # way out. A deny that only says no gets worked around rather than followed.
-out="$(payload 'gh issue close 42' | bash "$guard" 2>/dev/null)"
+out="$({ payload 'gh issue close 42' | bash "$guard"; payload 'git worktree add ../x' | bash "$guard"; } 2>/dev/null)"
 # `--waive` is the way past that survives a host running the server-side
 # workflow; `ORRERY_WAIVE` alone records a row the server cannot see.
-for want in 'close-issue.sh' '--what' '--waive' 'ORRERY_WAIVE=' "the person's to rule on"; do
+for want in 'close-issue.sh' '--what' '--waive' 'ORRERY_WAIVE=' "the person's to rule on" 'EnterWorktree' 'isolation'; do
   if grep -q -- "$want" <<<"$out"; then ok "the refusal names $want"
   else bad "the refusal names $want" "not in the message"; fi
 done
