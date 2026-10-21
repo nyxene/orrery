@@ -118,3 +118,11 @@ deny	gh pr comment 303 --body "was: ORRERY_WAIVE=x echo hi; gh issue close 42"
 # case rather than a sentence in a commit message — which is the principle this
 # corpus exists to keep.
 deny	git commit -m "batch form: cat ids | xargs -I{} gh issue close {} now denied"
+
+# A backslash-escaped `|` is alternation in a search pattern, not a pipe. An
+# auditor's `grep 'push\|gh pr create'` was counted as a pull request opened.
+allow	grep -n 'push\|gh issue close 99042\|main' tools/promote.sh
+deny	true | gh issue close 99042
+# The limit, written down: an unescaped `|` inside quotes still reads as a pipe.
+# The matcher is quote-blind by design; see the header.
+deny	grep -E 'push|gh issue close 99042' f

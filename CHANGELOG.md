@@ -9,6 +9,30 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.30.4
+
+**Patch.** Install instructions lose a step, and releases become verifiable.
+Nothing a session runs changes.
+
+### Public
+
+This repository is public. The auto-update step that asked you to run
+`gh auth setup-git`, because the background check had to reach a private
+repository, is gone: a public marketplace needs no credential.
+
+### Verifiable releases
+
+From this release on, releases are immutable: once published, a release's tag
+and files cannot change, and GitHub signs an attestation for it. Check that a
+release is the one GitHub recorded when it was published (needs a recent
+GitHub CLI):
+
+```bash
+gh release verify v0.30.4 -R nyxene/orrery
+```
+
+**What you need to do:** nothing.
+
 ## 0.30.3
 
 **Patch.** The README and the plugin's descriptions change; nothing a session

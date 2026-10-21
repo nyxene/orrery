@@ -30,16 +30,7 @@ marketplace. For every other one, this one included, auto-update is **off** by
 default, so an install stays on the version it was installed at until someone
 updates it by hand. Switch it on once per machine:
 
-1. In any session: `/plugin` → Marketplaces → `orrery` → Enable auto-update.
-2. The repository is private, so the background check has to reach it without
-   prompting. With the GitHub CLI that is one command in a terminal:
-
-   ```bash
-   gh auth setup-git
-   ```
-
-   Without a credential helper the check fails quietly and the old version
-   stays — nothing reports it.
+In any session: `/plugin` → Marketplaces → `orrery` → Enable auto-update.
 
 A new version is then fetched in the background and loads on the next launch of
 Claude Code, in every project where the plugin is installed at user scope. To

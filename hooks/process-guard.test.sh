@@ -185,6 +185,8 @@ probes() { # $1 = guard path — prints how many it gets wrong
   [ ! -f "$state" ] || sed -i.bak "s/^[^$(printf '\t')]*\(	$fp	toolu_p2\)$/${d}4Z\1/" "$state" && rm -f "$state.bak"
   out="$(payload "$pr" toolu_p3 | ORRERY_CALL_LOG="$calls" bash "$1" 2>/dev/null || true)"
   grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
+  # An escaped pipe in a search pattern is text, not a pull request the spent audit refuses.
+  payload "grep -n 'push\\|gh pr create' f" | ORRERY_CALL_LOG="$calls" bash "$1" 2>/dev/null | grep -q '"deny"' && fails=$((fails + 1))
   # A waiver passes, and is a row.
   log="$tmp.probe-waivers"; : > "$log"
   out="$(payload "ORRERY_WAIVE=\"owner: ship it now\" $pr" | ORRERY_CALL_LOG="$calls" \
