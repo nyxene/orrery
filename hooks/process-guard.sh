@@ -3,7 +3,8 @@
 # obligation is met: closing an issue that is not carrying its retrospective —
 # the refusal names the command that does both — and, where the project keeps a
 # call log, opening a pull request when no auditor has run in this session since
-# its last one.
+# its last one. And one act refused outright, because the harness does it the
+# safe way: `git worktree add`.
 #
 # The pull-request half does not reach: a pull request opened by a person, in
 # the web UI, through `gh api`, or by a spelling its matcher misses; a heredoc
@@ -255,6 +256,19 @@ An unrecorded skip is the silence this gate exists to end — it cannot be hande
 out on the strength of having tried."
   fi
 }
+
+# --- a worktree is made by the harness, never by `git worktree add` ----------
+# The sandbox protects `.claude/` paths in every checkout, so this fails there,
+# and the retry a session reaches for is the same command with the sandbox off —
+# every protection lifted for the whole call. The harness's own ways cover the
+# need, so it is refused either way. `rtk` may have rewritten `git` already.
+gitflags="(-[Cc][[:space:]]+([^[:space:]\"${q}]|\"[^\"]*\"|${q}[^${q}]*${q})+[[:space:]]+|--?[A-Za-z][A-Za-z-]*(=[^[:space:]]*)?[[:space:]]+)*"
+if grep -qE "${pos}(rtk[[:space:]]+)?git[[:space:]]+${gitflags}worktree[[:space:]]+add\\b" <<<"$scan"; then
+  deny "A session does not make worktrees with git worktree add: in the sandbox it
+fails on protected .claude/ paths, and outside it nothing is protected. Use
+EnterWorktree for this session, or isolation: \"worktree\" on an Agent. If
+neither fits, ask the person to run it in their terminal."
+fi
 
 # --- a pull request is opened only after an auditor ran --------------------
 # `build` held the only "auditor before commit", and told its reader to skip
