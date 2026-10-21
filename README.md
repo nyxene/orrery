@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.30.3-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.30.4-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -210,11 +210,20 @@ Pre-1.0. Skill names and layout may still move between releases; the
 [CHANGELOG](CHANGELOG.md) says what changed and the version in
 `.claude-plugin/plugin.json` is what decides whether your install is stale.
 
+Releases are immutable from 0.30.4 on: once published, a release's tag and
+files cannot change, and GitHub signs an attestation for it. To check that a
+release is the one GitHub recorded when it was published (needs a recent
+GitHub CLI):
+
+```bash
+gh release verify v0.30.4 -R nyxene/orrery
+```
+
 ---
 
 <div align="center">
 
-Version 0.30.3 · Canon, thirteen skills, three agents, 23 rules, eight hooks
+Version 0.30.4 · Canon, thirteen skills, three agents, 23 rules, eight hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

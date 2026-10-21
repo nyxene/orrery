@@ -100,8 +100,9 @@ cmd="$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null || true)"
 # describing the guard itself. A false refusal is what gets a hook deleted, and
 # a deleted hook enforces nothing.
 #
-# A command position is the start, or after `;`, `&`, `|`, `then` or `do`,
-# followed by any number of environment assignments. That last part is not
+# A command position is the start, or after `;`, `&`, `(`, an unescaped `|`,
+# `then`, `do` or `if`, followed by any number of environment assignments. That
+# last part is not
 # decoration: the waiver below *is* an assignment prefix, so a pattern that
 # stopped at the first `VAR=` would pass the waived form through without ever
 # recording it — permitting exactly the case whose whole purpose is to leave a
@@ -130,7 +131,11 @@ assign="[A-Za-z_][A-Za-z0-9_]*=(\"[^\"]*\"|${q}[^${q}]*${q}|[^[:space:]]*)[[:spa
 # evasions, and each of them slipped past the first version. `gh -R owner/repo
 # issue close` is not an evasion at all — it is what a session writes when it
 # is being careful about which repository it is in.
-pos="(^|[;&|(]|\\bthen\\b|\\bdo\\b|\\bif\\b)[[:space:]]*(${assign})*(command[[:space:]]+|env[[:space:]]+|\\\\)*"
+# A `|` preceded by a backslash is not a pipe: `grep 'push\|gh pr create'` is a
+# pattern with alternation, and reading its `\|` as a command boundary counted an
+# auditor's own search as a pull request opened — after which the gate refused
+# the real one, because the audit now looked older than the "pull request".
+pos="(^|[;&(]|(^|[^\\\\])\\||\\bthen\\b|\\bdo\\b|\\bif\\b)[[:space:]]*(${assign})*(command[[:space:]]+|env[[:space:]]+|\\\\)*"
 ghflags="(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*"
 # The whole argument token, not its first character. Stopping at one character
 # made `matched` end at `close 4`, and the issue number read out of it was `4`
