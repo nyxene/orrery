@@ -138,6 +138,7 @@ scope: agents | git | process | craft
 learned: YYYY-MM-DD
 origin: "<the issue, PR, or incident — never invented>"
 cost: <what it actually broke, or "none — set as policy before it bit">
+tracker: github   # only if the rule is about issues or pull requests
 ---
 ```
 
@@ -165,7 +166,7 @@ Your incidents are your own. Nothing this skill writes leaves the repository,
 and there is no telemetry.
 
 **7. If — and only if — this project declares an incident inbox.** A project's
-`CLAUDE.md` may declare `Incident inbox: <owner>/<repo>` (the library
+`.orrery/config.json` may declare `"incidentInbox": "<owner>/<repo>"` (the library
 maintainers' own projects do). When the declaration exists AND `gh` can reach
 that repository, also file the full version there as an issue labeled
 `incident`: the law, the complete provenance, the narrative. When either

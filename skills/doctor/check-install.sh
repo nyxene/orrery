@@ -58,6 +58,24 @@ if [ -d "$OLD_LOG_DIR" ] && [ ! -d "$LOG_DIR" ]; then
     && warn "moved previous state from $OLD_LOG_DIR to $LOG_DIR"
 fi
 
+# In a repository the state is the project's own, in `.orrery/local/doctor/`
+# beside the call log, and what the home directory held for this project is
+# carried over once and left there. Outside one, the home directory it is.
+# shellcheck source=hooks/orrery-config.sh
+. "$(dirname "$0")/../../hooks/orrery-config.sh"
+if LOCAL="$(orrery_local_ensure "$PROJECT")" && mkdir -p "$LOCAL/doctor" 2>/dev/null; then
+  LOG="$(orrery_local_file doctor/log.md "$LOG" "$PROJECT")"
+  DIGEST_FILE="$(orrery_local_file doctor/cache-digest "$DIGEST_FILE" "$PROJECT")"
+  LOG_DIR="$LOCAL/doctor"
+fi
+# A per-machine file a hook writes: where it moved to in a repository, or where
+# it was before the move when the project is not one or has not logged since.
+moved() { # $1 = name in .orrery/local/, $2 = the old path, relative to the project
+  local p; p="$(orrery_local_read "$1" "$2" "$PROJECT")"
+  [ -n "$p" ] || case "$2" in /*) p="$2" ;; *) p="$PROJECT/$2" ;; esac
+  printf '%s' "$p"
+}
+
 echo "orrery doctor — $PROJECT"
 echo
 
@@ -604,14 +622,13 @@ fi
 # reported because otherwise nobody looks: "is the method actually being used
 # here" had no command behind it, and the answer turned out to be no.
 #
-# The call log is off unless you asked for it, and that absence is itself the
-# finding — a project with no log cannot answer this question at all.
+# The call log is on unless you declared `"callLog": false`, so a missing one
+# means that, or no session yet — and a project with no log cannot answer this
+# question at all.
 echo
 DAYS="${ORRERY_DOCTOR_DAYS:-7}"
 since="$(date -u -v-"${DAYS}"d +%Y-%m-%d 2>/dev/null || date -u -d "$DAYS days ago" +%Y-%m-%d)"
-calls="${ORRERY_CALL_LOG:-}"
-case "$calls" in ''|/*) ;; *) calls="$PROJECT/$calls" ;; esac
-[ -n "$calls" ] || calls="$PROJECT/.claude/orrery-calls.tsv"
+calls="$(moved calls.tsv "${ORRERY_CALL_LOG:-.claude/orrery-calls.tsv}")"
 
 if [ ! -f "$calls" ]; then
   warn "no call log, so what has actually run here is unknowable — see install/into-project.md"
@@ -648,86 +665,71 @@ else
   fi
 fi
 
-# --- the number that says whether any of this worked -------------------------
-#
-# Every count above is about *this* machine: which skills ran, which spawns
-# carried a role. None of them answers the question the retrospective gate was
-# built for — are issues closing with their cost recorded — and a mechanism
-# whose effect nobody measures is how the first version of this problem went
-# unnoticed for months.
-#
-# Two numbers, side by side. Issues closed in the window carrying no
-# retrospective, and waivers recorded in the same window. The first is the
-# failure; the second is the part of it somebody decided on purpose, which is a
-# different fact and must not be averaged into the first.
-#
-# This and the drift check above are the two that need the network, and every
-# way this one can fail has to be visibly different from a clean answer. A tool
-# here shipped the other behaviour once, where a failed fetch and a successful one produced identical
-# reports, and a release was prepared twice on the strength of it. Four
-# failure shapes, four distinct words:
-#
-#   * it cannot ask                    -> `unknown`, never zero
-#   * it answers something unparseable -> `unknown`, because `[ "x" -gt 0 ]`
-#                                         errors and falls into the *success*
-#                                         branch, printing a green tick
-#   * it hits the page limit           -> says the numbers are a floor, the way
-#                                         the call-log cap above already does
-#   * nothing closed at all            -> says so, rather than a tick that reads
-#                                         as "all of them carried one"
-RETRO_LIMIT="${ORRERY_DOCTOR_LIMIT:-500}"
-if command -v gh >/dev/null 2>&1; then
-  counts="$(cd "$PROJECT" 2>/dev/null && gh issue list --state closed \
-    --search "closed:>=$since" --limit "$RETRO_LIMIT" --json number,comments \
-    --jq '[(length), ([.[] | select(((([.comments[]?.body] // []) | join("")) | contains("<!-- retrospective")) | not)] | length)] | @tsv' \
-    2>/dev/null || true)"
-else
-  counts=""
+# --- 11. what Orrery keeps in this repository -------------------------------
+# Everything of Orrery's lives in `.orrery/`: the config, the work's records,
+# and the per-machine files under `local/`. Three things can be wrong there and
+# none of them announce themselves — a config that does not parse reads as the
+# defaults, a file left at its old place still looks like the live one, and work
+# that merged with no record looks exactly like work that had one.
+if [ -n "$(orrery_toplevel "$PROJECT")" ]; then
+  case "$(orrery_config_problem "$PROJECT")" in
+    malformed) bad ".orrery/config.json does not parse — every declaration in it reads as its default"
+               row "config" "malformed" ;;
+    missing)   warn "no .orrery/config.json beside a GitHub remote — the tracker reads as none, so a branch's first push is gated rather than gh pr create; declare \"tracker\": \"github\" to keep the pull request as the gate"
+               row "config" "missing" ;;
+    *)         ok "config read: tracker $(orrery_tracker "$PROJECT")"
+               row "config" "tracker $(orrery_tracker "$PROJECT")" ;;
+  esac
+  # Copied once into `.orrery/` when a hook first needed them, and left where
+  # they were so nothing was lost. Nothing reads them now.
+  left="" nleft=0
+  common="$(git -C "$PROJECT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  for f in "$PROJECT/.claude/orrery-calls.tsv" "$PROJECT/.claude/orrery-waivers.tsv" \
+           "$PROJECT/.claude/orrery-deny.json" "${common:-/nonexistent}/orrery-pr-gate" \
+           "$HOME/.claude/orrery/permissions/$slug.json" \
+           "$HOME/.claude/orrery/doctor/$slug.md" "$HOME/.claude/orrery/doctor/$slug.cache-digest"; do
+    [ ! -e "$f" ] || { left="$left ${f#"$PROJECT/"}"; nleft=$((nleft + 1)); }
+  done
+  if [ "$nleft" -gt 0 ]; then
+    warn "left at the places used before .orrery/:$left — copied once and read no more; delete them once you no longer want the old rows"
+    row "old files" "$nleft left"
+  fi
+  # A change on the default branch that brought no `.orrery/work/*/retrospective.md`
+  # is work merged without its record. Not a fault — a gate may have been waived,
+  # or the change predates records — so it is counted, not failed.
+  if git -C "$PROJECT" check-ignore -q .orrery/work/x 2>/dev/null; then
+    warn ".orrery/work/ is ignored here, so each record lives only in its worktree and is deleted with it — the project's choice; commit it to keep them"
+    row "records" "work ignored"
+  else
+    # The default branch as the guard finds it; HEAD only where neither exists.
+    tip="$(git -C "$PROJECT" rev-parse -q --verify refs/remotes/origin/HEAD 2>/dev/null \
+      || git -C "$PROJECT" rev-parse -q --verify main 2>/dev/null || echo HEAD)"
+    n=0 r=0
+    while read -r c; do
+      n=$((n + 1))
+      # `diff-tree --root`: a root commit or a shallow clone's boundary has no
+      # parent, and `$c~1` failing there counted its record as missing.
+      git -C "$PROJECT" diff-tree --root --no-commit-id --name-only -r -m --first-parent "$c" 2>/dev/null \
+        | grep -q '^\.orrery/work/[^/]*/retrospective\.md$' && r=$((r + 1))
+    done < <(git -C "$PROJECT" log --first-parent --since="$since" --format=%H "$tip" 2>/dev/null)
+    if [ "$n" -gt 0 ] && [ "$r" -lt "$n" ]; then
+      warn "$r of $n changes on the default branch in the last $DAYS days brought a record of their work"
+      row "records" "$r/$n"
+    elif [ "$n" -gt 0 ]; then
+      ok "every change on the default branch in the last $DAYS days brought a record ($n)"
+      row "records" "$n/$n"
+    fi
+  fi
 fi
 
-# Two integers and a tab, or nothing. Anything else is an answer this cannot
-# read, and reading it anyway is how a malformed reply printed a green tick.
-case "$counts" in
-  *[!0-9$'\t']*|'' | *$'\t'*$'\t'*) counts="" ;;
-  *$'\t'*) ;;
-  *) counts="" ;;
-esac
-
-if [ -n "$counts" ]; then
-  n_closed="$(printf '%s' "$counts" | cut -f1)"
-  n_bare="$(printf '%s' "$counts" | cut -f2)"
-
-  # The waiver log resolves the way `hooks/waiver.sh` resolves it, not the way
-  # the call log does. Deriving it from `$calls` meant any project that named
-  # its call log elsewhere got a silent `0 waived` beside a file full of
-  # waivers — the same zero-that-means-unknown this section refuses to print.
-  wlog="${ORRERY_WAIVER_LOG:-.claude/orrery-waivers.tsv}"
-  case "$wlog" in /*) ;; *) wlog="$PROJECT/$wlog" ;; esac
-  waived=0
-  if [ -f "$wlog" ]; then
-    # Only waivers for a close. The log records every deliberate skip, so an
-    # unfiltered count could exceed the number it annotates.
-    waived="$(awk -F'\t' -v s="$since" '$1>=s && $4 ~ /^gh issue close/' "$wlog" | wc -l | tr -d ' ')"
-  fi
-
-  if [ "$n_closed" -eq 0 ]; then
-    warn "no issues closed here in $DAYS days, so there is nothing to say about retrospectives"
-    row "retrospectives" "nothing closed"
-  elif [ "$n_bare" -gt 0 ]; then
-    warn "$n_bare of $n_closed issues closed in $DAYS days carry no retrospective ($waived waived on purpose)"
-    # Most of these are closes a merge performed, which no hook sees. The
-    # workflow is the half that does; naming it here is what turns a number
-    # into a next step.
-    printf '    a merge closes issues past every hook — install/ci/retrospective-on-close.yml reopens those\n'
-    row "retrospectives" "$n_bare/$n_closed missing, $waived waived"
-  else
-    ok "every issue closed in $DAYS days carries a retrospective ($n_closed of them)"
-    row "retrospectives" "$n_closed/$n_closed"
-  fi
-  [ "$n_closed" -ge "$RETRO_LIMIT" ] && warn "the query stopped at $RETRO_LIMIT issues, so those counts are a floor — ORRERY_DOCTOR_LIMIT raises it"
-else
-  warn "could not read an answer from the tracker, so whether closed issues carry retrospectives is unknown here — not zero"
-  row "retrospectives" "unknown"
+# --- a retired workflow, still copied into the project --------------------------
+# Hosts used to copy install/ci/retrospective-on-close.yml, which reopens an issue
+# that closed with no retrospective comment on it. Records are files in the
+# repository now and never comments, so a copy left behind reopens every issue a
+# merge closes. That is a fault, not a warning: it rewrites the tracker.
+if grep -rlq 'retrospective-on-close' "$PROJECT/.github/workflows" 2>/dev/null; then
+  bad "a copy of the retired retrospective-on-close workflow is in .github/workflows — records are files now, so it reopens every issue a merge closes; delete it"
+  row "close workflow" "retired copy present"
 fi
 
 # The one gate a hook cannot be. A merge closes an issue server-side, from an
@@ -741,7 +743,15 @@ fi
 # And a repository with no workflows at all gets the warning too. The previous
 # shape said nothing there, which is silence for exactly the repository with
 # zero merge-side coverage.
-if grep -rlq 'names-an-issue' "$PROJECT/.github/workflows" 2>/dev/null; then
+#
+# Only where there is a tracker for a pull request to name: a GitHub one, or a
+# GitHub remote with no config yet, which the config check above already names.
+# A repository with neither has no issue to name, and is not told it lacks a gate
+# for one. Outside a repository there is no telling, so the check runs.
+if [ -n "$(orrery_toplevel "$PROJECT")" ] && [ "$(orrery_tracker "$PROJECT")" != github ] \
+   && [ "$(orrery_config_problem "$PROJECT")" != missing ]; then
+  row "pr gate" "n/a — no tracker"
+elif grep -rlq 'names-an-issue' "$PROJECT/.github/workflows" 2>/dev/null; then
   ok "a workflow refuses a pull request that names no issue"
   row "pr gate" "present"
 # A project's own gate has to read the body too, so that is what it is found by;

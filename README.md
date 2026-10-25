@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.31.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.32.0-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -27,8 +27,8 @@ of the wall.
 
 Orrery is the tool that executes such a method. The method itself is
 [Orrery Method](https://github.com/nyxene/orrery-method): text for people to
-read, which installs nothing. The plugin depends on GitHub and `jq`, and on
-nothing else.
+read, which installs nothing. The plugin depends on `jq`, and on GitHub only
+where `.orrery/config.json` declares `"tracker": "github"`.
 
 ## Install
 
@@ -40,9 +40,10 @@ nothing else.
 `jq` must be on `PATH` before anything fires.
 
 Then spend five minutes on **[install/into-project.md](install/into-project.md)**.
-The skills read a handful of facts from your project's `CLAUDE.md` — your
-labels, your gates, your model tiers — instead of guessing, and that page says
-exactly what to declare. A library that hard-codes one project's labels is
+The skills read a handful of facts from your project's `.orrery/config.json` —
+your tracker, your labels, your gates — instead of guessing, and that page says
+exactly what to declare. Without a tracker, records, handoffs and debt are files
+in `.orrery/work/`. A library that hard-codes one project's labels is
 wrong in every project but one, and wrong silently.
 
 ## The thirteen skills
@@ -84,14 +85,14 @@ charges, not staking a claim on the work.
   is committed. Drafting a plan is not one of them — `plan` writes in the
   session that invoked it, and spends agents only on reading what it wrote.
 - **Eight hooks** — three guards (a Bash guard with a mutation-tested case
-  corpus, an agent guard, and a process gate that refuses to close an issue
-  carrying no retrospective, and — where a call log is kept — to open a pull
-  request before an auditor has run), two loaders for the canon and for scoped
-  rules, a prompt that catches unfinished work before a context reset takes it,
-  a reporter that tells you when your project's copy of the deny-list has fallen
-  behind the one shipped here, and an optional recorder that is off until you
-  name a path for it.
-- **A deny-list** — 121 deny rules covering system paths, secret files and
+  corpus, an agent guard, and a process gate that refuses to open a pull
+  request — or, with no tracker, a branch's first push — before the work's
+  record is committed and an auditor has run), two
+  loaders for the canon and for scoped rules, a prompt that catches unfinished
+  work before a context reset takes it, a reporter that tells you when your
+  project's copy of the deny-list has fallen behind the one shipped here, and a
+  recorder of which tools were called, on by default and kept on your machine.
+- **A deny-list** — 122 deny rules covering system paths, secret files and
   destructive git, additive to your existing settings and safe on any repo.
 
 ## Which platforms this holds on
@@ -172,21 +173,22 @@ your machine.
 Some skills reach GitHub, and only when you run them. Nothing goes anywhere
 but GitHub, and nothing is sent to this project.
 
-- **Your own tracker, through your own `gh` login.** `build` posts a
-  retrospective on the issue it finishes and closes it; `debt` files and reads
-  debt issues; `learn` files to an incident inbox repository if your project
+- **Your own tracker, through your own `gh` login, when you declare one.**
+  `build` opens the pull request whose merge closes the issue it finishes;
+  `debt` files and reads debt issues; `learn` files to an incident inbox repository if your project
   declares one; `sharpen`'s claims check reads your label list. These are the
   work you asked for, written where you keep your work.
-- **`doctor`**, two requests: this plugin's own current commit, to tell you
-  whether your installed copy has drifted from the marketplace source, and your
-  project's closed issues, to count how many carry a retrospective.
+- **`doctor`**, one request: this plugin's own current commit, to tell you
+  whether your installed copy has drifted from the marketplace source.
 - **`feedback`** sends nothing: it hands you a prefilled link to this
   project's tracker, and you decide whether to open it.
 
-One optional feature writes about your usage, and only if you ask for it: set
-`ORRERY_CALL_LOG` and a hook records which tools were called — never a command,
-a prompt, a path or a name, and never anywhere but your own disk. Unset by
-default; see [install/into-project.md](install/into-project.md).
+One feature writes about your usage: a hook records which tools were called —
+never a command, a prompt, a path or a name, and never anywhere but your own
+disk, in `.orrery/local/`, which git ignores. It is on by default, because the
+audit gate (before a pull request, or a first push without a tracker) reads it; `"callLog": false` in
+`.orrery/config.json` switches both off. See
+[install/into-project.md](install/into-project.md).
 
 The lessons `learn` records are yours and stay in your repo. Sharing anything
 with this project — an issue, a PR, feedback — is voluntary, explicit, and shown
@@ -223,7 +225,7 @@ gh release verify v0.30.4 -R nyxene/orrery
 
 <div align="center">
 
-Version 0.31.0 · Canon, thirteen skills, three agents, 23 rules, eight hooks
+Version 0.32.0 · Canon, thirteen skills, three agents, 23 rules, eight hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

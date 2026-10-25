@@ -27,12 +27,17 @@ set -euo pipefail
 input="$(cat)"
 
 root="${CLAUDE_PLUGIN_ROOT:-$(dirname "$0")/..}"
-state="${TMPDIR:-/tmp}/orrery-rules"
+# shellcheck source=hooks/orrery-config.sh
+. "$(dirname "$0")/orrery-config.sh"
+# The tree the call runs in, from the harness; the launch directory when the
+# payload has none or jq cannot read it. The markers live in its `.orrery/local/`.
+cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || true)"
+[ -n "$cwd" ] && [ -d "$cwd" ] || cwd="${CLAUDE_PROJECT_DIR:-$PWD}"
 
 # A loader cannot deny. Without jq it says so once, then stays quiet rather than
 # repeating itself before every tool call for the rest of the session.
 if ! command -v jq >/dev/null 2>&1; then
-  marker="$state-nojq"
+  marker="$(orrery_marker rules-nojq "$cwd")"
   [ -e "$marker" ] && exit 0
   mkdir -p "$(dirname "$marker")" && : > "$marker"
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"WARNING: the rules loader needs jq and cannot find it, so the rules earned in this project will not reach you as you work. Read rules/ directly before relying on convention, and install jq."}}\n'
@@ -50,6 +55,12 @@ case "$tool" in
   Bash)
     cmd="$(jq -r '.tool_input.command // empty' <<<"$input")"
     case " $cmd " in
+      # The process rules — consent, fix it now — ride `gh`, and a project with no
+      # tracker types no `gh`: there the push is the outward act. The first push
+      # of a session loads them; after that a push is a git command like any other.
+      *" git push"*)
+        scope=process
+        [ ! -e "$(orrery_marker "rules-$session-process" "$cwd")" ] || scope=git ;;
       *" git "*|" git "*|"git "*) scope=git ;;
       *" gh "*|"gh "*) scope=process ;;
       *) exit 0 ;;
@@ -65,21 +76,26 @@ plugin_dir="$root/rules/$scope"
 local_dir="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/rules/$scope"
 [ -d "$plugin_dir" ] || [ -d "$local_dir" ] || exit 0
 
-marker="$state-$session-$scope"
+marker="$(orrery_marker "rules-$session-$scope" "$cwd")"
 [ -e "$marker" ] && exit 0
 mkdir -p "$(dirname "$marker")" && : > "$marker"
 
 # `rule:` is the one-sentence form of the rule; `evidence:` (or a local rule's
 # `cost:`) is what filing it was paid for. Single-line frontmatter values;
-# anything else in the file is left where it is.
+# anything else in the file is left where it is. A rule carrying `tracker: github`
+# is about issues and pull requests, and loads only where the project declared
+# that tracker — telling a project with no tracker that every merge needs an issue
+# asks the impossible.
+tracker="$(orrery_tracker "$cwd")"
 body="$(
   for dir in "$plugin_dir" "$local_dir"; do
     [ -d "$dir" ] || continue
     if [ "$dir" = "$plugin_dir" ]; then label="rules/$scope"; else label=".claude/rules/$scope (this project)"; fi
     for f in "$dir"/*.md; do
       [ -e "$f" ] || continue
-      awk -v path="$label/$(basename "$f")" '
+      awk -v path="$label/$(basename "$f")" -v tracker="$tracker" '
         /^---$/ { fm++; if (fm == 2) exit; next }
+        fm == 1 && /^tracker:/  { sub(/^tracker:[[:space:]]*/, ""); gsub(/^"|"$/, ""); skip = ($0 != tracker) }
         fm == 1 && /^rule:/     { sub(/^rule:[[:space:]]*/, ""); gsub(/^"|"$/, ""); r = $0 }
         fm == 1 && /^evidence:/ { sub(/^evidence:[[:space:]]*/, ""); gsub(/^"|"$/, ""); e = $0 }
         fm == 1 && /^cost:/     { sub(/^cost:[[:space:]]*/, ""); gsub(/^"|"$/, ""); c = $0 }
@@ -88,7 +104,7 @@ body="$(
           # than skipping the file. `set -e` then takes the whole loader down,
           # so one rule missing its `rule:` line silently emptied the entire
           # scope — every other rule in it included, from both directories.
-          if (r != "") {
+          if (r != "" && !skip) {
             ev = (e != "" ? e : (c != "" ? c : "not recorded"))
             printf "- %s\n  evidence: %s · %s\n", r, ev, path
           }

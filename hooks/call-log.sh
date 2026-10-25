@@ -3,9 +3,14 @@
 # a local file so that a change to how the library works can be observed instead
 # of assumed.
 #
-#   ORRERY_CALL_LOG=<path>   enables it. Unset, this exits before doing anything.
+#   .orrery/local/calls.tsv  where, in the main checkout. On unless the project
+#                            declares `"callLog": false` in .orrery/config.json.
 #   ORRERY_CALL_LOG_MAX=<n>  bytes to keep, default 262144. Trimmed oldest-first.
 #   hooks/call-log.sh --purge   empties the log and says how much it removed.
+#
+# On by default because the auditor gate in `process-guard.sh` reads it: a gate
+# that works only where someone remembered to set a variable is a gate in one
+# project of six. Nothing in it leaves the machine.
 #
 # ## Why a hook rather than a line inside each skill
 #
@@ -92,45 +97,30 @@
 # every failure path here exits 0 silently.
 set -euo pipefail
 
-log="${ORRERY_CALL_LOG:-}"
+here="$(cd "$(dirname "$0")" && pwd -P)"
+# shellcheck source=hooks/orrery-config.sh
+. "$here/orrery-config.sh"
 
-# ## A relative path is resolved against the project, never against the cwd
+# ## One place, named by the repository rather than by a variable
 #
-# This is the fix for the worst defect this file has had. `ORRERY_CALL_LOG` is a
-# relative path in every install, because the install guide recommends one — and
-# this hook used to `mkdir -p` and append relative to whatever directory the tool
-# call happened to be running in. Every `cd` into a subdirectory therefore
-# started a **new** log there.
+# The log used to live wherever `ORRERY_CALL_LOG` pointed, and that path was
+# relative in every install because the install guide recommended one. This hook
+# appended relative to whatever directory the tool call ran in, so every `cd`
+# started a new log: one host project collected twenty, six directories deep,
+# and one was committed. Now the path comes from git — the main checkout's `.orrery/local/`,
+# which carries its own `.gitignore` — so neither the cwd nor a worktree moves it.
 #
-# In one host project that produced twenty of them, as deep as
-# `packages/orbis/src/features/birthDataForm/components/.claude/`, and the
-# project's `.gitignore` line — the one this guide tells people to add — is
-# anchored to the repository root, so the strays were not ignored and one of them
-# was committed. In this repository it produced seven. Every step of that was
-# ours: the recommendation, the resolution, and the ignore rule that covered only
-# the path we told them to expect.
+# Outside a repository nothing is recorded: a file created in a stranger's tree
+# is damage they have to find, and a missing line costs a line.
 #
-# **Not written at all rather than written somewhere else.** This hook fails open
-# everywhere else, because a recorder that blocks work costs more than the line
-# it lost. That reasoning does not reach here: a missing line costs a line, and a
-# file created in a stranger's source tree is damage they have to find. So a
-# relative path with no project root to resolve against records nothing.
-unresolved=""
-if [ -n "$log" ]; then
-  case "$log" in
-    /*) ;;
-    *)  if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then log="$CLAUDE_PROJECT_DIR/$log"
-        else unresolved="$log"; log=""; fi ;;
-  esac
-fi
+# `ORRERY_CALL_LOG` is read once more, for one release: it names the old file,
+# whose rows are copied in the first time the new one is written.
+old="${ORRERY_CALL_LOG:-.claude/orrery-calls.tsv}"
 
 if [ "${1:-}" = --purge ]; then
-  # `--purge` is typed by a person standing in their project, and a terminal has
-  # no CLAUDE_PROJECT_DIR. Falling back to the working directory is safe here in
-  # a way it is not above: this prints the path it acted on, so the ambiguity is
-  # in front of the person rather than behind them.
-  if [ -n "$unresolved" ]; then log="$PWD/$unresolved"; fi
-  [ -n "$log" ] || { printf 'ORRERY_CALL_LOG is not set, so there is no log to purge.\n' >&2; exit 1; }
+  # Typed by a person standing in their project, so the directory is theirs.
+  log="$(orrery_local_read calls.tsv "$old" "$PWD")"
+  [ -n "$log" ] || { printf 'Not inside a git repository, so there is no log to purge.\n' >&2; exit 1; }
   if [ -f "$log" ]; then
     lines="$(wc -l < "$log" | tr -d ' ')"
     : > "$log"
@@ -141,13 +131,16 @@ if [ "${1:-}" = --purge ]; then
   exit 0
 fi
 
-# Not configured is the normal case for anyone who did not ask for this, and it
-# costs one variable test per tool call.
-[ -n "$log" ] || exit 0
-
 input="$(cat 2>/dev/null || true)"
 [ -n "$input" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
+
+# The tree the call runs in, from the harness; the launch directory when the
+# payload has none.
+dir="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || true)"
+[ -n "$dir" ] && [ -d "$dir" ] || dir="${CLAUDE_PROJECT_DIR:-$PWD}"
+[ "$(orrery_config callLog true "$dir")" != false ] || exit 0
+log="$(orrery_local_file calls.tsv "$old" "$dir")" || exit 0
 
 tool="$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null || true)"
 [ -n "$tool" ] || exit 0
@@ -219,7 +212,6 @@ agent="$(clean "$agent")"
 fp="$(clean "$fp")"
 use_id="$(clean "$use_id")"
 
-mkdir -p "$(dirname "$log")" 2>/dev/null || exit 0
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$fp" "$tool" "${agent:--}" "$named" \
   "$event" "${use_id:--}" >> "$log" 2>/dev/null || exit 0

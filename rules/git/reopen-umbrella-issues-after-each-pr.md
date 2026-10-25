@@ -1,6 +1,7 @@
 ---
-rule: reopen umbrella issues that auto-close after a non-final pr merges
+rule: with a GitHub tracker, never branch from an umbrella issue, and an umbrella a merge closed early is reopened on the owner's word, not by an agent
 scope: git
+tracker: github
 evidence: "an umbrella issue auto-closed when its first PR merged despite no closing keyword anywhere in the PR; caught and reopened immediately, but the closed state would have misled anyone scanning open issues"
 ---
 
@@ -27,11 +28,12 @@ mention. This moves the cost from once per merge, forever, to once per branch,
 and it removes the failure instead of catching it. The paragraph below is what
 to do for an umbrella that already carries a link.
 
-**And detect it where prevention came too late:** for any issue that will span more than one PR, check
-`gh issue view <N> --json state` after each non-final PR merges. If it
-auto-closed, reopen it immediately with `gh issue reopen <N> --comment "..."`
-explaining which PR closed it and what's still outstanding. Only let it close
-for real on the PR that finishes the issue's full scope — and post the phase
-retrospective first, per
-`rules/git/closing-an-umbrella-posts-the-phase-retrospective.md`. A bare
-`Closes #N` that closes it with none is reopened by the close gate in CI.
+**And where prevention came too late:** for any issue that will span more than
+one PR, check `gh issue view <N> --json state` after each non-final PR merges.
+If it auto-closed, **say so to the owner** — which PR closed it and what is still
+outstanding — and reopen it when they say to. Do not reopen it on your own
+judgement: a closed item reopens on the owner's word alone, and a transition an
+agent performs because it judged one necessary is the automation this library
+refuses. Only let the umbrella close for real with the PR that finishes its
+scope — and write the phase record first, per
+`rules/git/closing-an-umbrella-posts-the-phase-retrospective.md`.

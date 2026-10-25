@@ -16,12 +16,13 @@ hand off.
 
 Every hook needs **`jq`** on `PATH`. Install it before the plugin or nothing
 will work. Each hook fails in the direction that is safe for what it does: the
-guards deny everything rather than let one call through unchecked, the loaders
+Bash and agent guards deny everything rather than let one call through
+unchecked, the process gate lets it through, the loaders
 announce that they could not run, and the handoff prompt stands aside rather
 than strand a session.
 
-`orrery:handoff` writes to the task's GitHub issue, so the project needs `gh`
-authenticated and an issue per task — which the flow already assumes.
+`orrery:handoff` writes `.orrery/work/<work>/handoff.md` in the work's own tree,
+so it needs no tracker.
 
 ## Updates arrive only once you switch them on
 
@@ -43,76 +44,104 @@ claude plugin update orrery@orrery --scope user
 
 ## What the project declares
 
-Orrery holds the skills and guards. The project holds its own facts, declared in its
-`CLAUDE.md`, and the skills read them by name:
+Everything of Orrery's in a project lives in `.orrery/`, and nothing of it in a
+folder that is not its own:
 
-| Declaration | Used by | If missing |
-|---|---|---|
-| `Output language: <language>` — terminal conversation only | Canon §8, `build` | Everything stays English |
-| Plan directory | `plan` | Falls back to `docs/planning/plans/` |
-| Debt labels — the label that marks debt, the scope labels, the priority labels, in the project's own spelling | `debt` | Its queries match nothing, and an empty pool is indistinguishable from a clean one |
-| Debt pool — the area labels whose debt feeds the per-task quota | `debt` | Falls back to the area the current task touches, which in a repository with several areas is close to no narrowing at all |
-| Debt quota — how many debt issues a feature task also closes | `debt`, `build` | No quota; the skill tracks and reports only |
-| Model tiers — which model serves each build tier | `build` | The session's default model throughout |
-| Quality gates — the commands that prove the work | `build`, Canon §3 | The agent has no proving command to run |
-| Branch and PR flow | `build` | Branch-from-default, PR, squash |
-| Sharpen log location | `sharpen` | `docs/sharpen-log.md`, created on first use |
-| `Incident inbox: <owner>/<repo>` — see below | `learn` | Rules stay local, which is the correct default |
+```
+.orrery/
+  config.json      the project's settings — committed; written by a person, never the model
+  deny-declined.json  deny rules a person declined on purpose — committed
+  local/           this machine's files, never committed: call log, waivers, gate state,
+                   doctor's log, session markers. Carries its own `.gitignore`
+  work/<work>/     a piece of work's record, handoff and plan — committed with the work
+  work/debt/       the debt register, where there is no tracker
+  sharpen-log.md   what each `sharpen` pass proposed and decided — committed
+```
 
-## Optional: record which tools get called
+`<work>` is the worktree's name, or the branch on the main checkout. Outside
+`.orrery/` only what the platform requires: the plugin cache, the deny rules in
+your settings, and — on GitHub — the workflow below and the issue a merge closes.
 
-Nothing is recorded unless you ask for it. Set `ORRERY_CALL_LOG` to a path in
-your project's `.claude/settings.json` and `hooks/call-log.sh` appends a line
-per event: a timestamp, a fingerprint of the session, the tool name, the
-subagent type where there is one, whether the spawn was named, the event —
-`call` or `ran` — and the harness's id for that call.
+**Without a tracker** you get the method and its checks; what a tracker gives is
+stated rather than imitated, and is missing: issues containing their work, a
+release container, closure by merge, links between items, and a gate for a change
+pushed straight to the default branch.
+
+Orrery holds the skills and guards. The project holds its own facts, in
+`.orrery/config.json`, and every session is handed them at its start:
+
+```json
+{
+  "tracker": "github",
+  "outputLanguage": "English",
+  "qualityGates": "npm test, npm run lint"
+}
+```
+
+| Key | What | Used by | If missing |
+|---|---|---|---|
+| `tracker` | `"github"`, or leave it out for none | every skill and guard that asks a tracker | No tracker: records, handoffs and debt are files, and a branch's first push is the gated act |
+| `callLog` | `false` to switch the call log off | the recorder, the audit gate | On |
+| `outputLanguage` | the terminal conversation's language | Canon §8, `build` | Everything stays English |
+| `planDirectory` | where plans go | `plan`, `build` | `.orrery/work/<work>/plan.md` |
+| `debtLabels` | `type`, `scope`, `priority`, `pool` — the labels in the tracker's own spelling | `debt` | Its queries match nothing, and an empty pool is indistinguishable from a clean one |
+| `debtQuota` | how many debt items a feature task also closes | `debt`, `build` | No quota; the skill tracks and reports only |
+| `qualityGates` | the commands that prove the work | `build`, Canon §3 | The agent has no proving command to run |
+| `branchFlow` | how a change reaches the default branch | `build` | Branch-from-default, PR, squash |
+| `sharpenLog` | where `sharpen` keeps its log | `sharpen` | `.orrery/sharpen-log.md`, created on first use; one at the old `docs/sharpen-log.md` is moved there |
+| `incidentInbox` | `<owner>/<repo>` — see below | `learn` | Rules stay local, which is the correct default |
+
+**You write it, by hand.** The deny-list below carries `Edit(**/.orrery/config.json)`,
+so a session cannot edit it — a setting that switches a gate off is a change a
+person makes in a reviewed commit. A missing file beside a GitHub remote, or one
+that does not parse, is said at the start of every session and by `doctor`.
+Declarations that used to live in a table in your `CLAUDE.md` move here; that file
+stays yours, for what Orrery does not read.
+
+## The call log
+
+`hooks/call-log.sh` appends a line per tool event to `.orrery/local/calls.tsv`
+in the main checkout: a timestamp, a fingerprint of the session, the tool name,
+the subagent type where there is one, whether the spawn was named, the event —
+`call` or `ran` — and the harness's id for that call. **It is on by default,**
+because the audit gate before a pull request reads it (below). It stays on this
+machine: nothing in it is sent anywhere.
 
 **Two lines per completed call, one per call that was stopped.** `ran` is
 written only when a tool succeeds, so a `call` with no `ran` under the same id
 did not run, whatever stopped it — a guard, the permission system, or you
-answering no. It costs one extra hook invocation per successful call, and it is
-the difference between a log that records what was attempted and one that
-records what happened. What it cannot tell you is *which* of refused, errored
-and interrupted a given unpaired line was.
+answering no. What it cannot tell you is *which* of refused, errored and
+interrupted a given unpaired line was.
 
 Never the command, the prompt, the file path, the branch or the agent's name.
 The session id is hashed rather than stored, so a line correlates with its
 neighbours and identifies nothing beyond the machine that wrote it.
 
-```json
-{ "env": { "ORRERY_CALL_LOG": ".claude/orrery-calls.tsv" } }
-```
+**Nothing to ignore.** `.orrery/local/` carries its own `.gitignore`, written by
+Orrery before the first line lands, so nothing in it reaches a commit and your
+own `.gitignore` is never edited. The path comes from git — the main checkout,
+whichever worktree or subdirectory a call runs in — so there is one log per
+clone. Outside a git repository nothing is recorded.
 
-**Add that path to `.gitignore` too.** The file grows by a line on every tool
-call and is trimmed from the head once it reaches the cap, so committing it puts
-a conflict in front of everyone who runs a session in your repository — and the
-hashed session id it carries tells a second reader nothing they can use.
+**To switch it off,** declare `"callLog": false` in `.orrery/config.json`. That
+also switches off the audit gate, which has nothing else to read.
 
-**A relative path is resolved against your project root**, whatever directory a
-tool call happens to be running in — one log, at the path you wrote, always. It
-did not used to be. Before this version it was resolved against the working
-directory, so every `cd` into a subdirectory started another log there. One
-project accumulated **twenty** of them, six directories deep, and a `.gitignore`
-line is anchored to the directory holding it — so the strays were not ignored,
-and one of them was committed.
-
-If you installed before this version, they are still on disk. Harmless — the log
-holds no content by design — but yours to remove:
+**Upgrading from a version that used `ORRERY_CALL_LOG`:** the first line written
+copies the old log's rows across, once, and leaves the old file where it was, so
+a rollback still finds it. The variable now only names that old file; remove it
+from your settings once the new log exists. Strays from versions before 0.13.0,
+when the hook resolved a relative path against the working directory, are still
+yours to remove:
 
 ```bash
 find . -name orrery-calls.tsv -not -path ./.claude/'*'      # look first
 git ls-files '*orrery-calls.tsv'                            # any that got committed
 ```
 
-An absolute path is used exactly as written. A relative path with no project
-root to resolve against records nothing rather than guessing — the one place
-this hook does not fail open, because a missing line costs a line and a file in
-your source tree costs you finding it.
+The log is capped — 256 KB by default, `ORRERY_CALL_LOG_MAX` to change it — and
+`hooks/call-log.sh --purge` empties it.
 
-Remove that line and it stops. The log is capped — 256 KB by default,
-`ORRERY_CALL_LOG_MAX` to change it — and `hooks/call-log.sh --purge` empties it.
-
-**Why you might want it.** `sharpen` reads it, and the shape of a session shows
+**What it is for.** `sharpen` reads it, and the shape of a session shows
 there in a way it does not anywhere else: how often a checker actually ran,
 whether anything was executed before one was hired, how many agents a piece of
 work cost. A skill cannot report the run in which it ignored its own
@@ -135,11 +164,11 @@ ships, and this project's own `.claude/rules/<scope>/` — which is where
 `orrery:learn` files the lessons your incidents earn. Local rules live in your
 repository, survive every plugin update, and never leave: **nothing is
 transmitted anywhere, ever**. The only thing this plugin writes about your usage
-is the call log described above, which stays on your disk and is not written at
-all unless you name a path for it. The one exception is opt-in and
-mechanical: a project that declares `Incident inbox: <owner>/<repo>` in its
-`CLAUDE.md` — and whose `gh` can reach that repository — asks `learn` to also
-file each incident there. No declaration, or no access, means no attempt.
+is the call log described above, which stays on your disk and is switched off
+with `"callLog": false`. The one exception is opt-in and mechanical: a project
+that declares `"incidentInbox": "<owner>/<repo>"` in `.orrery/config.json` — and
+whose `gh` can reach that repository — asks `learn` to also file each incident
+there. No declaration, or no access, means no attempt.
 
 There is no `domain` scope in the shipped rules, and adding one would be a
 mistake: a rule about a host project's subject matter belongs in that project's
@@ -147,7 +176,7 @@ local layer, not in a library that installs into all of them.
 
 ## Merge the deny-list
 
-`hooks/permissions.json` holds 121 deny rules — system paths, secret files,
+`hooks/permissions.json` holds 122 deny rules — system paths, secret files,
 destructive git. Merge its `permissions.deny` array into the project's
 `.claude/settings.json`. It is additive and safe to apply to any repository.
 
@@ -160,6 +189,9 @@ There are no `Write(...)` rules in it, and adding one back does nothing: file
 permission checks are matched by `Edit(...)` alone, which covers every
 file-editing tool including `Write`. Claude Code says so on every config run,
 once per rule.
+
+**0.32.0 adds `Edit(**/.orrery/config.json)`**, the rule that keeps a session
+from editing the settings file. Merge again to get it.
 
 **Then merge it again after an update.** This is not a step you finish. Every
 release that adds a deny rule adds it to the file you copied by hand — the plugin
@@ -190,20 +222,20 @@ updates, so a copy you keep in a note goes stale — `orrery:doctor` prints the
 command with the path already resolved, and that is the one to run.
 
 Running it states that you read the missing rules and declined them, which is why
-nothing runs it for you. It writes `<project>/.claude/orrery-deny.json` with the
+nothing runs it for you. It writes `<project>/.orrery/deny-declined.json` with the
 set that was missing at that moment, and those rules stop appearing — in the
 startup line and in the doctor's list alike. **Commit that file.** It is your
 team's decision rather than your laptop's: committed, it holds for everyone in
 the repository and it turns up in a pull request where someone can push back on
 it, which is the only review a deliberately widened gap gets. To un-decline a
 rule, edit the file and commit that. If you would rather keep the decision to
-your own machine, add the path to `.gitignore` in the same edit — nothing else
-will, exactly as with the call-log path above.
+your own machine, add the path to your `.gitignore` in the same edit — Orrery
+never edits that file, so nothing else will.
 
 **Why we do not merge it for you.** `.claude/settings.json` carries every deny
 decision in your project, and a plugin that edits it is a plugin that can quietly
 widen what it is allowed to do. So this check reads that file and never writes
-it, and no skill here will merge on your behalf. `orrery-deny.json` is the only
+it, and no skill here will merge on your behalf. `deny-declined.json` is the only
 file it writes, and it is a different kind of thing: no permission rules, no
 grants, read by this check alone, and written only when you type the command
 above.
@@ -363,91 +395,89 @@ is inert in every repository that does not have one.
 Add the domains your own work needs. The two above are a starting point, not a
 recommendation about your project.
 
-## Closing an issue now goes through a gate
+## A pull request needs the work's record, and an auditor before it
 
-`hooks/process-guard.sh` refuses `gh issue close`. This is the one hook that
-will stop a command you have been running for years, so it is described here
-rather than met cold.
+`hooks/process-guard.sh` refuses `gh pr create` until two things hold. In a
+project whose `.orrery/config.json` declares no tracker, the act is instead a
+branch's **first push** — no remote-tracking ref for it yet, a URL for a
+remote, or `-u` — and the record must be in the pushed branch. The audit there
+counts from the branch's first reflog entry; later pushes pass, and so does a
+push straight to the default branch, which this gate does not serve.
+
+**The record of the work is committed.** Each piece of work keeps a record in
+its own tree, `.orrery/work/<work>/retrospective.md`, where `<work>` is the
+worktree's name, or the branch on the main checkout:
+
+```bash
+"$ORRERY/skills/build/record.sh" write --what "one line on what actually happened"
+```
+
+That writes the spend table from the session's own transcripts — model, tokens
+and tool calls per stage — and the line. Commit it with the work. It travels in
+the pull request and reaches the default branch with the merge, which is the
+closing act; re-run it before a later push and it refreshes. Work that ends
+without merging is closed on its branch with
+`record.sh close refused|withdrawn|answered|enacted --why "…"`, once.
+
+**Or keep records off the branch.** Add `.orrery/work/` to your own
+`.gitignore` — your edit; Orrery never makes it. The gate then accepts a record
+on disk, and each record lives only in its worktree: removing the worktree
+deletes it, and `doctor` says so on every run.
 
 The reason is a measurement, not a preference: across three projects in one
-week, 179 issues closed and 218 pull requests merged with **two**
-retrospectives between them. Nobody decided to stop writing them. There was
-simply nothing that noticed.
+week, 179 issues closed and 218 pull requests merged with **two** retrospectives
+between them. Nobody decided to stop writing them. There was simply nothing that
+noticed. Until this release that refusal sat on `gh issue close`, with a copied
+workflow reopening what a merge closed bare; both are gone, and closing an issue
+is yours again.
 
-```bash
-skills/build/close-issue.sh <N> --what "one line on what actually happened"
-```
+**An auditor has run in this session since its last pull request.** Every route
+in `plan`, the smallest included, ends with that audit before the change heads
+for the default branch; the guard is what makes the sentence hold where it can
+see the session. It reads the call log, so with the log switched off this half
+passes everything through. It sees that an auditor was spawned, not what it
+said.
 
-That builds the spend table from the session's own transcripts, posts it, and
-then closes the issue — so nothing has to verify that a comment exists. Add
-`--since <iso8601>` when the session already reported on an earlier issue.
-Closing an umbrella takes `--body-file <path>` instead: a phase retrospective
-is summed from its children, and this session's transcripts are the closer's
-spend rather than the phase's.
-
-**And there is a way past it, which writes itself down:**
-
-```bash
-skills/build/close-issue.sh 42 --waive "why this one closes without a retrospective"
-```
-
-It posts the reason on the issue and records it locally. The older
-`ORRERY_WAIVE="why" gh issue close 42` still works and records only the local
-row — so in a project running `retrospective-on-close.yml` (below) the server
-sees a bare close and reopens it. Use `--waive` there.
-
-Skipping stays possible on purpose — the same argument `--no-verify` earns in a
-pre-commit hook. What ends is skipping being invisible: the reason, the issue
-number and a hashed session id land in `.claude/orrery-waivers.tsv`. Either a
-row carries a reason, or the gate was gone around.
-
-**Add that path to `.gitignore` too**, for the reason the call-log path above
-carries — and this one was learned the same way: a manual run wrote rows into
-the file and `git add -A` committed them, so the first row of a record whose
-whole value is that its rows are true was a test artifact. If you would rather
-keep the log in the repository, that is a defensible choice — commit it
-deliberately and know that everyone's rows conflict.
-
-**What the gate does not reach**, stated so you do not mistake its silence for
-coverage: an issue closed by a merging pull request never passes a Bash hook at
-all — GitHub closes it server-side. Nor does a close routed through an
-interpreter, `bash -c "..."` or `eval`; both take deciding to write, and the
-waiver is cheaper than either. Those two are `allow` cases in
-`hooks/process-cases.tsv`, so the limit is a decision you meet rather than a
-hole you discover — but read that file rather than this paragraph for the
-current list, because a sentence claiming the list is complete is the first
-thing to go stale.
-
-**And it will refuse things that close nothing.** The pattern is quote-blind —
-it cannot parse shell — so a metacharacter inside quoted prose reads as a
-command separator, and writing *about* the gate in a commit message or a
-pull-request comment can be refused. It happened three times in the session
-that built it, once caused by a rule added in that same commit. The workaround
-is to pass the text through a file — `git commit -F msg.txt`, `gh pr comment
---body-file` — and the alternative is a heuristic that would become a bypass.
-
-It covers what a session types, and it is a nudge rather than a boundary.
-
-## Opening a pull request needs an auditor first, where a call log is kept
-
-Where `ORRERY_CALL_LOG` is set, `hooks/process-guard.sh` also refuses
-`gh pr create` until an `auditor` agent has run in this session since its last
-pull request. Every route in `plan`, the smallest included, ends with that
-audit before the change heads for the default branch; the guard is what makes
-the sentence hold where it can see the session. With no call log it passes
-everything through, and the skills' text is all there is.
-
-It sees that an auditor was spawned, not what it said. The way past it is the
-owner's word, quoted:
+**And there is a way past both, which writes itself down:** the owner's word,
+quoted.
 
 ```
 ORRERY_WAIVE="owner: ship it now" gh pr create …
 ```
 
-which is recorded in `.claude/orrery-waivers.tsv` like a waived close. An
-agent's own view that a change needs no audit is not a reason it takes.
+Skipping stays possible on purpose — the same argument `--no-verify` earns in a
+pre-commit hook. What ends is skipping being invisible: the reason and a hashed
+session id land in `.orrery/local/waivers.tsv`. Either a row carries a reason,
+or the gate was gone around. An agent's own view that a change needs no audit is
+not a reason it takes.
+
+It is per machine and never committed: `.orrery/local/` ignores itself. That was
+learned the hard way when the file sat in `.claude/` — a manual run wrote rows
+into it and `git add -A` committed them, so the first row of a record whose
+whole value is that its rows are true was a test artifact.
+
+**What the gate does not reach**, stated so you do not mistake its silence for
+coverage: a pull request opened in the web UI or through `gh api`, or through an
+interpreter, `bash -c "..."` or `eval` — those take deciding to write, and the
+waiver is cheaper. They are `allow` cases in `hooks/process-cases.tsv`, so the
+limit is a decision you meet rather than a hole you discover; read that file
+rather than this paragraph for the current list. A machine without the plugin is outside it too.
+Orrery adds no check to your CI to close that gap: your pipelines are yours.
+
+**And it can refuse text that opens nothing.** The pattern is quote-blind — it
+cannot parse shell — so a metacharacter inside quoted prose reads as a command
+separator, and writing *about* the gate in a commit message or a pull-request
+comment can be refused. The workaround is to pass the text through a file —
+`git commit -F msg.txt`, `gh pr comment --body-file` — and the alternative is a
+heuristic that would become a bypass.
+
+It covers what a session types, and it is a nudge rather than a boundary.
 
 ## Copy in the one gate a hook cannot be
+
+Only where `.orrery/config.json` declares `"tracker": "github"`. Without a
+tracker there is no issue to name, so skip this section — all but the
+`retrospective-on-close.yml` paragraph, which binds anyone who copied it.
 
 ```bash
 mkdir -p .github/workflows install/ci
@@ -465,37 +495,12 @@ present for. Measured across three projects in one week before this existed:
 nine pull requests merged carrying no issue reference at all, in projects where
 that rule was loaded into every session.
 
-### And its sibling: a finished issue carries its retrospective
+**If you copied `retrospective-on-close.yml` before this release, delete it.**
+It reopened an issue that closed with no retrospective comment, and records are
+files now, never comments — left in place it reopens every issue a merge closes.
+`/doctor` fails while it is there.
 
-```bash
-cp "$ORRERY/install/ci/retrospective-on-close.yml" .github/workflows/
-cp "$ORRERY/install/ci/retrospective-on-close.sh" "$ORRERY/install/ci/retrospective-on-close.test.sh" install/ci/
-```
-
-The hook that refuses a bare issue close sees what a session types, and a merge
-is not typed: `Closes #N` closes the issue server-side. Measured on one host over
-a week: more than a hundred issues closed as finished work, one with a
-retrospective, while every merged pull request named an issue — the half with a
-gate held and the half without one did not.
-
-This workflow reopens an issue that closed as finished work with no
-retrospective on it, with one comment naming the command that closes it
-properly. Closes as *not planned* or *duplicate* are left alone. It needs
-`issues: write`, which it declares.
-
-**What it costs, said before you meet it.** A session that merges first and
-posts afterwards is reopened in between; `build` avoids that by posting with
-`--no-close` before the merge. An issue you close by hand as *completed* is
-reopened too — close it with `close-issue.sh <N> --waive "<reason>"` instead, or
-as *not planned* when that is what it was. If agents on your project take work
-from open issues, a reopened one looks like work: the comment says why it
-reopened, and a pool that reads comments before starting will see it.
-
-It cannot see a merge made by a workflow running on `GITHUB_TOKEN` — a bot
-auto-merge, for instance — because those raise no `issues` event. `/doctor`'s
-count of closed issues without a retrospective still catches them.
-
-Both are copies rather than something the plugin supplies at runtime, because
+It is a copy rather than something the plugin supplies at runtime, because
 GitHub Actions runs against your repository's checkout and cannot read a plugin
 cache. That means it can go stale; `/doctor` reports when the workflow is
 missing, and re-copying is the whole update.

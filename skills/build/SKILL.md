@@ -6,7 +6,7 @@ argument-hint: "[--interactive] <plan file path, or issue number, or plan alread
 
 # Build — Tiered Plan Execution
 
-Executes an **already-approved** plan (a `plan` output in the project's plan directory,
+Executes an **already-approved** plan (a `plan` output in the project's plan directory, or the work's own `plan.md`,
 a GitHub issue with a design doc, or a plan pasted into the conversation) with a
 fixed model-tier split, mandatory autonomous decision logging, an independent
 pre-commit audit, and a final report. If no plan exists yet,
@@ -49,7 +49,7 @@ model release then changes one paragraph instead of a table.
 | Core | The strongest available | The bulk of substantive logic once architecture is set — scoped work that is not in the critical tier. |
 | Routine | The cheap tier | Wiring, glue code, mechanical repetition, tests over already-understood shapes, boilerplate. |
 | Data collection | The cheap tier | Gathering reference values, transcribing source material, building fixtures and goldens — collecting facts, not deciding how to compute something. |
-| Audit | **Its own session**; a different model family where the stake earns it | Independent, read-only, adversarial — spawned via the `auditor` agent type, whose frontmatter pins its own model. Always after implementation, before the pull request — on every change, this skill or not. |
+| Audit | **Its own session**; a different model family where the stake earns it | Independent, read-only, adversarial — spawned via the `auditor` agent type, whose frontmatter pins its own model. Always after implementation, before the pull request (with no tracker, before the branch's first push) — on every change, this skill or not. |
 
 The host project declares which model serves each tier (see the declarations in
 install/into-project.md); when nothing is declared, use the session's default
@@ -86,7 +86,7 @@ otherwise.
    bitten twice in one session and was caught both times by something
    unrelated, which is the shape of a defect that otherwise ships.
 
-   **In a chained run, wait for the previous task's PR to actually merge**
+   **In a chained run, wait for the previous task to reach the default branch**
    before intake on the next one. Not "the workflow reported success" — the
    merge. An agent's own completion signal is not evidence about the repository,
    and a chain that starts on an unmerged base builds on a tree nobody has.
@@ -153,51 +153,57 @@ otherwise.
 
 7. **Debt accounting** (both directions, via the `debt` skill — do not improvise
    this bookkeeping inline). Any audit finding NOT fixed here gets filed as a
-   debt issue before the change lands, with its origin pointing at this task —
+   debt item (an issue, or `.orrery/work/debt/<slug>.md` without a tracker)
+   before the change lands, with its origin pointing at this task —
    the audit is the single richest source of debt a project has, and a finding
    that only lives in a chat report is lost. In the other direction, if the host
-   declares a debt quota, this task also closes that many debt issues from the
+   declares a debt quota, this task also closes that many debt items from the
    active pool (see skills/debt).
 
-8. **Land it**, per the project's declared branch and PR flow — which is a
-   required declaration precisely because it differs everywhere: some projects
-   commit to the default branch, some require a branch and a reviewed PR. Prove
-   the work with `verify` before making any claim about it, then land it the way
-   that project lands things. Where the flow produces a PR, `Closes #N` on the
-   originating issue is what closes it — so **post the retrospective of step 9
-   first**, with `--no-close`, and merge after. The merge then closes an issue
-   that already carries one. Merged first, the close is bare for as long as it
-   takes to write step 9, and a host running
-   `install/ci/retrospective-on-close.yml` reopens it in that window.
+8. **Write the record, then land it**, per the project's declared branch and PR
+   flow — which is a required declaration precisely because it differs
+   everywhere. Prove the work with `verify` before making any claim about it.
+   Then write the record of step 9 and **commit it with the work**, before the
+   pull request: the record travels in the pull request and reaches the default
+   branch through the merge, and that merge is the closing act — nothing is
+   written after it. Where the project declares a tracker, `Closes #N` on the
+   originating issue closes the issue at the same moment. `hooks/process-guard.sh`
+   refuses `gh pr create` while the record is not in `HEAD` — or, in a project
+   with no tracker, the branch's first `git push` while it is not in the branch.
 
-9. **Retrospective logging**, in the table format
-   `skills/build/retrospect.sh` generates: the machine-readable header, the
-   tokens and tool-calls table, real `gh`-queried timestamps, and the numbered
-   step list. Both scripts named here ship in the plugin, not in the host
+9. **The record**, `record.sh`, which writes
+   `.orrery/work/<work>/retrospective.md` in the work's tree: a heading naming
+   the work, the one line of what happened, the machine-readable header, and
+   the per-stage table — model, output, input, cache read, cache write, tool
+   calls and duration per row, built by `retrospect.sh` from this
+   session's transcripts. Both scripts ship in the plugin, not in the host
    repository: run them from the base directory this skill was loaded from
-   (`<that directory>/retrospect.sh`), not from the project root, where
-   `skills/build/` does not exist. Post it on **the issue that is
-   closing** — this task's issue, never a sub-PR and never the umbrella, which
-   gets its own assembled one when it closes. `close-issue.sh <N>
-   --what "<one line>"` does the minimum form and closes the issue in one act,
-   which is what `hooks/process-guard.sh` refuses a bare `gh issue close` in
-   favour of. Where a merge will do the closing, add `--no-close` and run it
-   before the merge (step 8). Closing an issue this session did not work on —
-   one the workflow reopened, say — add `--not-captured`, or the spend table
-   reports this session's numbers as that work's. Closing one without a
-   retrospective on purpose is `--waive "<reason>"`, which the workflow and the
-   waiver log both read. Do not invent a second format — the rule exists because a second
-   one was invented, and "the issue or PR" was itself two readings that between
-   them produced no retrospective at all.
+   (`<that directory>/record.sh`), not from the project root, where
+   `skills/build/` does not exist.
 
-   Run `retrospect.sh` for the first two: it reads this session's
-   transcripts — the main session and every agent it spawned — and prints the
-   header block and the per-stage table. **No step above records anything for
-   it** — the transcripts already hold the usage, the tool calls and the
-   timestamps, which is why this step is at the end and costs the run nothing.
-   Pass `--since <iso8601>` when this session already reported on an earlier
-   issue, or the earlier one's spend is counted again here. If it reports no
-   transcripts, the cells are `not captured`; never fill them with an estimate.
+   ```
+   <that directory>/record.sh write --what "<one line>" [--retries <n>]
+   ```
+
+   Re-run it before every later push and it refreshes; it measures from the
+   branch's first reflog entry unless `--since` says otherwise. `--retries` is
+   how many times step 6 went round — no transcript says it, so you do, and an
+   unstated count is written `not recorded`, never 0. `--final` on the last
+   write also deletes the work's handoff. **No step above records anything for
+   it** — the transcripts already hold the usage, which is why this step is at
+   the end and costs the run nothing. If it reports no transcripts, the cells
+   are `not captured`; never fill them with an estimate. Writing from a session
+   that did not do the work: `--not-captured`, or the table reports the
+   writer's spend as the work's.
+
+   Work that ends without merging is closed on its branch, once:
+   `record.sh close refused|withdrawn|answered|enacted --why "<one line>"`. The
+   outcome cannot be overwritten, and the branch keeps the record.
+
+   An umbrella or a phase is summed from its children's records rather than
+   measured — the closer's spend is not the phase's — and written with
+   `record.sh write --body-file <path>`. Do not invent a second format — the
+   rule exists because a second one was invented.
 
 10. **Final report — in chat, in the project's configured output language**
    (Canon §8; English unless the project declares otherwise). Summarize what
@@ -235,4 +241,4 @@ otherwise.
   a math/science core, anything touching third-party data.
 - Skip for: trivial single-file changes, or when no plan exists yet (run
   `plan` first). What a small change skips is the parallel agents, never the
-  audit: `plan` §Ship runs `auditor` before its pull request too.
+  audit: `plan` §Ship runs `auditor` before its pull request (with no tracker, before the branch's first push) too.

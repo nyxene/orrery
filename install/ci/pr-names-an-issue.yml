@@ -1,13 +1,16 @@
 # Refuses a pull request that names no issue.
 #
-# Copy this file to `.github/workflows/pr-names-an-issue.yml` in your project,
+# Only if the project declares `"tracker": "github"` — without a tracker there
+# is no issue to name. Then copy this file to
+# `.github/workflows/pr-names-an-issue.yml` in your project,
 # and `install/ci/names-an-issue.sh` (with its suite) to `install/ci/` there —
 # or anywhere, as long as the `run:` line below points at it.
 #
 # ## Why a workflow and not a hook
 #
-# Orrery ships a hook that refuses `gh issue close` without a retrospective, and
-# that hook sees every command a session types. It cannot see a merge. GitHub
+# Orrery ships a hook that refuses `gh pr create` until the work's record is
+# committed, and that hook sees every command a session types. It cannot see a
+# pull request opened in the browser, and it cannot see a merge. GitHub
 # closes an issue named by `Closes #N` server-side, after the button, from an
 # event no local hook is present for — and on a project that lands work through
 # pull requests, that is most of them.

@@ -30,11 +30,11 @@ friction is still legible.
    corpus was older than the reader. Step 3's bar is a count, and a count from
    an unstated denominator is not a measurement. If the whole set is genuinely
    too large, that is a number to report, not a decision to make quietly.
-3. **The call log, where the project keeps one.** `ORRERY_CALL_LOG` names a file
-   written by `hooks/call-log.sh`, holding no content at all: timestamp, session
+3. **The call log.** `.orrery/local/calls.tsv` in the main checkout, written by
+   `hooks/call-log.sh`, holding no content at all: timestamp, session
    fingerprint, tool, subagent type, whether the spawn was named, the event —
-   `call` or `ran` — and the harness's id for the call. Absent means the project
-   did not ask for it; that is not a finding.
+   `call` or `ran` — and the harness's id for the call. It is on unless
+   `.orrery/config.json` says `"callLog": false`; switched off is not a finding.
 
    **Read the pair, not the row.** `ran` is written only when a tool succeeds, so
    a `call` with no `ran` under the same id did not run — refused by a guard, by
@@ -72,8 +72,7 @@ friction is still legible.
    this project, after that change, the ratio moved" and never "the change
    works".
 
-   **And the waiver log** — `.claude/orrery-waivers.tsv` unless `ORRERY_WAIVER_LOG`
-   names another — where every deliberate skip of a gate is a row with its
+   **And the waiver log** — `.orrery/local/waivers.tsv`, beside it — where every deliberate skip of a gate is a row with its
    reason. Read the reasons, not only the count: a waiver whose reason is an
    agent's own judgement rather than the owner's words is the skip the gate
    exists to stop.
@@ -228,13 +227,17 @@ as one batch and the batch is one item on the list. Anything whose fix could
 reasonably be written two ways is a change, and goes alone.
 
 **6. Log the outcome** — append to the host's own sharpen log, at the location
-its CLAUDE.md declares; create it on first use. Record date, proposal,
+its `.orrery/config.json` declares as `sharpenLog` (default `.orrery/sharpen-log.md`,
+inside Orrery's own folder); create it on first use. Record date, proposal,
 decision, and for a modification, what changed. **Read it in step 1, before
 gathering anything** — it is listed last because it is written last, and read
 first because a proposal already refused is not worth re-costing.
 
 The file may not exist yet; on the first run, create it. Absent is the first
-run, never a signal that the log was cleared.
+run, never a signal that the log was cleared — but look for one at
+`docs/sharpen-log.md` first, where it lived before: if the project declared no
+`sharpenLog` and that file is there, `git mv` it to `.orrery/sharpen-log.md` in
+this pass, and read it as the history it is.
 
 The log is what stops the skill re-proposing what was already refused. It also
 teaches style: if softened wording keeps getting accepted where absolute wording

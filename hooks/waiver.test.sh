@@ -12,8 +12,16 @@ set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
 script="$here/waiver.sh"
 
+while IFS='=' read -r _var _; do unset "$_var"; done < <(env | grep '^GIT_')
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/waiver-test.XXXXXX")" || exit 1
 trap 'rm -rf "$tmp"' EXIT
+tmp="$(cd "$tmp" && pwd -P)"
+
+# A new repository; prints the path its waiver log will have.
+fresh() { mkdir -p "$tmp/$1" && git -C "$tmp/$1" init -q -b main
+  git -C "$tmp/$1" config user.email t@example.invalid; git -C "$tmp/$1" config user.name t; printf '%s/.orrery/local/waivers.tsv' "$tmp/$1"; }
+# waiver.sh run from inside the log's repository.
+w() { local r="${1%/.orrery/local/waivers.tsv}"; shift; ( cd "$r" && env -u ORRERY_WAIVER_LOG bash "$script" "$@" ); }
 
 pass=0 fail=0
 ok()  { pass=$((pass + 1)); printf '\033[32m✓\033[0m %s\n' "$1"; }
@@ -24,9 +32,8 @@ refute() { if grep -qF -- "$3" <<<"$2"; then bad "$1" "did not expect: $3"; else
 printf 'hooks/waiver.sh\n\n'
 
 # --- the line ----------------------------------------------------------------
-log="$tmp/one.tsv"
-ORRERY_WAIVER_LOG="$log" CLAUDE_CODE_SESSION_ID=abc \
-  bash "$script" "gh issue close #99042" "owner said to skip it" command >/dev/null 2>&1
+log="$(fresh one)"
+CLAUDE_CODE_SESSION_ID=abc w "$log" "gh issue close #99042" "owner said to skip it" command >/dev/null 2>&1
 line="$(cat "$log" 2>/dev/null)"
 
 assert "the act is recorded"     "$line" 'gh issue close'
@@ -45,7 +52,7 @@ refute "the raw session id is not written" "$line" 'abc'
 # --- appending, not replacing -------------------------------------------------
 # A file that gets truncated on each write holds the most recent skip and no
 # history, which reads as a project that has skipped once.
-ORRERY_WAIVER_LOG="$log" bash "$script" "second act" "second reason" >/dev/null 2>&1
+w "$log" "second act" "second reason" >/dev/null 2>&1
 c="$(wc -l < "$log" | tr -d ' ')"
 [ "$c" = 2 ] && ok "a second waiver appends" || bad "a second waiver appends" "$c lines"
 assert "and the first is still there" "$(cat "$log")" 'owner said to skip it'
@@ -60,9 +67,9 @@ assert "and the first is still there" "$(cat "$log")" 'owner said to skip it'
 # `sanitize-scan.sh` refuses a literal date in anything that ships — it cannot
 # tell a fixture from a dated incident narrative, and this file ships. A
 # generated one is what a forgery would actually carry anyway.
-log2="$tmp/forge.tsv"
+log2="$(fresh forge)"
 forged_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-ORRERY_WAIVER_LOG="$log2" bash "$script" "act" \
+w "$log2" "act" \
   "$(printf 'real reason\n%s\tdeadbeef\tcommand\tsomething else\tinvented' "$forged_ts")" \
   >/dev/null 2>&1
 c="$(wc -l < "$log2" | tr -d ' ')"
@@ -74,33 +81,39 @@ n="$(awk -F'\t' 'END{print NF}' "$log2")"
 # --- the refusals -------------------------------------------------------------
 # A waiver with no reason records that something was skipped and not why, which
 # is the silence this file exists to end.
-out="$(ORRERY_WAIVER_LOG="$tmp/none.tsv" bash "$script" "act" 2>&1)"; rc=$?
+none="$(fresh none)"
+out="$(w "$none" "act" 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok "a waiver with no reason is refused" || bad "a waiver with no reason is refused" "exit $rc"
 assert "and says why" "$out" 'A waiver with no reason'
-[ -f "$tmp/none.tsv" ] && bad "and writes nothing" "the log was created" || ok "and writes nothing"
+[ -f "$none" ] && bad "and writes nothing" "the log was created" || ok "and writes nothing"
 
-out="$(ORRERY_WAIVER_LOG="$tmp/none.tsv" bash "$script" "act" "why" invented 2>&1)"; rc=$?
+out="$(w "$none" "act" "why" invented 2>&1)"; rc=$?
 [ "$rc" -ne 0 ] && ok "an unknown source is refused" || bad "an unknown source is refused" "exit $rc"
 
 # --- where it lands -----------------------------------------------------------
-# A relative path resolved against the working directory is how one host project
-# collected twenty call logs, as deep as six directories. The root is named or
-# the write is refused; there is no third behaviour, because a waiver written
-# somewhere nobody will look reads as recorded.
-proj="$tmp/proj"; mkdir -p "$proj/sub"
-( cd "$proj/sub" && CLAUDE_PROJECT_DIR="$proj" ORRERY_WAIVER_LOG=".claude/w.tsv" \
-    bash "$script" "act" "reason" >/dev/null 2>&1 )
-[ -f "$proj/.claude/w.tsv" ] && ok "a relative path resolves against the project root" \
-                             || bad "a relative path resolves against the project root" "not at the root"
-[ -f "$proj/sub/.claude/w.tsv" ] && bad "and not against the working directory" "written under sub/" \
-                                 || ok "and not against the working directory"
+# A path resolved against the working directory is how one host project
+# collected twenty call logs, as deep as six directories. The place is named by
+# git or the write is refused; there is no third behaviour, because a waiver
+# written somewhere nobody will look reads as recorded.
+proj="$tmp/proj"; mkdir -p "$proj/sub"; git -C "$proj" init -q -b main
+git -C "$proj" config user.email t@example.invalid; git -C "$proj" config user.name t
+( cd "$proj/sub" && env -u ORRERY_WAIVER_LOG bash "$script" "act" "reason" >/dev/null 2>&1 )
+[ -f "$proj/.orrery/local/waivers.tsv" ] && ok "it lands in the main checkout's .orrery/local/" \
+  || bad "it lands in the main checkout's .orrery/local/" "not there"
+[ -e "$proj/sub/.orrery" ] && bad "and not under the working directory" "written under sub/" \
+  || ok "and not under the working directory"
 
 bare="$tmp/bare"; mkdir -p "$bare"
-out="$( cd "$bare" && env -u CLAUDE_PROJECT_DIR ORRERY_WAIVER_LOG="rel.tsv" \
-        bash "$script" "act" "reason" 2>&1 )"; rc=$?
-[ "$rc" -ne 0 ] && ok "no project root and a relative path is refused" \
-               || bad "no project root and a relative path is refused" "exit $rc"
-assert "and names what to set" "$out" 'ORRERY_WAIVER_LOG'
+out="$( cd "$bare" && bash "$script" "act" "reason" 2>&1 )"; rc=$?
+[ "$rc" -ne 0 ] && ok "outside a repository it is refused" \
+               || bad "outside a repository it is refused" "exit $rc"
+assert "and says why" "$out" 'not inside a git repository'
+
+# --- an upgrade keeps the history --------------------------------------------
+up="$(fresh up)"; mkdir -p "$tmp/up/.claude"; printf 'OLD-WAIVER\n' > "$tmp/up/.claude/orrery-waivers.tsv"
+w "$up" "act" "reason" >/dev/null 2>&1
+assert "the old waivers are carried over on the first write" "$(head -1 "$up" 2>/dev/null)" 'OLD-WAIVER'
+assert "and the old file is left for a rollback" "$(cat "$tmp/up/.claude/orrery-waivers.tsv")" 'OLD-WAIVER'
 
 printf '\n%s cases, %s failing\n' "$((pass + fail))" "$fail"
 [ "$fail" -eq 0 ] || exit 1

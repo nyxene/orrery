@@ -11,9 +11,9 @@
 # properties that make this recorder allowed to exist at all: it records no
 # content, and it never blocks a tool call. Both are silent when broken.
 #
-# git exports its own environment into hooks and this file may run as a gate;
-# nothing here spawns a repository, but the log path is taken from the
-# environment, so the variable is set per case rather than inherited.
+# Each case gets its own repository, because the log's place is named by git:
+# `.orrery/local/calls.tsv` in the main checkout. git exports its own
+# environment into hooks and this file runs as a gate, so that is cleared first.
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
@@ -23,30 +23,40 @@ pass=0 fail=0
 ok()  { pass=$((pass + 1)); printf '\033[32m✓\033[0m %s\n' "$1"; }
 bad() { fail=$((fail + 1)); printf '\033[31m✗\033[0m %s — %s\n' "$1" "$2"; }
 
+while IFS='=' read -r _var _; do unset "$_var"; done < <(env | grep '^GIT_')
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/call-log-test.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
+tmp="$(cd "$tmp" && pwd -P)"
 
-# One call through the hook. Prints nothing; the log is the output.
-run() { # $1 = log path (empty for unset), $2 = payload JSON
-  if [ -n "$1" ]; then ORRERY_CALL_LOG="$1" bash "$hook" <<<"$2" >/dev/null 2>&1
-  else env -u ORRERY_CALL_LOG bash "$hook" <<<"$2" >/dev/null 2>&1; fi
-  return $?
+# A new repository; prints the path its log will have.
+fresh() { # $1 = name
+  mkdir -p "$tmp/$1" && git -C "$tmp/$1" init -q -b main
+  git -C "$tmp/$1" config user.email t@example.invalid; git -C "$tmp/$1" config user.name t
+  printf '%s/.orrery/local/calls.tsv' "$tmp/$1"
 }
+# One call through the hook, launched in the log's repository. Prints what the
+# hook printed; the log is the output.
+run_out() { # $1 = log path from fresh, $2 = payload JSON
+  local r="${1%/.orrery/local/calls.tsv}"
+  ( cd "$r" && env -u ORRERY_CALL_LOG CLAUDE_PROJECT_DIR="$r" bash "$hook" <<<"$2" 2>/dev/null )
+}
+run() { run_out "$@" >/dev/null; }
 
 bash_payload='{"session_id":"abc-123","tool_name":"Bash","tool_input":{"command":"rm -rf /Users/someone/secret"}}'
 agent_payload='{"session_id":"abc-123","tool_name":"Agent","tool_input":{"subagent_type":"critic","name":"my-reviewer","prompt":"a private brief mentioning /Users/someone"}}'
 
-# --- unset is off, and off costs nothing -----------------------------------
-log="$tmp/unset.log"
-run "" "$bash_payload"
-if [ ! -e "$log" ] && [ -z "$(find "$tmp" -name '*.log' 2>/dev/null)" ]; then
-  ok "no ORRERY_CALL_LOG means no file is created"
+# --- declared off is off ---------------------------------------------------
+log="$(fresh off)"
+mkdir -p "$tmp/off/.orrery"; printf '{"callLog":false}' > "$tmp/off/.orrery/config.json"
+run "$log" "$bash_payload"
+if [ ! -e "$log" ]; then
+  ok "\"callLog\": false means no file is created"
 else
-  bad "no ORRERY_CALL_LOG means no file is created" "something was written anyway"
+  bad "\"callLog\": false means no file is created" "something was written anyway"
 fi
 
 # --- a call is recorded, with the fields the analysis needs ----------------
-log="$tmp/a.log"
+log="$(fresh a)"
 run "$log" "$bash_payload"
 line="$(head -1 "$log" 2>/dev/null || true)"
 if [ -z "$line" ]; then
@@ -64,7 +74,7 @@ fi
 # --- the content is NOT recorded -------------------------------------------
 # The property the whole design rests on. Both payloads above carry a command, a
 # prompt, a home path and a chosen agent name; none may reach the file.
-log="$tmp/b.log"
+log="$(fresh b)"
 run "$log" "$bash_payload"
 run "$log" "$agent_payload"
 leak=""
@@ -85,7 +95,7 @@ else bad "no command, prompt, path or agent name reaches the log" "leaked:$leak"
 # reads as a dated incident narrative to `tools/sanitize-scan.sh`, which refused
 # the release that shipped this file — and the assertion never needed a date: it
 # checks that the caller could not choose the field, whatever was put in it.
-forge_log="$tmp/forge.log"
+forge_log="$(fresh forge)"
 forged_payload="$(jq -nc --arg a "$(printf 'critic\nFORGED-STAMP\tdeadbeef\tBash\t-\tno')" \
   '{tool_name:"Agent", session_id:"abc-123", tool_input:{subagent_type:$a}}')"
 run "$forge_log" "$forged_payload"
@@ -124,39 +134,42 @@ fi
 # A recorder that denies has done more damage than a missing line is worth. The
 # guards in this directory print a deny JSON; this one must print nothing and
 # exit 0, including when it cannot possibly work.
-out="$(ORRERY_CALL_LOG="$tmp/c.log" bash "$hook" <<<"$bash_payload" 2>/dev/null)"
+out="$(run_out "$(fresh c)" "$bash_payload")"
 rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok "a recorded call prints nothing and exits 0"
 else bad "a recorded call prints nothing and exits 0" "rc=$rc out=$out"; fi
 
-out="$(ORRERY_CALL_LOG=/proc/nonexistent/deep/x.log bash "$hook" <<<"$bash_payload" 2>/dev/null)"
+# `.orrery/local` as a file: the directory cannot be made.
+log="$(fresh unwritable)"; mkdir -p "$tmp/unwritable/.orrery"; : > "$tmp/unwritable/.orrery/local"
+out="$(run_out "$log" "$bash_payload")"
 rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok "an unwritable log path still exits 0 and blocks nothing"
 else bad "an unwritable log path still exits 0 and blocks nothing" "rc=$rc out=$out"; fi
 
-out="$(ORRERY_CALL_LOG="$tmp/d.log" bash "$hook" <<<'not json at all' 2>/dev/null)"
+out="$(run_out "$(fresh d)" 'not json at all')"
 rc=$?
 if [ "$rc" -eq 0 ] && [ -z "$out" ]; then ok "a payload that is not JSON exits 0 and blocks nothing"
 else bad "a payload that is not JSON exits 0 and blocks nothing" "rc=$rc out=$out"; fi
 
 # --- the log is bounded ----------------------------------------------------
 # Without this it grows forever in somebody else's repository.
-log="$tmp/big.log"
+log="$(fresh big)"
+mkdir -p "$(dirname "$log")"
 i=0
 while [ "$i" -lt 400 ]; do
   printf 'x%.0s' $(seq 1 40) >> "$log"; printf '\n' >> "$log"
   i=$((i + 1))
 done
 before="$(wc -c < "$log" | tr -d ' ')"
-ORRERY_CALL_LOG="$log" ORRERY_CALL_LOG_MAX=4096 bash "$hook" <<<"$bash_payload" >/dev/null 2>&1
+( cd "$tmp/big" && ORRERY_CALL_LOG_MAX=4096 CLAUDE_PROJECT_DIR="$tmp/big" bash "$hook" <<<"$bash_payload" >/dev/null 2>&1 )
 after="$(wc -c < "$log" | tr -d ' ')"
 if [ "$after" -lt "$before" ]; then ok "the log is trimmed once it passes its size cap"
 else bad "the log is trimmed once it passes its size cap" "before=$before after=$after"; fi
 
 # --- purge empties it and says so ------------------------------------------
-log="$tmp/p.log"
+log="$(fresh p)"
 run "$log" "$bash_payload"
-msg="$(ORRERY_CALL_LOG="$log" bash "$hook" --purge 2>&1)"
+msg="$(cd "$tmp/p" && env -u CLAUDE_PROJECT_DIR bash "$hook" --purge 2>&1)"
 if [ -f "$log" ] && [ ! -s "$log" ] && grep -q 'purged' <<<"$msg"; then
   ok "--purge empties the log and reports what it removed"
 else
@@ -172,7 +185,7 @@ fi
 pre='{"session_id":"s1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"tu_777","tool_input":{"command":"ls"}}'
 post='{"session_id":"s1","hook_event_name":"PostToolUse","tool_name":"Bash","tool_use_id":"tu_777","tool_input":{"command":"ls"}}'
 
-log="$tmp/pair.log"
+log="$(fresh pair)"
 run "$log" "$pre"
 run "$log" "$post"
 ev="$(cut -f6 "$log" | tr '\n' ' ')"
@@ -188,7 +201,7 @@ fi
 # A refused call is the pre with no post, which is the state this whole change
 # exists to make visible. Asserted as the absence, because that is how it will
 # be read.
-log="$tmp/refused.log"
+log="$(fresh refused)"
 run "$log" "$pre"
 if [ "$(wc -l < "$log" | tr -d ' ')" -eq 1 ] && [ "$(cut -f6 "$log")" = call ]; then
   ok "a call that never completes leaves one unpaired call line"
@@ -218,7 +231,7 @@ fi
 
 # Absent: this hook fails open, the field is newer than the log, and going
 # silent because one key moved is worse than mislabelling.
-log="$tmp/noevent.log"
+log="$(fresh noevent)"
 run "$log" '{"session_id":"s2","tool_name":"Bash","tool_input":{"command":"ls"}}'
 if [ "$(cut -f6 "$log" 2>/dev/null)" = call ]; then
   ok "a payload with no hook_event_name is still recorded, as a call"
@@ -228,7 +241,7 @@ fi
 
 # Present and unrecognised: someone registered a third event and did not teach
 # this file. Recording it unlabelled would have every reader count it as a call.
-log="$tmp/unknown.log"
+log="$(fresh unknown)"
 run "$log" '{"session_id":"s3","hook_event_name":"Nonesuch","tool_name":"Bash","tool_input":{"command":"ls"}}'
 if [ ! -s "$log" ]; then
   ok "an unrecognised hook event records nothing rather than an unlabelled row"
@@ -240,7 +253,7 @@ fi
 # The forgery case, one field further right. `subagent_type` already has its own
 # case; this is the same law applied to a field nobody expects to be hostile,
 # because "harness-supplied" is an assumption and the property is not.
-log="$tmp/forge-id.log"
+log="$(fresh forge-id)"
 run "$log" "$(jq -nc '{session_id:"s4",hook_event_name:"PreToolUse",tool_name:"Bash",
                        tool_use_id:"tu_1\nFORGED\tx\ty\tz\tcall\ttu_2",tool_input:{command:"ls"}}')"
 if [ "$(wc -l < "$log" | tr -d ' ')" -eq 1 ] && ! grep -q FORGED <<<"$(cut -f1 "$log")"; then
@@ -249,50 +262,71 @@ else
   bad "a newline inside tool_use_id cannot write a second line" "$(cat "$log")"
 fi
 
-# --- a relative path belongs to the project, not to the working directory ---
-# The defect this file was written to prevent a repeat of. Every install sets a
-# relative path, because the install guide recommends one, and this hook used to
-# resolve it against whatever directory the tool call ran in — so every `cd` into
-# a subdirectory started a new log there. One host project accumulated twenty,
-# and a `.gitignore` line anchored to the repository root did not cover them.
+# --- one log per clone, wherever the call runs ------------------------------
+# The defect this placement was chosen to end. The log used to sit at a path an
+# environment variable named, relative in every install, and this hook resolved
+# it against the directory the tool call ran in — so every `cd` into a
+# subdirectory started a new log. One host project accumulated twenty.
 
 proj="$tmp/proj"; mkdir -p "$proj/sub/deeper"
-rel='.claude/orrery-calls.tsv'
+git -C "$proj" init -q -b main
+git -C "$proj" config user.email t@example.invalid; git -C "$proj" config user.name t
+git -C "$proj" commit -q --allow-empty -m init
+git -C "$proj" worktree add -q -b w "$proj/.claude/worktrees/w" 2>/dev/null
 evt='{"session_id":"r1","hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"r_1","tool_input":{"command":"ls"}}'
 
 for d in "$proj" "$proj/sub" "$proj/sub/deeper"; do
-  ( cd "$d" && env ORRERY_CALL_LOG="$rel" CLAUDE_PROJECT_DIR="$proj" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
+  ( cd "$d" && env CLAUDE_PROJECT_DIR="$proj" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
 done
-found="$(cd "$proj" && find . -name orrery-calls.tsv | sort | tr '\n' ' ')"
-if [ "$found" != "./.claude/orrery-calls.tsv " ]; then
-  bad "a relative path resolves against the project, from any working directory" "found: $found"
-elif [ "$(wc -l < "$proj/.claude/orrery-calls.tsv" | tr -d ' ')" -ne 3 ]; then
-  bad "all three calls land in the one file" "$(cat "$proj/.claude/orrery-calls.tsv")"
+# The harness's cwd, not the launch directory, names the tree: a call made in a
+# worktree lands in the main checkout's log all the same.
+( cd "$tmp" && env CLAUDE_PROJECT_DIR="$tmp" bash "$hook" \
+    <<<"$(jq -c --arg c "$proj/.claude/worktrees/w" '. + {cwd: $c}' <<<"$evt")" >/dev/null 2>&1 )
+found="$(cd "$proj" && find . -name calls.tsv | sort | tr '\n' ' ')"
+if [ "$found" != "./.orrery/local/calls.tsv " ]; then
+  bad "every call lands in the main checkout's one log" "found: $found"
+elif [ "$(wc -l < "$proj/.orrery/local/calls.tsv" | tr -d ' ')" -ne 4 ]; then
+  bad "all four calls land in the one file" "$(cat "$proj/.orrery/local/calls.tsv")"
 else
-  ok "three calls from three directories write one file at the project root"
+  ok "calls from three directories and a worktree write one file in the main checkout"
+fi
+if [ -z "$(git -C "$proj" status --porcelain -- .orrery)" ]; then
+  ok "and git sees nothing to commit there"
+else
+  bad "and git sees nothing to commit there" "$(git -C "$proj" status --porcelain -- .orrery)"
 fi
 
-# Nothing to resolve against: record nothing rather than somewhere. This hook
-# fails open everywhere else, and deliberately does not here — a missing line
-# costs a line, a file in someone's source tree is damage they have to find.
+# Outside a repository: record nothing rather than somewhere. This hook fails
+# open everywhere else, and deliberately does not here — a missing line costs a
+# line, a file in someone's tree is damage they have to find.
 lost="$tmp/lost"; mkdir -p "$lost/sub"
-( cd "$lost/sub" && env -u CLAUDE_PROJECT_DIR ORRERY_CALL_LOG="$rel" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
+( cd "$lost/sub" && env CLAUDE_PROJECT_DIR="$lost" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
 rc=$?
-if [ -n "$(find "$lost" -name orrery-calls.tsv 2>/dev/null)" ]; then
-  bad "a relative path with no project root writes nothing" "$(find "$lost" -name orrery-calls.tsv)"
+if [ -n "$(find "$lost" -type f 2>/dev/null)" ]; then
+  bad "outside a repository nothing is written" "$(find "$lost" -type f)"
 elif [ "$rc" -ne 0 ]; then
   bad "and still exits 0, blocking nothing" "exit $rc"
 else
-  ok "a relative path with no CLAUDE_PROJECT_DIR writes nothing, and blocks nothing"
+  ok "outside a repository nothing is written, and nothing is blocked"
 fi
 
-# An absolute path was never the broken case and must stay untouched by cwd.
-abspath="$tmp/abs.log"
-( cd "$tmp" && env ORRERY_CALL_LOG="$abspath" CLAUDE_PROJECT_DIR="$proj" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
-if [ -f "$abspath" ] && [ ! -e "$proj/$abspath" ]; then
-  ok "an absolute path is used as given, not appended to the project root"
+# --- the old log comes with it, once, and stays ------------------------------
+up="$tmp/upgrade"; log="$(fresh upgrade)"
+mkdir -p "$up/.claude"; printf 'OLD-ROW\n' > "$up/.claude/orrery-calls.tsv"
+run "$log" "$evt"
+if [ "$(head -1 "$log" 2>/dev/null)" = OLD-ROW ] && [ "$(wc -l < "$log" | tr -d ' ')" -eq 2 ] \
+   && [ "$(cat "$up/.claude/orrery-calls.tsv")" = OLD-ROW ]; then
+  ok "an upgrade carries the old log's rows over and leaves the old file"
 else
-  bad "an absolute path is used as given" "abs exists: $([ -f "$abspath" ] && echo yes || echo no)"
+  bad "an upgrade carries the old log's rows over and leaves the old file" "$(cat "$log" 2>/dev/null)"
+fi
+log2="$(fresh upgrade-named)"
+mkdir -p "$tmp/upgrade-named/logs"; printf 'NAMED-ROW\n' > "$tmp/upgrade-named/logs/x.tsv"
+( cd "$tmp/upgrade-named" && ORRERY_CALL_LOG=logs/x.tsv CLAUDE_PROJECT_DIR="$tmp/upgrade-named" bash "$hook" <<<"$evt" >/dev/null 2>&1 )
+if [ "$(head -1 "$log2" 2>/dev/null)" = NAMED-ROW ]; then
+  ok "a log the old variable named elsewhere is the one carried over"
+else
+  bad "a log the old variable named elsewhere is the one carried over" "$(cat "$log2" 2>/dev/null)"
 fi
 
 # --- a skill invocation is recorded, and is not a spawn ----------------------
@@ -301,7 +335,7 @@ fi
 # The name shares field four with the subagent type, so the pair below is what
 # has to hold: the name arrives, and field three is what tells a reader which
 # kind of name it is.
-skill_log="$tmp/skill.log"
+skill_log="$(fresh skill)"
 run "$skill_log" '{"session_id":"abc-123","tool_name":"Skill","tool_input":{"skill":"sharpen","args":"the whole library"}}'
 sline="$(grep '	Skill	' "$skill_log" 2>/dev/null || true)"
 if [ -n "$sline" ]; then
@@ -330,7 +364,7 @@ fi
 
 # The same forgery guard as the subagent type, because a skill name is
 # caller-supplied free text by exactly the same route.
-forge_skill="$tmp/forge-skill.log"
+forge_skill="$(fresh forge-skill)"
 # A marker rather than a timestamp, for the reason given at the case above: a
 # real date here is a dated incident narrative to `tools/sanitize-scan.sh`, and
 # the assertion never needed one.

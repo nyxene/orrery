@@ -9,9 +9,14 @@
 # corpus ships. The guard matches the command shape, never the number, so the
 # width costs the cases nothing.
 #
+# The corpus runs in a fixture repository with no call log and no record of the
+# work committed, so every `gh pr create` that reaches the gate is refused for
+# the missing record — which is what lets these cases pin the matcher: a spelling
+# it misses passes, and goes red here.
+#
 # Read the `allow` half first. A false refusal is what gets a hook deleted, and
 # a deleted hook enforces nothing — so the cases that cost the most here are the
-# ones where a naive match refuses a command that closes nothing. Two of them
+# ones where a naive match refuses a command that opens nothing. Two of them
 # were reproduced against the shipped version by a review, one of them denying
 # the reviewer's own command mid-session.
 #
@@ -19,113 +24,78 @@
 # does NOT catch. Those are limits, written down so the next reader meets them
 # as a decision rather than as a hole — the convention hooks/agent-cases.tsv
 # already uses.
-deny	gh issue close 99042
-deny	gh issue close 99042 --comment "done"
-deny	gh issue close #99042
-deny	gh issue close '99042'
-deny	gh issue close "99042"
-deny	git commit -m 'x' && gh issue close 99042
-deny	git push; gh issue close 7
-deny	for i in 1 2 3; do gh issue close $i; done
-deny	if [ -n "$x" ]; then gh issue close 9; fi
-deny	( gh issue close 42 )
+deny	gh pr create --fill
+deny	gh pr create --title "x" --body-file /tmp/b
+deny	git commit -m 'x' && gh pr create --fill
+deny	git push; gh pr create --fill
+deny	if [ -n "$x" ]; then gh pr create --fill; fi
+deny	( gh pr create --fill )
 # Whitespace is not a spelling the guard should miss: a session that writes two
 # spaces has not decided anything.
-deny	gh   issue    close 42
+deny	gh   pr    create --fill
 # Ordinary spellings rather than evasions, and every one of them slipped past
-# the first version. `gh -R owner/repo issue close` in particular is what a
+# the first version. `gh -R owner/repo pr create` in particular is what a
 # session writes when it is being careful about which repository it is in.
-deny	gh -R owner/repo issue close 5
-deny	command gh issue close 5
-deny	env gh issue close 5
-deny	gh issue close 42 --repo owner/name
-# gh's own documented way to close an issue, which bypassed the first version
-# entirely.
-deny	gh api -X PATCH repos/o/r/issues/42 -f state=closed
-deny	gh api repos/o/r/issues/42 --method PATCH --raw-field '{"state":"closed"}'
+deny	gh -R owner/repo pr create --fill
+deny	command gh pr create --fill
+deny	env gh pr create --fill
+deny	gh pr create --repo owner/name --fill
 # The waiver is the supported escape, and an empty one is not a waiver. This is
 # the pair that matters — a reason present, and a reason that is only nominally
 # there.
-deny	ORRERY_WAIVE= gh issue close 99042
-deny	ORRERY_WAIVE="" gh issue close 99042
-allow	ORRERY_WAIVE="owner said to skip it, we are mid-incident" gh issue close 99042
-allow	ORRERY_WAIVE='single quotes are a spelling too' gh issue close 99042
-allow	ORRERY_WAIVE=unquoted-still-a-reason gh issue close 99042
+deny	ORRERY_WAIVE= gh pr create --fill
+deny	ORRERY_WAIVE="" gh pr create --fill
+allow	ORRERY_WAIVE="owner said to skip it, we are mid-incident" gh pr create --fill
+allow	ORRERY_WAIVE='single quotes are a spelling too' gh pr create --fill
+allow	ORRERY_WAIVE=unquoted-still-a-reason gh pr create --fill
 # A waiver attached to something else in the same command line is not a waiver
-# for this close. The first version searched the whole command string for the
-# token, so this recorded a row and permitted the close.
-deny	ORRERY_WAIVE="this is for the echo" echo hi; gh issue close 99042
-# Everything else `gh` does with an issue. Reading, commenting and listing are
-# how a retrospective gets written in the first place; a guard that blocks them
-# blocks the thing it is asking for.
-allow	gh issue view 42
-allow	gh issue comment 42 --body-file /tmp/x
-allow	gh issue list --state closed --limit 100
-allow	gh issue reopen 42
-allow	gh issue develop 42 --checkout
+# for this pull request. The first version searched the whole command string
+# for the token, so this recorded a row and permitted the act.
+deny	ORRERY_WAIVE="this is for the echo" echo hi; gh pr create --fill
+# --- closing an issue is the person's act again ----------------------------------
+# The refusal on `gh issue close` was retired when the record became a file
+# committed with the work; every spelling it used to catch passes now, and these
+# rows are what would notice it coming back.
+allow	gh issue close 99042
+allow	gh issue close 99042 --reason "not planned"
+allow	gh api -X PATCH repos/o/r/issues/99042 -f state=closed
+allow	echo 99042 | xargs gh issue close
+allow	gh issue view 99042
+allow	gh issue comment 99042 --body-file /tmp/x
+allow	gh issue reopen 99042
+allow	gh pr view 3
+allow	gh pr merge 3 --squash
 allow	gh pr close 3
-# `close` is not `closed`, and a word boundary is what separates them.
-allow	gh issue closed-by-someone-else
-# The permitted path itself, which closes the issue in a subprocess the hook
-# never sees. If this were denied there would be no way to comply.
-allow	skills/build/close-issue.sh 42 --what "one line"
+# `create` is not `created`, and a word boundary is what separates them.
+allow	gh pr created-by-someone-else
+# The permitted path, which writes the record the gate asks for.
+allow	skills/build/record.sh write --what "one line"
 # --- writing ABOUT the command ------------------------------------------------
-# The regex is quote-blind and cannot be made otherwise without parsing shell,
-# so what separates these from a real close is the shape of the argument: a
-# digit, a `#`, a variable or a quote — never a word, never `<N>`. Both of the
-# first two were reproduced as false refusals against the version that shipped.
-allow	git commit -m "guard works; gh issue close is gated now"
-allow	git commit -m "and then gh issue close stops working"
-allow	echo "gh issue close 42 is what the guard refuses"
-allow	grep -n 'gh issue close' hooks/process-guard.sh
-allow	printf '%s\n' "  ORRERY_WAIVE=\"why\" gh issue close <N>" > doc.md
-allow	sed -i '' 's/gh issue close/x/' notes.md
-# --- the two ordinary spellings, caught on the second pass ---------------------
-# A URL is what a session reaches for after copying a link out of a browser, and
-# a pipe into xargs is how a batch close is written — which is the case where
-# the gate matters most in aggregate and least per issue. Twelve issues closed
-# through one pipe used to leave twelve holes and no waiver.
-deny	gh issue close https://github.com/owner/repo/issues/42
-deny	gh issue close https://github.com/o/web3-app/issues/42
-# With xargs the numbers arrive on stdin, so there is no argument after `close`
-# at all. The first version of this required one and therefore caught only the
-# spellings that happen to carry `{}` — a corpus written to the regex instead
-# of to the spellings, and a review found five bypasses in it. The plainest
-# form of all was one of them.
-deny	echo 42 | xargs gh issue close
-deny	echo 42 | xargs -n1 gh issue close
-deny	echo 42 | xargs -n 1 gh issue close
-deny	echo 42 | xargs -I{} gh issue close {}
-deny	echo 42 | xargs -I {} gh issue close {}
-deny	echo 42 | xargs -P 4 -I{} gh issue close {}
-deny	xargs -a list.txt gh issue close
-deny	gh issue list --json number --jq '.[].number' | xargs -n1 gh issue close
+# Quote-blind: what keeps prose from reading as a command is the command
+# position. Text that does not start a command passes.
+allow	echo "gh pr create is what the guard refuses"
+allow	grep -n 'gh pr create' hooks/process-guard.sh
+allow	sed -i '' 's/gh pr create/x/' notes.md
 # --- limits, stated rather than hidden ----------------------------------------
-# These close an issue and are NOT caught. They are `allow` because that is what
-# the guard does, not because it is right: a guard that reasons about a string
-# cannot follow one through an interpreter. Both take deciding to write, which
-# is where the line is drawn — a deliberate evasion is what the waiver is for,
-# and the waiver is cheaper than either of these.
-allow	bash -c "gh issue close 42"
-allow	n=42; eval "gh issue close $n"
+# These open a pull request and are NOT caught. They are `allow` because that is
+# what the guard does, not because it is right: a guard that reasons about a
+# string cannot follow one through an interpreter. Both take deciding to write,
+# which is where the line is drawn — the waiver is cheaper than either.
+allow	bash -c "gh pr create --fill"
+allow	c=create; eval "gh pr $c --fill"
 # And the cost of being quote-blind, which is not fixable without parsing shell.
 # A metacharacter inside quoted prose reads as a command separator, so writing
-# *about* the guard can be refused — three times in the session that built it,
-# once by the rule on the line above. The workaround is one flag (--body-file);
+# *about* the guard can be refused. The workaround is one flag (--body-file);
 # the alternative is a heuristic that becomes a bypass.
-deny	gh pr comment 303 --body "was: ORRERY_WAIVE=x echo hi; gh issue close 42"
-# The xargs rule above brings its own instance of the same cost, and it is a
-# case rather than a sentence in a commit message — which is the principle this
-# corpus exists to keep.
-deny	git commit -m "batch form: cat ids | xargs -I{} gh issue close {} now denied"
+deny	gh pr comment 303 --body "was: ORRERY_WAIVE=x echo hi; gh pr create --fill"
 
 # A backslash-escaped `|` is alternation in a search pattern, not a pipe. An
 # auditor's `grep 'push\|gh pr create'` was counted as a pull request opened.
-allow	grep -n 'push\|gh issue close 99042\|main' tools/promote.sh
-deny	true | gh issue close 99042
+allow	grep -n 'push\|gh pr create\|main' tools/promote.sh
+deny	true | gh pr create --fill
 # The limit, written down: an unescaped `|` inside quotes still reads as a pipe.
 # The matcher is quote-blind by design; see the header.
-deny	grep -E 'push|gh issue close 99042' f
+deny	grep -E 'push|gh pr create' f
 
 # A worktree is made by the harness. Plain, flagged, env-prefixed, chained and
 # rtk-rewritten spellings are refused; the subcommands that make nothing pass.
@@ -146,3 +116,46 @@ deny	git -c core.x='a b' worktree add ../x
 # Quote-blind, as for the other acts: `do` is a command-position word, so this
 # echo is refused. It costs an argument, not a boundary.
 deny	echo "do git worktree add"
+
+# Without a tracker the gated act is a branch's first push, and `gh pr create`
+# is not gated: one act per mode. These run in a second fixture (`@push`) with
+# no config, where `feat` is checked out and on the remote, `solo` is not, and
+# `main` is the default branch. Nothing is logged or recorded there, so every
+# first push is refused for the record — which pins what counts as one.
+deny	git push -u origin HEAD	@push
+deny	git push --set-upstream origin feat	@push
+deny	git push origin solo	@push
+deny	rtk git push origin solo	@push
+deny	RTK_DISABLED=1 git push origin solo	@push
+deny	git push origin feat solo	@push
+deny	git push origin solo:solo	@push
+deny	git push origin +solo:refs/heads/solo	@push
+deny	git push https://example.invalid/r.git feat	@push
+deny	git push --all origin	@push
+deny	git commit -m x && git push origin solo	@push
+# Read against the payload's tree, not the path `-C` names: the limit, written down.
+deny	git -C /elsewhere push origin solo	@push
+allow	git push	@push
+allow	git push origin feat	@push
+allow	git push origin HEAD	@push
+allow	git push --force-with-lease origin feat	@push
+allow	git push origin main	@push
+allow	git push -u origin main	@push
+allow	git push --tags	@push
+allow	git push -u origin --tags	@push
+deny	git push origin solo --tags	@push
+allow	git push -o ci.skip origin feat	@push
+allow	git push --push-option ci.skip origin feat	@push
+allow	git push --repo origin feat	@push
+allow	git -c push.default=current push origin feat	@push
+allow	git -C /work/463-first-push push origin feat	@push
+allow	git push origin v1	@push
+allow	git push origin --delete solo	@push
+allow	git push origin :solo	@push
+allow	git push origin :refs/heads/solo	@push
+allow	git push origin HEAD:refs/for/main	@push
+allow	git fetch origin solo	@push
+allow	echo "git push origin solo"	@push
+allow	gh pr create --fill	@push
+# With a tracker the pull request is the act, and a push passes.
+allow	git push -u origin HEAD:refs/heads/topic

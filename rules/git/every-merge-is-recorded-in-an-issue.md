@@ -1,6 +1,7 @@
 ---
-rule: nothing reaches the default branch without an issue behind it — the pull request names the issue, and work found mid-task joins that issue rather than starting a new one
+rule: where the project has a tracker, nothing reaches the default branch without an issue behind it — the pull request names the issue, and work found mid-task joins that issue rather than starting a new one
 scope: git
+tracker: github
 evidence: "a merge carrying a renamed rule file, an amended canon and two consumer-visible changes went in with nothing in the tracker recording it; the law had been enforced by one person repeating it, because it was written in no file"
 ---
 
@@ -8,6 +9,10 @@ Every change that reaches the default branch has an issue behind it, and its
 pull request names that issue by number. No exception for a one-line fix, a
 correction, a rename or a documentation change: the size of the diff has nothing
 to do with whether anyone can find out later why it happened.
+
+This binds where `.orrery/config.json` declares `"tracker": "github"`. Without
+a tracker the record of what reached the default branch is the work's
+`.orrery/work/<work>/`, committed with it.
 
 **Work found mid-task joins the issue you are already under.** A defect you hit
 while doing something else is fixed in the same pull request — its own commit if

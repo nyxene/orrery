@@ -118,8 +118,8 @@ your own reasoning. These are read by machines or by you, not by the user.
 
 **Terminal conversation: one setting, English by default.** The narration
 before a tool call, final reports, questions put to the user, and any direct
-discussion. A project may override it by declaring `Output language:
-<language>` in its own `CLAUDE.md`.
+discussion. A project may override it by declaring `outputLanguage` in
+its `.orrery/config.json`.
 
 The line is what a person reads versus what a machine consumes. The setting
 governs what is *said to someone*; it never reaches disk and never reaches

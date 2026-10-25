@@ -1,12 +1,12 @@
 ---
 name: handoff
-description: Carry session residue across a context reset. Invoke when you learn something the next session would otherwise rediscover the hard way — a dead end, a half-applied change, a decision the diff does not show — and when picking work back up. Writes to the task's GitHub issue, not to a file.
+description: Carry session residue across a context reset. Invoke when you learn something the next session would otherwise rediscover the hard way — a dead end, a half-applied change, a decision the diff does not show — and when picking work back up. Writes .orrery/work/<work>/handoff.md in the work's own tree.
 argument-hint: "[resume] — omit to write a handoff; 'resume' to pick one up"
 ---
 
 # Handoff — What the Next Session Cannot Reconstruct
 
-A session ends and everything in it is gone. The issue still says what to do,
+A session ends and everything in it is gone. The plan still says what to do,
 the diff still shows what changed, git still has the history. What vanishes is
 the part that lived only in the conversation: **the approach you already tried
 that did not work.**
@@ -25,58 +25,44 @@ time, and `resume` is always invoked by hand.
 
 ## Where it goes
 
-**A comment on the task's GitHub issue.** Not a file.
+**`.orrery/work/<work>/handoff.md`, in the work's own tree** — `<work>` is the
+worktree's name, or the branch on the main checkout. One file per
+piece of work, replaced each time, and deleted when the work closes:
+`skills/build/record.sh write --final` and every `record.sh close` remove it.
 
 | Why | |
 |---|---|
-| Costs nothing until needed | Nothing loads it; `resume` fetches it deliberately |
-| Cannot go stale unnoticed | The issue closes, the note becomes history by construction |
-| Scoped automatically | The residue sits with the work it belongs to |
-| Chronology is free | The comment thread is the chain, in order, with dates |
-| Actually backed up | Unlike a gitignored file living in one copy on one disk |
+| Costs nothing until needed | Nothing loads it; `resume` reads it deliberately |
+| Cannot go stale unnoticed | Closing the work deletes it, so a handoff that exists is for open work |
+| Scoped automatically | It sits beside the work's record, in the tree the work happens in |
+| Travels with the branch | Committed with the work by default, it survives the machine and reaches whoever picks the branch up |
+| Needs no tracker | It is a file, so a project with no tracker, or one at work that uses none, has the same handoff |
 
-A repo file fails both ways: gitignored it is invisible and unbacked, tracked
-it is a planning doc that never expires and accretes until nobody reads it.
+It is committed like the rest of `.orrery/work/` unless the project ignores that
+directory in its own `.gitignore` — then it lives only in its worktree, which is
+the project's choice to make. Committed, it is never merged: the record deletes
+it before the final push.
 
-### Finding the issue
+### Finding it
 
-Both modes need an issue number, and `resume` runs in a session that has no
-context by construction — so this cannot be left to memory.
+`resume` runs in a session that has no context by construction, so this cannot
+be left to memory. In order, stopping at the first that answers:
 
-In order, stopping at the first that answers:
+1. **This tree.** `ls .orrery/work/*/handoff.md` from where the session stands.
+2. **The worktrees.** `ls .claude/worktrees/*/.orrery/work/*/handoff.md` from the
+   main checkout. One result is the answer; several mean you have to pick, so
+   print each with its work's name rather than guessing.
+3. **Ask.** Cheaper than resuming the wrong work.
 
-1. **The branch.** `gh issue develop` names branches after their issue, so
-   `git branch --show-current` usually carries the number.
-2. **The open PR.** `gh pr view --json body,number` — the body's `Closes #N`
-   names it.
-3. **The marker.** `gh issue list --state open --search '"<!-- orrery-handoff -->" in:comments'`
-   finds every issue carrying a handoff. One result is the answer; several mean
-   you have to pick, so print titles rather than guessing.
-4. **Ask.** Cheaper than resuming the wrong task.
-
-**No issue for this work?** Then the fix is an issue, not a file — but the issue
-states **the work**, and the handoff is a comment on it. An issue whose whole
-content is a handoff is a diary entry in a work tracker, and a tracker that
-collects those stops being read for the same reason a rule set that only grows
-does.
-
-The test is whether it closes. Name what the outstanding work is and what would
-finish it; if you cannot, there was no work to hand off and the session should
-end with nothing. Not every session leaves residue, and one that leaves none
-should leave none.
-
-Not in a GitHub repo at all? Say so plainly rather than inventing a home — a
-durable fact belongs in memory, and everything else can be lost.
+**Nothing to hand off?** The test is whether the work closes. Name what is
+outstanding and what would finish it; if you cannot, there was no work to hand
+off and the session should end with nothing. Not every session leaves residue,
+and one that leaves none should leave none.
 
 ## Mode 1 — write (default)
 
-Start the comment with the marker line so it can be found later:
-
-```
-<!-- orrery-handoff -->
-```
-
-Then exactly these four, nothing else, **30 lines is the ceiling**:
+Write `.orrery/work/<work>/handoff.md` with exactly these four, nothing else,
+**30 lines is the ceiling**:
 
 **1. Stopped at.** Where the work actually is. Not "worked on the parser" —
 "parser handles nested groups; the escape-sequence branch at `lex.rs:88` is
@@ -98,10 +84,10 @@ State behaviour, not coordinates: `SkillConfig should accept an optional
 schedule field`, never `open src/types.ts, line 42`. The note may sit for days
 while the code moves underneath it, and a line number is the first thing to rot.
 
-### Redact before posting
+### Redact before writing
 
-The comment lands on a GitHub issue — remote, permanent, and readable by anyone
-who can read the repository. Section 1 asks for concrete state, and concrete
+The file is committed and pushed with the work — remote, permanent in history,
+and readable by anyone who can read the repository. Section 1 asks for concrete state, and concrete
 state is exactly where a token, a connection string or a customer's data gets
 pasted without anyone deciding to.
 
@@ -116,8 +102,8 @@ rewritten each time — **except "already tried", which carries forward.** A dea
 end stays dead, and re-walking it is exactly the cost this exists to prevent.
 It is also cheap: a dead end is one line.
 
-Carrying it forward means reading it first. Fetch the previous handoff before
-writing a new one — same command `resume` uses — and copy its dead ends across.
+Carrying it forward means reading it first. Read the file before rewriting it
+and copy its dead ends across.
 A second handoff written without looking at the first silently drops the one
 section the skill exists to preserve.
 
@@ -133,7 +119,7 @@ Raise it rather than adding a fifth line.
 
 ### Never write
 
-- The roadmap. That is the issue and the milestone.
+- The roadmap. That is the plan, or the issue where the project keeps one.
 - What was accomplished. That is the diff and the log.
 - Rules or lessons. Those are `learn`, and they outlive this task.
 - Anything carried over "just in case". If it matters and is durable, it goes
@@ -148,12 +134,12 @@ of the dead end survives; one planned for later often is not written at all.
 
 ## Mode 2 — `resume`
 
-1. Fetch: `gh issue view <N> --comments`, take the **latest** comment carrying
-   the marker. Earlier ones are history and stay unread.
+1. Read the file found above. There is only ever one per piece of work; git
+   history holds the earlier ones, and they stay unread.
 
 2. **Verify before trusting it.** A handoff describes a past state, and the
    world moved: the branch may be gone, the PR may have merged, someone may
-   have fixed it. Check the actual state — `git log`, `gh pr list`, the file
+   have fixed it. Check the actual state — `git log`, `gh pr list` where there is a tracker, the file
    itself — before acting on a single line of it.
 
    A stale handoff followed confidently is worse than no handoff, because it
@@ -168,21 +154,21 @@ of the dead end survives; one planned for later often is not written at all.
 Some things are not residue and not a dead end: they are an open item somebody
 explicitly flagged and nobody closed. Those get raised **again**, in every
 session where they are relevant, without waiting to be asked — and they keep
-being raised until the issue is closed or the flag is withdrawn.
+being raised until the item is closed or the flag is withdrawn.
 
 The failure this prevents is quiet: an item mentioned once, agreed to be
 important, and never spoken of again. Nothing errors. It simply stops existing,
 and the person who flagged it assumes it is in hand.
 
 Beside the dead ends, this is the only thing that survives a handoff being
-rewritten. It rides at the end of section 1 as `Still flagged: #N — …`, one
-line each. Everything else in the note replaces; a flagged open follow-up carries forward the way a dead
+rewritten. It rides at the end of section 1 as `Still flagged: <item> — …` (its issue
+number where one exists), one line each. Everything else in the note replaces; a flagged open follow-up carries forward the way a dead
 end does, for the same reason — it costs one line and its absence costs the
 item.
 
 ## When to write nothing
 
-If the next session can reconstruct everything from the issue and the diff,
+If the next session can reconstruct everything from the plan and the diff,
 write nothing. Not every session leaves residue, and a handoff with no dead end
 in it is a handoff with no payload.
 

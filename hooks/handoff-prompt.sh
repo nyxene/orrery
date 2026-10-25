@@ -46,7 +46,11 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 session="$(jq -r '.session_id // "nosession"' <<<"$input")"
-marker="${TMPDIR:-/tmp}/orrery-handoff-$session"
+# shellcheck source=hooks/orrery-config.sh
+. "$(dirname "$0")/orrery-config.sh"
+cwd="$(jq -r '.cwd // empty' <<<"$input")"
+[ -n "$cwd" ] && [ -d "$cwd" ] || cwd="${CLAUDE_PROJECT_DIR:-$PWD}"
+marker="$(orrery_marker "handoff-$session" "$cwd")"
 
 [ -e "$marker" ] && exit 0
 : > "$marker"
@@ -55,10 +59,10 @@ reason='The context is about to be compacted, which is the reset `orrery:handoff
 
 Decide, then act:
 
-- **Is there unfinished work with a task issue?** Run `orrery:handoff`. The dead ends matter most: what was already tried and does not work is the part a fresh session cannot reconstruct and will otherwise repeat.
+- **Is there unfinished work in this tree?** Run `orrery:handoff`. The dead ends matter most: what was already tried and does not work is the part a fresh session cannot reconstruct and will otherwise repeat.
 - **Cannot name what would finish the work?** Then there was none to hand off. Say so in one line and continue — a session that leaves no residue should leave none, and a tracker that collects diary entries stops being read.
 
-Do not write a handoff file. The issue states the work; the handoff is a comment on it.
+The handoff is `.orrery/work/<work>/handoff.md` in the work'"'"'s own tree, committed with it; closing the work deletes it.
 
 When you are done, say you are ready to compact.'
 

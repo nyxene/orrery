@@ -55,7 +55,14 @@ PROJECT="${1:-${CLAUDE_PROJECT_DIR:-$PWD}}"
 PROJECT="$(cd "$PROJECT" 2>/dev/null && pwd -P || echo "$PROJECT")"
 root="${CLAUDE_PLUGIN_ROOT:-$(dirname "$0")/..}"
 self="$(cd "$(dirname "$0")" 2>/dev/null && pwd -P || dirname "$0")/$(basename "$0")"
-record="$PROJECT/.claude/orrery-deny.json"
+# The decline record is the project's decision, committed, so it sits beside
+# `config.json` in `.orrery/` and not in the per-machine `local/`. It lived in
+# `.claude/` until Orrery's files moved; that copy is still read until
+# `--reconcile` writes the new one.
+record="$PROJECT/.orrery/deny-declined.json"
+[ -e "$record" ] || [ ! -e "$PROJECT/.claude/orrery-deny.json" ] || record="$PROJECT/.claude/orrery-deny.json"
+# shellcheck source=hooks/orrery-config.sh
+. "$(dirname "$0")/orrery-config.sh"
 
 # A loader cannot deny, so it says so instead — the shape `canon-loader.sh:17-24`
 # and `rules-loader.sh:32-40` already use. Fixed strings: without jq there is
@@ -222,7 +229,8 @@ reconcile)
     emit "orrery: nothing to decline — every deny rule this plugin ships is already present in this project. Nothing was written."
     exit 3
   fi
-  dir="$PROJECT/.claude"
+  dir="$PROJECT/.orrery"
+  record="$dir/deny-declined.json"
   if ! mkdir -p "$dir" 2>/dev/null || [ ! -w "$dir" ]; then
     emit "orrery: $dir is not writable, so no decline record was written."
     exit 2
@@ -245,10 +253,12 @@ esac
 # The rate limiter keys on the finding, not on the plugin version: a branch
 # switch, a bad merge or a hand-deleted block changes what is true without
 # changing the version. It does not travel between machines, and that is
-# correct — a machine that has never spoken has not repeated anything.
+# correct — a machine that has never spoken has not repeated anything. So it is
+# `.orrery/local/deny.json`; it lived under the home directory, keyed by the
+# project's path, until Orrery's files moved into the project, and that one is
+# carried over once. Empty outside a repository: nothing is remembered there.
 slug=$(echo "$PROJECT" | sed 's#^/##; s#[/ ]#-#g')
-state_dir="${HOME:-$tmp}/.claude/orrery/permissions"
-state="$state_dir/$slug.json"
+state="$(orrery_local_file deny.json "${HOME:-$tmp}/.claude/orrery/permissions/$slug.json" "$PROJECT" || true)"
 
 if [ "$reported_n" -eq 0 ]; then
   # A project that has caught up starts over. Without this, the same set going
@@ -256,7 +266,7 @@ if [ "$reported_n" -eq 0 ]; then
   # matches the digest of what we said last time and stays silent, which is the
   # incident this whole check exists to end. Nothing is written when the file
   # was never there, so the common case still costs no write at all.
-  if [ -f "$state" ]; then rm -f "$state" 2>/dev/null || true; fi
+  if [ -n "$state" ] && [ -f "$state" ]; then rm -f "$state" 2>/dev/null || true; fi
   exit 0
 fi
 
@@ -267,7 +277,7 @@ elif command -v sha256sum >/dev/null 2>&1; then
   sha="$(sha256sum < "$tmp/reported.json" | cut -d' ' -f1)"
 fi
 was=""
-if [ -f "$state" ]; then
+if [ -n "$state" ] && [ -f "$state" ]; then
   # Unreadable is treated as never-reported: a rate limiter nobody can read must
   # not be able to suppress a message. The write below then repairs the file.
   was="$(jq -r '.reported_missing_sha // ""' "$state" 2>/dev/null || echo "")"
@@ -275,7 +285,7 @@ fi
 if [ -n "$sha" ] && [ "$sha" = "$was" ]; then exit 0; fi
 
 can_record=1
-if [ -z "$sha" ] || ! mkdir -p "$state_dir" 2>/dev/null || [ ! -w "$state_dir" ]; then
+if [ -z "$sha" ] || [ -z "$state" ] || [ ! -w "$(dirname "$state")" ]; then
   can_record=0
 fi
 

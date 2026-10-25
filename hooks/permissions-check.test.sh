@@ -15,6 +15,7 @@
 # 36 cases, numbered as the plan's list numbers them after the duplicate labels
 # were resolved.
 set -uo pipefail
+while IFS='=' read -r _var _; do unset "$_var"; done < <(env | grep '^GIT_')
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
 hook="$here/permissions-check.sh"
@@ -77,7 +78,9 @@ root='' home='' proj=''
 scenario() { # rest = shipped deny rules; sets $root $home $proj
   n=$((n + 1))
   root="$tmp/s$n/root"; home="$tmp/s$n/home"; proj="$tmp/s$n/project"
-  mkdir -p "$home" "$proj/.claude"
+  mkdir -p "$home" "$proj/.claude" "$proj/.orrery"
+  git init -q -b main "$proj"
+  git -C "$proj" config user.email t@example.invalid; git -C "$proj" config user.name t
   mkroot "$root" "1.2.3" "$@"
 }
 
@@ -89,9 +92,8 @@ run() { # $1 = root ('' = unset), $2 = home, $3 = project, rest = flags
 
 msg() { jq -r '.systemMessage // empty' 2>/dev/null <<<"$1"; }
 
-statepath() { # $1 = home, $2 = project
-  printf '%s/.claude/orrery/permissions/%s.json' "$1" \
-    "$(cd "$2" && pwd -P | sed 's#^/##; s#[/ ]#-#g')"
+statepath() { # $1 = home (unused since the state moved into the project), $2 = project
+  printf '%s/.orrery/local/deny.json' "$(cd "$2" && pwd -P)"
 }
 
 has()  { grep -qF "$2" <<<"$1"; }
@@ -212,7 +214,7 @@ fi
 scenario "$r1" "$r2"
 settings "$proj/.claude/settings.json" "$r1"
 jq -n --argjson d "$(rules "$r2")" '{reconciled_deny:$d,reconciled_version:"1.2.3"}' \
-  > "$proj/.claude/orrery-deny.json"
+  > "$proj/.orrery/deny-declined.json"
 out="$(run "$root" "$home" "$proj")"
 if [ -n "$out" ]; then bad "11 a declined rule is silent" "spoke: $out"
 else ok "11 a rule recorded as declined and absent from settings is not reported"; fi
@@ -222,7 +224,7 @@ scenario "$r1" "$r2" "$r3" "$r4"
 settings "$proj/.claude/settings.json" "$r1"
 before="$(run "$root" "$home" "$proj")"
 jq -n --argjson d "$(rules "$r2")" '{reconciled_deny:$d,reconciled_version:"1.2.3"}' \
-  > "$proj/.claude/orrery-deny.json"
+  > "$proj/.orrery/deny-declined.json"
 after="$(run "$root" "$home" "$proj")"
 rep="$(run "$root" "$home" "$proj" --report)"
 if ! has "$(msg "$before")" '3 deny rules'; then
@@ -241,7 +243,7 @@ settings "$proj/.claude/settings.json" "$r1"
 run "$root" "$home" "$proj" >/dev/null
 settings "$proj/.claude/settings.json" "$r1" "$r2"
 again="$(run "$root" "$home" "$proj")"
-if [ -e "$proj/.claude/orrery-deny.json" ]; then
+if [ -e "$proj/.orrery/deny-declined.json" ]; then
   bad "13 reporting does not reconcile" "the hook wrote a decline record"
 elif ! has "$(msg "$again")" "$r3"; then
   # the message carries the count, not the rules — so ask --report instead
@@ -261,7 +263,7 @@ settings "$proj/.claude/settings.json"
 out="$(run "$root" "$home" "$proj")"
 if [ -z "$out" ]; then
   bad "14 no trust-on-first-use" "the first ever run said nothing"
-elif [ -e "$proj/.claude/orrery-deny.json" ]; then
+elif [ -e "$proj/.orrery/deny-declined.json" ]; then
   bad "14 no trust-on-first-use" "the first ever run recorded a baseline"
 else
   ok "14 a first-ever run reports, and records nothing as declined"
@@ -272,7 +274,7 @@ scenario "$r1" "$r2" "$r3"
 settings "$proj/.claude/settings.json" "$r1"
 out="$(run "$root" "$home" "$proj" --reconcile)"; rc=$?
 after="$(run "$root" "$home" "$proj")"
-if [ "$rc" -ne 0 ] || [ ! -f "$proj/.claude/orrery-deny.json" ]; then
+if [ "$rc" -ne 0 ] || [ ! -f "$proj/.orrery/deny-declined.json" ]; then
   bad "15 --reconcile writes the record" "rc=$rc, out=$out"
 elif [ -n "$after" ]; then
   bad "15 the hook goes quiet after --reconcile" "spoke: $after"
@@ -284,7 +286,7 @@ fi
 scenario "$r1" "$r2"
 settings "$proj/.claude/settings.json" "$r1" "$r2"
 out="$(run "$root" "$home" "$proj" --reconcile)"; rc=$?
-if [ "$rc" -ne 3 ] || [ -e "$proj/.claude/orrery-deny.json" ]; then
+if [ "$rc" -ne 3 ] || [ -e "$proj/.orrery/deny-declined.json" ]; then
   bad "16 --reconcile refuses when there is nothing to decline" "rc=$rc, out=$out"
 else
   ok "16 --reconcile with nothing absent writes no file and exits 3"
@@ -296,7 +298,7 @@ settings "$proj/.claude/settings.json" "$r1" "$r4"
 run "$root" "$home" "$proj" --reconcile >/dev/null
 settings "$proj/.claude/settings.json" "$r1" "$r2" "$r3"
 run "$root" "$home" "$proj" --reconcile >/dev/null
-kept="$(jq -r '.reconciled_deny | sort | join(",")' "$proj/.claude/orrery-deny.json")"
+kept="$(jq -r '.reconciled_deny | sort | join(",")' "$proj/.orrery/deny-declined.json")"
 if [ "$kept" = "$r4" ]; then
   ok "17 --reconcile replaces the record rather than merging into it"
 else
@@ -307,7 +309,7 @@ fi
 scenario "$r1" "$r2" "$r3"
 settings "$proj/.claude/settings.json" "$r1"
 jq -n --argjson d "$(rules "$r2")" '{reconciled_deny:$d,reconciled_version:"1.2.3"}' \
-  > "$proj/.claude/orrery-deny.json"
+  > "$proj/.orrery/deny-declined.json"
 one="$(run "$root" "$home" "$proj")"
 two="$(run "$root" "$home" "$proj")"
 if ! has "$(msg "$one")" '1 deny rule '; then
@@ -378,10 +380,10 @@ fi
 
 # 23
 scenario "$r1" "$r2"
-mkdir -p "$home/.claude/orrery/permissions"
-chmod 500 "$home/.claude/orrery/permissions"
+mkdir -p "$proj/.orrery/local"; : > "$proj/.orrery/local/.gitignore"
+chmod 500 "$proj/.orrery/local"
 out="$(run "$root" "$home" "$proj")"
-chmod 700 "$home/.claude/orrery/permissions"
+chmod 700 "$proj/.orrery/local"
 if ! has "$(msg "$out")" '2 deny rules'; then
   bad "23 an unwritable state directory still reports" "got: $out"
 elif ! has "$(msg "$out")" 'could not record this'; then
@@ -392,29 +394,29 @@ fi
 
 # 24
 scenario "$r1" "$r2"
-chmod 500 "$proj/.claude"
+chmod 500 "$proj/.orrery"
 out="$(run "$root" "$home" "$proj" --reconcile)"; rc=$?
-chmod 700 "$proj/.claude"
-if [ "$rc" -ne 2 ] || ! has "$out" "$proj/.claude"; then
-  bad "24 --reconcile refuses an unwritable .claude" "rc=$rc, got: $out"
+chmod 700 "$proj/.orrery"
+if [ "$rc" -ne 2 ] || ! has "$out" "$proj/.orrery"; then
+  bad "24 --reconcile refuses an unwritable .orrery" "rc=$rc, got: $out"
 else
-  ok "24 --reconcile on an unwritable .claude exits 2 and names the path"
+  ok "24 --reconcile on an unwritable .orrery exits 2 and names the path"
 fi
 
 # 25 — the N1 case, reachable through this tool's own documented undo procedure.
 scenario "$r1" "$r2"
 settings "$proj/.claude/settings.json" "$r1"
-printf '{"reconciled_deny":["%s",]}\n' "$r2" > "$proj/.claude/orrery-deny.json"
+printf '{"reconciled_deny":["%s",]}\n' "$r2" > "$proj/.orrery/deny-declined.json"
 comma="$(run "$root" "$home" "$proj")"
 scenario "$r1" "$r2"
 settings "$proj/.claude/settings.json" "$r1"
-jq -n --argjson d "$(rules "$r2")" '{reconciled_deny:$d}' > "$proj/.claude/orrery-deny.json"
-chmod 000 "$proj/.claude/orrery-deny.json"
+jq -n --argjson d "$(rules "$r2")" '{reconciled_deny:$d}' > "$proj/.orrery/deny-declined.json"
+chmod 000 "$proj/.orrery/deny-declined.json"
 locked="$(run "$root" "$home" "$proj")"
-chmod 600 "$proj/.claude/orrery-deny.json"
-if ! has "$(msg "$comma")" '1 deny rule ' || ! has "$(msg "$comma")" 'orrery-deny.json'; then
+chmod 600 "$proj/.orrery/deny-declined.json"
+if ! has "$(msg "$comma")" '1 deny rule ' || ! has "$(msg "$comma")" 'deny-declined.json'; then
   bad "25 a trailing comma in the decline record reports everything" "got: $comma"
-elif ! has "$(msg "$locked")" '1 deny rule ' || ! has "$(msg "$locked")" 'orrery-deny.json'; then
+elif ! has "$(msg "$locked")" '1 deny rule ' || ! has "$(msg "$locked")" 'deny-declined.json'; then
   bad "25 an unreadable decline record reports everything" "got: $locked"
 else
   ok "25 a decline record that will not parse or will not open reports everything, and is named"
@@ -424,7 +426,7 @@ fi
 scenario "$r1" "$r2" "$r3"
 settings "$proj/.claude/settings.json" "$r1"
 run "$root" "$home" "$proj" --reconcile >/dev/null
-printf '%s,\n' "$(cat "$proj/.claude/orrery-deny.json")" > "$proj/.claude/orrery-deny.json"
+printf '%s,\n' "$(cat "$proj/.orrery/deny-declined.json")" > "$proj/.orrery/deny-declined.json"
 rep="$(run "$root" "$home" "$proj" --report)"; rc=$?
 if [ "$rc" -ne 1 ] || ! has "$rep" "$r2" || ! has "$rep" "$r3"; then
   bad "26 a broken decline record un-declines nothing quietly" "rc=$rc, got: $rep"
@@ -451,7 +453,7 @@ fi
 scenario "$r1" "$r2"
 printf '{"permissions":{"deny":["%s",]}}\n' "$r1" > "$proj/.claude/settings.json"
 out="$(run "$root" "$home" "$proj" --reconcile)"; rc=$?
-if [ "$rc" -ne 2 ] || [ -e "$proj/.claude/orrery-deny.json" ]; then
+if [ "$rc" -ne 2 ] || [ -e "$proj/.orrery/deny-declined.json" ]; then
   bad "28 --reconcile refuses a comparison it could not make" "rc=$rc, out=$out"
 else
   ok "28 --reconcile against an unparseable settings file exits 2 and writes nothing"
@@ -541,18 +543,18 @@ if [ "$rc" -ne 0 ]; then
   bad "35 a fully declined project reports clean" "rc=$rc, got: $rep"
 elif ! has "$rep" 'or recorded below as declined'; then
   bad "35 a declined-clean project does not read as a merged one" "got: $rep"
-elif ! has "$rep" '1 rules recorded as declined' || ! has "$rep" "$proj/.claude/orrery-deny.json"; then
+elif ! has "$rep" '1 rules recorded as declined' || ! has "$rep" "$proj/.orrery/deny-declined.json"; then
   bad "35 a clean --report still prints the declined count and path" "got: $rep"
 else
   ok "35 --report prints the declined count and the record's path on a clean run too"
 fi
 
 # 36
-printf '%s,\n' "$(cat "$proj/.claude/orrery-deny.json")" > "$proj/.claude/orrery-deny.json"
+printf '%s,\n' "$(cat "$proj/.orrery/deny-declined.json")" > "$proj/.orrery/deny-declined.json"
 rep="$(run "$root" "$home" "$proj" --report)"
 if has "$rep" 'recorded as declined'; then
   bad "36 an unreadable decline record is not printed as a count" "got: $rep"
-elif ! has "$rep" 'could not be read' || ! has "$rep" "$proj/.claude/orrery-deny.json"; then
+elif ! has "$rep" 'could not be read' || ! has "$rep" "$proj/.orrery/deny-declined.json"; then
   bad "36 an unreadable decline record says so, and names itself" "got: $rep"
 else
   ok "36 an unreadable decline record is reported as unreadable, never as zero declined"
@@ -603,6 +605,34 @@ elif ! has "$rep" "$cred" || ! has "$rep" "$loss" || ! has "$rep" "$plain"; then
   bad "39 every rule is reported when there are no classes" "got: $rep"
 else
   ok "39 a shipped file without _classes reports every rule and names no class"
+fi
+
+# --- an install from before the files moved into .orrery/ ---------------------
+# 40 — a decline record still in .claude/ keeps being honoured.
+scenario "$r1" "$r2"
+settings "$proj/.claude/settings.json" "$r1"
+jq -n --argjson d "$(rules "$r2")" '{reconciled_deny:$d}' > "$proj/.claude/orrery-deny.json"
+out="$(run "$root" "$home" "$proj")"
+if [ -n "$out" ]; then
+  bad "40 a decline record in its old place is still read" "got: $(msg "$out")"
+else
+  ok "40 a decline record in its old place is still read"
+fi
+
+# 41 — the rate limiter's memory comes with it: a finding already said under the
+# old place is not said again.
+scenario "$r1" "$r2"
+settings "$proj/.claude/settings.json" "$r1"
+run "$root" "$home" "$proj" >/dev/null
+old="$home/.claude/orrery/permissions/$(cd "$proj" && pwd -P | sed 's#^/##; s#[/ ]#-#g').json"
+mkdir -p "$(dirname "$old")"; mv "$(statepath "$home" "$proj")" "$old"
+out="$(run "$root" "$home" "$proj")"
+if [ -n "$out" ]; then
+  bad "41 a finding reported under the old state is not repeated" "got: $(msg "$out")"
+elif [ ! -f "$(statepath "$home" "$proj")" ]; then
+  bad "41 the old state is carried into .orrery/local/" "nothing there"
+else
+  ok "41 the old state is carried into .orrery/local/ and the finding is not repeated"
 fi
 
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"

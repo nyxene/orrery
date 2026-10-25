@@ -30,8 +30,8 @@ for c in cat bash dirname; do ln -s "$(command -v "$c")" "$fakebin/$c"; done
 trap 'rm -rf "$tmp"' EXIT
 
 run() { # $1 = plugin root, empty for unset — prints what the harness would read
-  if [ -n "$1" ]; then CLAUDE_PLUGIN_ROOT="$1" bash "$hook" 2>/dev/null
-  else env -u CLAUDE_PLUGIN_ROOT bash "$hook" 2>/dev/null; fi
+  if [ -n "$1" ]; then CLAUDE_PLUGIN_ROOT="$1" bash "$hook" </dev/null 2>/dev/null
+  else env -u CLAUDE_PLUGIN_ROOT bash "$hook" </dev/null 2>/dev/null; fi
 }
 
 context() { jq -r '.hookSpecificOutput.additionalContext // empty' 2>/dev/null <<<"$1"; }
@@ -130,6 +130,86 @@ elif grep -qF 'CONDUCT FIXTURE MARKER' <<<"$(context "$out")"; then
   ok "only this plugin's own canon is emitted"
 else
   bad "only this plugin's own canon is emitted" "the conduct canon did not come through: $out"
+fi
+
+# --- the event is echoed, never assumed --------------------------------------
+# SessionStart context does not reach a subagent, so this hook also runs on
+# SubagentStart. An output labelled with the wrong event is the silent drop this
+# file exists to prevent.
+feed() { # $1 = event, $2 = cwd — the payload the harness would send
+  printf '{"hook_event_name":"%s","cwd":"%s"}' "$1" "$2" > "$tmp/payload.json"
+  env -u CLAUDE_PLUGIN_ROOT bash "$hook" < "$tmp/payload.json" 2>/dev/null
+}
+while IFS='=' read -r _var _; do unset "$_var"; done < <(env | grep '^GIT_')
+repo="$tmp/repo"; mkdir -p "$repo"
+git -C "$repo" init -q -b main
+git -C "$repo" config user.email t@example.invalid; git -C "$repo" config user.name t
+out="$(feed SubagentStart "$repo")"
+if [ "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$out" 2>/dev/null)" = SubagentStart ] \
+   && grep -q 'non-negotiable core' <<<"$(context "$out")"; then
+  ok "a SubagentStart payload gets the canon, labelled SubagentStart"
+else
+  bad "a SubagentStart payload gets the canon, labelled SubagentStart" "$out"
+fi
+
+# --- the project's declarations follow the canon -----------------------------
+mkdir -p "$repo/.orrery"
+printf '{"planDirectory":"plans-here/","tracker":"github"}' > "$repo/.orrery/config.json"
+ctx="$(context "$(feed SubagentStart "$repo")")"
+if grep -qF -- '- planDirectory: plans-here/' <<<"$ctx" && grep -qF -- '- tracker: github' <<<"$ctx"; then
+  ok "declarations in .orrery/config.json reach the context"
+else
+  bad "declarations in .orrery/config.json reach the context" "$ctx"
+fi
+
+# --- a GitHub project with no config is told, once per session --------------
+rm -f "$repo/.orrery/config.json"
+git -C "$repo" remote add origin https://github.com/example/example.git
+if grep -q 'no .orrery/config.json' <<<"$(context "$(feed SessionStart "$repo")")"; then
+  ok "a GitHub project with no config is warned at session start"
+else
+  bad "a GitHub project with no config is warned at session start" "no warning"
+fi
+if grep -q 'WARNING' <<<"$(context "$(feed SubagentStart "$repo")")"; then
+  bad "the warning is not repeated in every subagent" "SubagentStart carried it"
+else
+  ok "the warning is not repeated in every subagent"
+fi
+
+# --- a malformed config is said, and does not stop the canon -----------------
+printf 'not json' > "$repo/.orrery/config.json"
+out="$(feed SessionStart "$repo")"
+if grep -q 'not a valid JSON object' <<<"$(context "$out")" && grep -q 'non-negotiable core' <<<"$(context "$out")"; then
+  ok "a malformed config is warned about and the canon still loads"
+else
+  bad "a malformed config is warned about and the canon still loads" "$out"
+fi
+
+# --- outside a repository the canon still arrives ----------------------------
+# A project that is not a git repository, a payload cwd that no longer exists:
+# the config lookup finds nothing, and that must mean defaults, not an exit.
+for d in "$tmp" /nonexistent/dir; do
+  out="$(feed SessionStart "$d")"
+  if grep -q 'non-negotiable core' <<<"$(context "$out")"; then
+    ok "the canon arrives with cwd $d"
+  else
+    bad "the canon arrives with cwd $d" "got: $out"
+  fi
+done
+
+# --- the two fallback paths label the event too ------------------------------
+printf '{"hook_event_name":"SubagentStart"}' > "$tmp/sub.json"
+out="$(PATH="$fakebin" "$fakebin/bash" "$hook" < "$tmp/sub.json" 2>/dev/null)"
+if [ "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$out" 2>/dev/null)" = SubagentStart ]; then
+  ok "without jq a SubagentStart payload is still labelled SubagentStart"
+else
+  bad "without jq a SubagentStart payload is still labelled SubagentStart" "$out"
+fi
+out="$(CLAUDE_PLUGIN_ROOT="$empty" bash "$hook" < "$tmp/sub.json" 2>/dev/null)"
+if [ "$(jq -r '.hookSpecificOutput.hookEventName' <<<"$out" 2>/dev/null)" = SubagentStart ]; then
+  ok "with no canon a SubagentStart payload is still labelled SubagentStart"
+else
+  bad "with no canon a SubagentStart payload is still labelled SubagentStart" "$out"
 fi
 
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"

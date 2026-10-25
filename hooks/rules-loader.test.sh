@@ -16,9 +16,11 @@
 # that triggers a prune pass: if it stops firing, the rule layer grows until it
 # is skimmed rather than read, which is the failure it was written to prevent.
 #
-# State lives in $TMPDIR — the once-per-scope-per-session markers — so every run
-# below gets its own, and the live session's markers are neither read nor
-# written.
+# State — the once-per-scope-per-session markers — lives in a repository's
+# `.orrery/local/sessions/`, and in $TMPDIR outside one. The fixture projects
+# below are not repositories and $TMPDIR is pointed here, so every run gets its
+# own and the live session's markers are neither read nor written; the last
+# case stands in a repository on purpose.
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
@@ -206,6 +208,35 @@ else
   bad "an unset CLAUDE_PLUGIN_ROOT falls back to the plugin's own rules" "nothing loaded"
 fi
 
+# --- a rule about issues loads only where there is a tracker ------------------
+mkrule "$root/rules/git" plain.md  'a rule for every project' evidence x
+mkrule "$root/rules/git" issues.md 'a rule about issues' tracker github
+saved="$project"; project="$tmp/tracker-repo"; git init -q -b main "$project"
+body="$(context "$(run "$root" "$(bash_payload s-notracker 'git status')")")"
+if grep -q 'a rule for every project' <<<"$body" && ! grep -q 'a rule about issues' <<<"$body"; then
+  ok "with no tracker, a rule marked tracker: github stays out"
+else
+  bad "with no tracker, a rule marked tracker: github stays out" "$body"
+fi
+mkdir -p "$project/.orrery"; printf '{"tracker":"github"}' > "$project/.orrery/config.json"
+body="$(context "$(run "$root" "$(bash_payload s-github 'git status')")")"
+project="$saved"
+if grep -q 'a rule about issues' <<<"$body" && grep -q 'a rule for every project' <<<"$body"; then
+  ok "with a GitHub tracker it loads"
+else
+  bad "with a GitHub tracker it loads" "$body"
+fi
+
+# --- a push loads the process rules once, then is a git command -------------
+mkrule "$root/rules/process" consent.md 'a process rule' evidence z
+body="$(context "$(run "$root" "$(bash_payload s-push 'git push origin feat')")")"
+if grep -q 'a process rule' <<<"$body"; then ok "a session's first push loads the process rules"
+else bad "a session's first push loads the process rules" "$body"; fi
+body="$(context "$(run "$root" "$(bash_payload s-push 'git push origin feat')")")"
+if grep -q 'a rule for every project' <<<"$body" && ! grep -q 'a process rule' <<<"$body"; then
+  ok "and the next push enters the git rules instead"
+else bad "and the next push enters the git rules instead" "$body"; fi
+
 # --- without jq it says so once, then stops repeating itself ----------------
 # The payload is built before PATH is narrowed: a here-string is expanded with
 # the command's environment already in place, so building it inline would run jq
@@ -220,6 +251,19 @@ elif [ -n "$(nojq)" ]; then
   bad "no jq is announced once" "it warned again on the next tool call"
 else
   ok "no jq is announced once, then the loader stays quiet"
+fi
+
+# --- in a repository the markers are Orrery's own ----------------------------
+while IFS='=' read -r _var _; do unset "$_var"; done < <(env | grep '^GIT_')
+repo="$tmp/repo"; mkdir -p "$repo"; git -C "$repo" init -q -b main
+git -C "$repo" config user.email t@example.invalid; git -C "$repo" config user.name t
+( cd "$repo" && TMPDIR="$state" CLAUDE_PROJECT_DIR="$repo" CLAUDE_PLUGIN_ROOT="$root" \
+    bash "$hook" <<<"$(edit_payload s-repo)" >/dev/null 2>&1 )
+if [ -n "$(find "$repo/.orrery/local/sessions" -name 'rules-s-repo-*' 2>/dev/null)" ] \
+   && [ -z "$(git -C "$repo" status --porcelain)" ]; then
+  ok "in a repository the marker lands in .orrery/local/sessions/, where git does not see it"
+else
+  bad "in a repository the marker lands in .orrery/local/sessions/" "$(ls -R "$repo/.orrery" 2>&1)"
 fi
 
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"

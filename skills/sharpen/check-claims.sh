@@ -9,7 +9,7 @@
 #
 # What it caught when it was written, all of which had been found by hand first:
 # an orphaned root document, a frontmatter field documented in README that no
-# rule carries, labels declared in CLAUDE.md that the tracker did not have, and
+# rule carries, labels declared in .orrery/config.json that the tracker did not have, and
 # four counter sentences that had gone stale in a single week.
 #
 # It cannot check prose. A skill that contradicts another skill in meaning, or a
@@ -50,9 +50,17 @@ SCOPE=(CANON.md README.md .claude/CLAUDE.md CHANGELOG.md .githooks
 # rules and always will. Counting them as present-tense claims makes every
 # future change to any counter unshippable, and the only way past it is
 # rewriting the record of a release that already went out. Pass 1 still reads
-# CHANGELOG.md — a path named in a release note should still resolve.
-COUNT_SCOPE=()
-for s in "${SCOPE[@]}"; do [ "$s" = CHANGELOG.md ] || COUNT_SCOPE+=("$s"); done
+# CHANGELOG.md, but only the newest release in it: a path named in the note
+# being written should resolve, and a later release may remove a file an older
+# note named — holding the old notes to resolving would mean rewriting them.
+COUNT_SCOPE=() PATH_SCOPE=()
+newest="$(mktemp "${TMPDIR:-/tmp}/claims-newest.XXXXXX")"
+trap 'rm -f "$newest"' EXIT
+[ ! -f CHANGELOG.md ] || awk '/^## / { n++ } n <= 1' CHANGELOG.md > "$newest"
+for s in "${SCOPE[@]}"; do
+  [ "$s" = CHANGELOG.md ] || COUNT_SCOPE+=("$s")
+  if [ "$s" = CHANGELOG.md ]; then PATH_SCOPE+=("$newest"); else PATH_SCOPE+=("$s"); fi
+done
 
 # A test file's text is fixtures, not claims. A corpus names paths precisely
 # because they must not resolve, and a suite builds a tree under mktemp and then
@@ -75,8 +83,8 @@ FIXTURES=(--exclude='*.test.sh' --exclude=cases.tsv --exclude=agent-cases.tsv)
 missing=""
 while read -r p; do
   [ -e "$p" ] || missing="$missing $p"
-done < <(grep -rhoE "${FIXTURES[@]}" '(skills|agents|rules|hooks|install)/[A-Za-z0-9_./-]+\.(md|sh|json|tsv)' \
-           "${SCOPE[@]}" 2>/dev/null | sort -u)
+done < <(grep -rhoE "${FIXTURES[@]}" '(^|[^A-Za-z0-9_.-])(skills|agents|rules|hooks|install)/[A-Za-z0-9_./-]+\.(md|sh|json|tsv)' \
+           "${PATH_SCOPE[@]}" 2>/dev/null | sed -E 's#^[^a-z]##' | sort -u)
 if [ -z "$missing" ]; then ok "every named path resolves"
 else bad "dangling paths"; for p in $missing; do note "$p"; done; fi
 
@@ -107,7 +115,7 @@ word() { case "$1" in
 # The host's sharpen log records what each pass changed, and a logged
 # before-and-after count is history rather than a claim about now — checking it
 # against disk would make every change ever logged a permanent failure. Hosts
-# declare that log's location in their CLAUDE.md; keep it outside the SCOPE
+# declare that log's location as `sharpenLog` in .orrery/config.json; keep it outside the SCOPE
 # directories above, or this sweep will read its history as stale claims.
 #
 # Do not write an example of such a count in this comment. One was written here,
@@ -214,13 +222,13 @@ elif ! gh_out=$(gh label list --limit 100 2>&1); then
 else
   have=$(cut -f1 <<<"$gh_out")
   absent=""
-  for l in $(grep -oE '`(type|area|priority)/[a-z|\\]+`' .claude/CLAUDE.md | tr -d '`' \
-               | awk -F/ '{n=split($2,v,/[\\|]+/); for(i=1;i<=n;i++) if(v[i]!="") print $1"/"v[i]}'); do
+  for l in $(jq -r '.debtLabels // {} | (.type // empty), (.priority // [] | .[]), (.pool // [] | .[])' \
+               .orrery/config.json 2>/dev/null); do
     case "$l" in */\*) continue ;; esac
     grep -qxF "$l" <<<"$have" || absent="$absent $l"
   done
   if [ -z "$absent" ]; then ok "declared labels exist in the tracker"
-  else bad "labels declared in CLAUDE.md that the tracker does not have"; for l in $absent; do note "$l"; done; fi
+  else bad "labels declared in .orrery/config.json that the tracker does not have"; for l in $absent; do note "$l"; done; fi
 fi
 
 # --- 7. plugin.json doesn't redeclare an auto-discovered path ---------------
@@ -277,7 +285,8 @@ fi
 # process guard calls it to record a deliberate skip, and registering it on an
 # event would make it fire on every tool call. Both are named individually
 # rather than matched by a pattern, so the next unregistered guard is still
-# caught.
+# caught. `orrery-config.sh` is the same kind of file: the hooks source it for
+# Orrery's paths and settings, and it is never an event's command.
 #
 # The first token of a command, not the whole string — a registration may carry
 # arguments, and reading one as part of the path invents two defects at once: a
@@ -286,7 +295,7 @@ fi
 # Every arm reports through `note`, which is what moves the counter; `bad` only
 # prints. Check 7 above is what forgetting that costs.
 cmds=$(jq -r '[.hooks[][].hooks[].command] | .[]' hooks/hooks.json | awk '{print $1}' | tr -d '"')
-scripts=$(ls hooks/*.sh | sed 's#hooks/##' | grep -v '\.test\.sh$' | grep -v '^guard-test-lib\.sh$' | grep -v '^waiver\.sh$' | sort)
+scripts=$(ls hooks/*.sh | sed 's#hooks/##' | grep -v '\.test\.sh$' | grep -v '^guard-test-lib\.sh$' | grep -v '^waiver\.sh$' | grep -v '^orrery-config\.sh$' | sort)
 registered=$(printf '%s\n' "$cmds" | sed 's#.*/hooks/##' | sort -u)
 if [ "$scripts" = "$registered" ]; then ok "every hook script is registered in hooks.json"
 else bad "hooks/ and hooks.json name different scripts"
