@@ -10,8 +10,10 @@
 # So the property is not "it prints something". It is that it blocks exactly
 # once per session, and declines to block at all when it cannot read its input.
 #
-# The once-per-session marker lives in $TMPDIR, so each case below gets its own
-# and the live session's marker is neither read nor written.
+# The once-per-session marker lives in the project's `.orrery/local/sessions/`,
+# so each case below stands in a fixture repository and the live session's
+# marker is neither read nor written. Outside a repository it falls back to
+# $TMPDIR, which is pointed here too.
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
@@ -26,9 +28,12 @@ state="$tmp/state"; mkdir -p "$state"
 fakebin="$tmp/nojq"; mkdir -p "$fakebin"
 for c in cat bash; do ln -s "$(command -v "$c")" "$fakebin/$c"; done
 trap 'rm -rf "$tmp"' EXIT
+while IFS='=' read -r _var _; do unset "$_var"; done < <(env | grep '^GIT_')
+proj="$tmp/proj"; mkdir -p "$proj"; git -C "$proj" init -q -b main
+git -C "$proj" config user.email t@example.invalid; git -C "$proj" config user.name t
 
 run() { # $1 = payload JSON
-  TMPDIR="$state" bash "$hook" <<<"$1" 2>/dev/null
+  ( cd "$proj" && TMPDIR="$state" CLAUDE_PROJECT_DIR="$proj" bash "$hook" <<<"$1" 2>/dev/null )
 }
 payload() { # $1 = session id, $2 = trigger
   jq -n --arg s "$1" --arg t "$2" '{session_id:$s,trigger:$t,custom_instructions:""}'
@@ -53,6 +58,13 @@ if grep -q 'leaves no residue' <<<"$(jq -r '.reason' <<<"$out")"; then
   ok "the reason permits leaving nothing, not only writing something"
 else
   bad "the reason permits leaving nothing" "only the write path is described"
+fi
+
+# --- and it names where the handoff goes, which is a file and not a tracker ----
+if grep -q '\.orrery/work/<work>/handoff\.md' <<<"$(jq -r '.reason' <<<"$out")"; then
+  ok "the reason names the handoff file in the work's tree"
+else
+  bad "the reason names the handoff file in the work's tree" "$(jq -r '.reason' <<<"$out")"
 fi
 
 # --- and never a second time in that session --------------------------------
@@ -108,6 +120,15 @@ elif ! grep -q 'handoff' <<<"$(jq -r '.systemMessage // empty' <<<"$out")"; then
   bad "no jq declines to act" "it said nothing about what was skipped"
 else
   ok "no jq says what was skipped and lets the compaction proceed"
+fi
+
+# --- the marker is Orrery's own -----------------------------------------------
+if [ -n "$(find "$proj/.orrery/local/sessions" -name 'handoff-*' 2>/dev/null)" ] \
+   && [ -z "$(git -C "$proj" status --porcelain)" ]; then
+  ok "the marker lands in .orrery/local/sessions/, where git does not see it"
+else
+  bad "the marker lands in .orrery/local/sessions/, where git does not see it" \
+      "$(ls -R "$proj/.orrery" 2>/dev/null)"
 fi
 
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"

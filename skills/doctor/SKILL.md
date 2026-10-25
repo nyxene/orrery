@@ -50,7 +50,10 @@ version-string match alone misses a source change that forgot a version bump)
 · the loaded cache's `plugin.json` doesn't redeclare a hooks path (a manifest
 shape that loads nothing while passing validation) · whether this project's
 copy of the deny-list still matches the one the plugin ships · whether an
-`orrery-method` plugin from before the method became text is still installed.
+`orrery-method` plugin from before the method became text is still installed · in a repository, whether
+`.orrery/config.json` is there and parses, which files were left at the places
+used before `.orrery/`, and how many changes on the default branch brought a
+record of their work.
 
 The deny-list check calls `hooks/permissions-check.sh --report` rather than repeating
 the comparison; the same script runs as a `SessionStart` hook and says it once
@@ -61,10 +64,12 @@ dozens of rules behind with every other check here green. `--report` compares
 the rules of the copy that is running, not the rules of whatever version the
 inspected project has cached.
 
-Each run appends one row to `~/.claude/orrery/doctor/<project-slug>.md` —
-one file per host project, deliberately outside any plugin cache, since
+Each run appends one row to `.orrery/local/doctor/log.md` in the project's
+main checkout — beside the call log, outside any plugin cache, since
 installed-as-a-plugin this script runs from a version-pinned cache directory
 that gets replaced on every update and would otherwise reset its own history.
+Outside a repository it is `~/.claude/orrery/doctor/<project-slug>.md`, where
+it lived before, and a repository's first run carries that history over.
 Oldest run at the top of that file, newest at the bottom. Read the last few
 before treating one red run as a regression — a branch that predates the
 install commit fails the branch-enablement check every time, and that is not
@@ -110,19 +115,33 @@ news.
   canon into every session from a repository that no longer serves it.
   `/plugin marketplace remove orrery-method` takes out the marketplace and the
   plugin installed from it.
-- **Usage: no log** — the call log is off, so nothing can say what ran here.
-  Not an install fault: set `ORRERY_CALL_LOG` per `install/into-project.md`
-  if the project wants the answer.
+- **Usage: no log** — no call log, so nothing can say what ran here. Either
+  `.orrery/config.json` says `"callLog": false`, or no session has run since
+  the install. Not an install fault.
 - **Usage: no skills in N days** — the plugin loads and nothing invokes it.
   Nothing to repair in the install; say it to whoever directs the work, since
   a library nobody calls still spends every session's context.
 - **Spawns: k/n untyped** — those agents ran with no type or as
   `general-purpose`, so no role's model or tool list applied. Pass the role as
   `subagent_type` (`orrery:critic`, `orrery:auditor`, …) when spawning.
+- **Config: missing** — a GitHub remote and no `.orrery/config.json`, so the
+  tracker reads as none and the guard gates a branch's first push rather than
+  `gh pr create`. Declaring `"tracker": "github"` is the project's edit to make;
+  the model may not write that file. **malformed** — it does not parse, and every
+  declaration in it reads as its default.
+- **Old files: n left** — files a hook used before `.orrery/` existed, copied
+  once and read no more. Safe to delete once the old rows are not wanted.
+- **Records: r/n** — of the changes on the default branch in the window, how
+  many brought `.orrery/work/*/retrospective.md`. Counted, not failed: a waived
+  gate, a change from before records, or a rebase merge — several commits per
+  work, one carrying the record — explains a gap. Not counted where the
+  project ignores `.orrery/work/`.
 - **PR gate: missing** — nothing in the host's workflows refuses a pull request
   that names no issue, and no hook can see a merge. Install it per
   `install/into-project.md`. **own (unverified)** means a workflow reads the
   pull request body — likely the project's own gate; read it to confirm.
+  **n/a — no tracker**: the project has no tracker, so there is no issue for a
+  pull request to name.
 - **Deny-list: unknown** — the comparison could not be made: a settings file
   that will not parse, an unreadable shipped list, no `jq`. The message says
   which. This is **not** a drift finding and must not be repeated as one — fix

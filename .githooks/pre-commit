@@ -45,6 +45,7 @@ run "call log"       ./hooks/call-log.test.sh
 # The three hooks that emit rather than decide. Their failure is silence, so
 # nothing but these would report it.
 run "canon loader"   ./hooks/canon-loader.test.sh
+run "orrery config"  ./hooks/orrery-config.test.sh
 run "rules loader"   ./hooks/rules-loader.test.sh
 run "handoff prompt" ./hooks/handoff-prompt.test.sh
 # The deny-list reporter's failure is silence too: a detector that stops

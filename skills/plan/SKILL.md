@@ -10,8 +10,9 @@ A plan, checked by as many independent agents as the work earns. That is
 sometimes three, often one, and sometimes none — the route is decided first and
 most of this file describes the heaviest case, not the usual one.
 
-Plans are written to the host project's plan directory (`docs/planning/plans/`
-unless the project's own instructions say otherwise). Execution is autonomous by
+Plans are written to the plan directory the project declares (`planDirectory` in
+`.orrery/config.json`), or with none declared to `.orrery/work/<work>/plan.md` in
+the work's own tree — never into a folder of the project's it did not name. Execution is autonomous by
 default; `--interactive` adds human checkpoints.
 
 **Spawning the checkers is a parallel fan-out**, which
@@ -225,7 +226,8 @@ owes is one line naming the decision and why the route was inline, then the same
 - Default: proceed to implementation immediately in this session, and before the
   pull request spawn `auditor` against this plan — `build`'s audit gate without
   its parallel agents. No route skips it. Where the project keeps a call log,
-  `hooks/process-guard.sh` refuses `gh pr create` until one has run; only the
+  `hooks/process-guard.sh` refuses `gh pr create` until one has run — a
+  branch's first `git push` where the project has no tracker; only the
   owner's quoted word, as `ORRERY_WAIVE`, gets past.
 - *(--interactive only)*: ask first — approve / request changes / reject.
 - An open question that materially changes scope, or is destructive or

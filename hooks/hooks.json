@@ -82,7 +82,7 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/process-guard.sh\"",
             "timeout": 10,
-            "statusMessage": "Checking an issue close carries its retrospective, and a pull request its audit..."
+            "statusMessage": "Checking a pull request carries its record and its audit..."
           }
         ]
       },
@@ -94,6 +94,18 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/agent-guard.sh\"",
             "timeout": 10,
             "statusMessage": "Checking the agent spawn returns its report..."
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/canon-loader.sh\"",
+            "timeout": 5,
+            "statusMessage": "Loading the canon for the subagent..."
           }
         ]
       }

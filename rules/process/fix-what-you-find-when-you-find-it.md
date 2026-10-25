@@ -6,14 +6,15 @@ evidence: "a cheap, adjacent review finding was reflex-filed as debt instead of 
 
 Something that is **wrong** — a wrong answer, a check that cannot fire, a claim
 the code does not keep, a guard that passes what it names — is fixed in the
-change you are already making, the moment you find it: **inside the issue and
-the pull request you are already in**, as its own commit if that reads better.
+change you are already making, the moment you find it: **inside the work you are
+already in** (its issue and pull request, where there is a tracker), as its own
+commit if that reads better.
 Not carried out to a new issue, not offered as one, not ranked against the task
 you were doing.
 
 **An issue is a record, never a deferral.** These are two different uses of one
-word and confusing them is what this rule is for. Work happens under an issue —
-everything that reaches the default branch is recorded in one — and that is the opposite of
+word and confusing them is what this rule is for. Where there is a tracker, work happens under
+an issue — everything that reaches the default branch is recorded in one — and that is the opposite of
 filing something to avoid doing it. Fixing now and having a record are not
 alternatives; a defect found inside a task belongs to that task's issue, and
 only work that genuinely is not this task's earns one of its own.
@@ -51,7 +52,7 @@ substantially, that is a fact for the report, not a reason to stop.
 
 **Related:** the rule that every merge is recorded in an issue is the other
 half — it says a record must exist, this one says the record is not where the
-work goes to wait. The rule that every task also closes two debt issues governs
+work goes to wait. The rule that every task also pays the declared debt quota governs
 the pool of things already filed; this one governs what is allowed to enter it,
 and a defect you found today is not one of them. Canon §2 draws the other boundary —
 a defect is not a drive-by refactor, and a refactor is not a defect.

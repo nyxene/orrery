@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# PreToolUse guard for the Bash tool. Two acts, each refused until its
-# obligation is met: closing an issue that is not carrying its retrospective —
-# the refusal names the command that does both — and, where the project keeps a
-# call log, opening a pull request when no auditor has run in this session since
-# its last one. And one act refused outright, because the harness does it the
-# safe way: `git worktree add`.
+# PreToolUse guard for the Bash tool. One act refused until its obligation is
+# met — where the work heads for the default branch, with no auditor run in this
+# session since it last did, or with no record of the work committed — and one
+# act refused outright, because the harness does it the safe way:
+# `git worktree add`. The act is `gh pr create` where the project's tracker is
+# GitHub, and a branch's first `git push` where it has none.
 #
-# The pull-request half does not reach: a pull request opened by a person, in
+# The gate does not reach: a pull request opened by a person, in
 # the web UI, through `gh api`, or by a spelling its matcher misses; a heredoc
 # fed to a shell (`bash <<EOF`), whose body runs although it is read as text; a
-# host with no call log, where the text in `plan` and `build` is all there is;
-# commits pushed to a pull request after its audit; and a merge that needs no
-# pull request where a project allows one. It refuses falsely on a line of a
+# project that switched the call log off, where the auditor half has nothing to
+# read; commits pushed to a pull request after its audit; and a merge that needs
+# no pull request where a project allows one. It refuses falsely on a line of a
 # multi-line quoted string that begins with `gh pr create` — it reads lines, not
 # shell quoting — which costs an argument, not a boundary.
 #
@@ -38,42 +38,28 @@
 # boundary — nothing here resists a session that means to get past it, and the
 # waiver below is the supported way to do exactly that.
 #
-# ## What it actually enforces
+# ## What it actually enforces, and what it stopped enforcing
 #
 # Measured over one week across three host projects: 179 issues closed, 218
-# pull requests merged, 2 retrospectives. `build` step 9 has said to post one
-# since long before that; `build` ran once in the week. A step inside a skill
-# nobody invokes is not a mechanism, and this is the same finding the whole
-# library keeps re-learning: what has a refusal behind it works, what relies on
-# a session remembering does not.
+# pull requests merged, 2 retrospectives. A step inside a skill nobody invokes is
+# not a mechanism: what has a refusal behind it works, what relies on a session
+# remembering does not.
 #
-# The refusal is unconditional rather than conditional on a comment existing.
-# Checking would cost a network call inside a hook that runs before every Bash
-# command, and it would be wrong the moment someone posts the wrong comment.
-# Making the permitted path do both instead means there is nothing to verify.
-#
-# ## What this does not reach, stated rather than discovered later
-#
-# An issue closed by a merging pull request — `Closes #N` in the body, which is
-# what `build` step 8 tells you to write — never passes through here. There is
-# no Bash call to intercept: GitHub closes it server-side, after the merge, from
-# an event this machine does not see. So the coverage is every close somebody
-# types and no close a merge performs, and on a project that lands most work
-# through pull requests that is the smaller half.
-#
-# The other half is a workflow in the host repository:
-# `install/ci/retrospective-on-close.yml` reopens an issue that closed as
-# finished work with no retrospective on it. For a long time this paragraph said
-# that half was "filed as one" — it was not, and one host closed more than a
-# hundred issues in a week through this gap, one with a retrospective. Do not read this guard as
-# closing the gap; read it as closing the part a hook can reach, and copy the
-# workflow for the rest.
+# For months the refusal sat on `gh issue close`, with a workflow in the host
+# repository reopening what a merge closed bare. Both are gone. The record is now
+# a file committed with the work (`skills/build/record.sh`), so the act that
+# carries it to the default branch is the pull request, and the refusal moved
+# there in the same change — a forcing function retired without its successor
+# is a gap. Closing an issue is the person's act again, and the workflow no
+# longer rewrites a state a person sets.
 #
 # Exit contract: prints a permissionDecision JSON and exits 0 to deny; prints
 # nothing and exits 0 to pass through.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd -P)"
+# shellcheck source=hooks/orrery-config.sh
+. "$here/orrery-config.sh"
 
 # Every refusal ends with the rule that governs it; see the same line in
 # `bash-guard.sh` for why it is carried here rather than left to the loader.
@@ -88,95 +74,50 @@ deny() {
 # No `command -v jq` probe and no `[ -n "$cmd" ]` guard above the matcher. Both
 # were here and both were removed after a mutation pass showed neither could be
 # killed: with jq absent the extraction below yields an empty string, an empty
-# string matches nothing, and the `-n "$matched"` test three lines down exits 0
+# string matches nothing, and every `-n` test on a match below exits 0
 # — the same fail-open the probes assert, reached by one path instead of three.
 # A line whose deletion changes no observable behaviour is a line that reads as
 # a decision and is not one.
 input="$(cat)"
 cmd="$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null || true)"
+# The tree the command runs in, from the harness; the launch directory when the
+# payload has none. Where the waiver and the gate's state are written.
+dir="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || true)"
+[ -n "$dir" ] && [ -d "$dir" ] || dir="${CLAUDE_PROJECT_DIR:-.}"
 
-# `gh issue close`, however it is spaced or flagged, but only where a command
-# can actually start. An unanchored match would refuse `echo "gh issue close"`
-# and — the case that arrived within an hour of writing this — a commit message
-# describing the guard itself. A false refusal is what gets a hook deleted, and
-# a deleted hook enforces nothing.
+# `gh pr create`, however it is spaced or flagged, but only where a command can
+# actually start. An unanchored match would refuse `echo "gh pr create"` and a
+# commit message describing the guard itself. A false refusal is what gets a
+# hook deleted, and a deleted hook enforces nothing.
 #
 # A command position is the start, or after `;`, `&`, `(`, an unescaped `|`,
 # `then`, `do` or `if`, followed by any number of environment assignments. That
-# last part is not
-# decoration: the waiver below *is* an assignment prefix, so a pattern that
-# stopped at the first `VAR=` would pass the waived form through without ever
-# recording it — permitting exactly the case whose whole purpose is to leave a
-# trace. The assignment's value has to allow quoted spaces for the same reason;
-# a reason worth writing has spaces in it.
-# **The argument after `close` must look like an issue.** A digit, a `#`, a
-# variable or a quote — never a word and never `<N>`. That one character class
-# is what separates a command from writing *about* the command, and it was
-# added after a review reproduced two failures the previous anchor caused:
-#
-#   git commit -m "guard works; gh issue close is gated now"   → refused
-#   cat > doc.md <<'EOF' … ORRERY_WAIVE="why" gh issue close <N> … EOF
-#                                                              → recorded a row
-#
-# The second is the worse of the two: an invented row in the one file whose
-# entire value is that its rows are true. The regex is quote-blind and cannot
-# be made otherwise without parsing shell, so the fix is to require the shape
-# of a real argument rather than to reason about where the text sits.
-#
-# The URL form is caught too, and its issue number is read from `issues/<n>`
-# rather than from the first digits in the argument — see the extraction below
-# for why that order is not a detail.
+# last part is not decoration: the waiver below *is* an assignment prefix, so a
+# pattern that stopped at the first `VAR=` would pass the waived form through
+# without ever recording it — permitting exactly the case whose whole purpose is
+# to leave a trace. The assignment's value has to allow quoted spaces for the
+# same reason; a reason worth writing has spaces in it.
 q="'"
 assign="[A-Za-z_][A-Za-z0-9_]*=(\"[^\"]*\"|${q}[^${q}]*${q}|[^[:space:]]*)[[:space:]]+"
 # `command`, `env` and a leading backslash are ordinary spellings rather than
 # evasions, and each of them slipped past the first version. `gh -R owner/repo
-# issue close` is not an evasion at all — it is what a session writes when it
-# is being careful about which repository it is in.
+# pr create` is not an evasion at all — it is what a session writes when it is
+# being careful about which repository it is in.
 # A `|` preceded by a backslash is not a pipe: `grep 'push\|gh pr create'` is a
 # pattern with alternation, and reading its `\|` as a command boundary counted an
 # auditor's own search as a pull request opened — after which the gate refused
 # the real one, because the audit now looked older than the "pull request".
 pos="(^|[;&(]|(^|[^\\\\])\\||\\bthen\\b|\\bdo\\b|\\bif\\b)[[:space:]]*(${assign})*(command[[:space:]]+|env[[:space:]]+|\\\\)*"
 ghflags="(-[^[:space:]]+([[:space:]]+[^-][^[:space:]]*)?[[:space:]]+)*"
-# The whole argument token, not its first character. Stopping at one character
-# made `matched` end at `close 4`, and the issue number read out of it was `4`
-# for issue 42 — a row pointing at the wrong issue, which is worse than a row
-# pointing at none.
-#
-# The class gained `h` and `{`. A URL is what a session reaches for after
-# copying a link out of a browser — an ordinary spelling that closed an issue
-# leaving no trace at all — and `{}` is xargs' placeholder. Both are narrow:
-# `h` only matches where `ttps?://` follows, and `{` only as `{}`.
-close="gh[[:space:]]+${ghflags}issue[[:space:]]+close[[:space:]]+([#0-9\$${q}\"][^[:space:]]*|https?://[^[:space:]]*|\\{\\})"
-# `gh api` is gh's own documented way to close an issue and bypassed this
-# entirely. Matched separately because it shares no words with the form above.
-api="gh[[:space:]]+api\\b.*(state=closed|\"state\"[[:space:]]*:[[:space:]]*\"closed\")"
-# A batch close through `xargs`, which is its own alternative rather than a
-# prefix on the form above — **because with xargs there is no argument after
-# `close` at all**, the numbers arrive on stdin. Requiring one caught only the
-# spellings that happen to carry `{}`, and let the plainest form of all through:
-#
-#   echo 42 | xargs gh issue close
-#
-# That was a corpus written to the regex instead of to the spellings; a review
-# found five bypasses here, including that one. The flag skip is `ghflags`,
-# which already handles a value attached (`-n1`) or detached (`-n 1`, `-I {}`,
-# `-P 4`, `-a list.txt`) — the previous xargs-specific one handled only the
-# attached shape. A batch is where the gate matters most in aggregate and least
-# per issue, so this is the alternative worth getting right.
-xargsform="xargs[[:space:]]+${ghflags}gh[[:space:]]+${ghflags}issue[[:space:]]+close\\b"
 
 # The whole matched segment, not the whole command. `grep -q` over `$cmd` said
-# only *whether* something matched, so the waiver check below then searched the
-# entire command for `ORRERY_WAIVE=` — which is how `ORRERY_WAIVE="x" echo hi;
-# gh issue close 42` recorded a waiver that was never attached to the close.
-# `|| true` because of `pipefail`: with no match, `grep` exits 1, the pipeline
-# takes its status, the assignment fails and `set -e` ends the script right
-# here — with status 1, on every Bash command in the session that is not a
-# close. The harness reads a non-zero hook as a non-blocking error, so nothing
-# broke visibly; the guard was simply erroring thousands of times a day, and
-# the line below it was dead code. Found by the mutation pass the moment it
-# stopped being able to kill mutants by their own location.
+# only *whether* something matched, so the waiver check then searched the entire
+# command for `ORRERY_WAIVE=` — which is how `ORRERY_WAIVE="x" echo hi; gh issue
+# close 42` recorded a waiver that was never attached to the close. `|| true`
+# because of `pipefail`: with no match, `grep` exits 1, the assignment fails and
+# `set -e` ends the script with status 1 on every command that does not match —
+# erroring thousands of times a day, invisibly, because the harness reads a
+# non-zero hook as a non-blocking error. Found by the mutation pass.
 # Heredoc bodies are text, never commands. `^` in `pos` matches at the start of
 # every line, so a document written through `cat > f <<'EOF'` whose line reads
 # `ORRERY_WAIVE="…" gh pr create` was a command here — refused, or worse,
@@ -211,8 +152,7 @@ fingerprint() {
 
 # The escape, and the record, are the same act. Without this the gate has no
 # supported way past it, and a gate with no supported way past it is removed
-# rather than obeyed. Shared by both acts this guard gates, so the protections
-# below hold for each: $1 is the matched segment, $2 the act as recorded.
+# rather than obeyed. $1 is the matched segment, $2 the act as recorded.
 waive() {
   local rest reason record
   # Parameter expansion rather than sed, after the sed version accepted `""` as
@@ -246,7 +186,7 @@ which is the silence the waiver exists to end. Write the reason:
   # left nothing at all. Fail open on input this cannot read; fail closed on a
   # record it cannot write. Those are different questions and they get opposite
   # answers on purpose.
-  if ! record="$(ORRERY_WAIVE_SESSION="$(fingerprint)" \
+  if ! record="$(cd "$dir" 2>/dev/null && ORRERY_WAIVE_SESSION="$(fingerprint)" \
         bash "$here/waiver.sh" "$2" "$reason" command 2>&1)"; then
     deny "The waiver could not be recorded, so the exemption is not granted.
 
@@ -281,112 +221,180 @@ fi
 # for itself.
 #
 # Readable only where the project keeps a call log, because that is the only
-# record of what this session spawned. No log, or one this cannot read → pass
-# through, per the header; the text in `plan` and `build` carries it there.
+# record of what this session spawned. It is on unless the project declared
+# `"callLog": false`; switched off, or unreadable → pass through, per the
+# header, and the text in `plan` and `build` carries it there.
 #
 # "Since the last one" comes from a state file this guard appends to whenever it
-# lets `gh pr create` through, in git's common directory — outside every working
-# tree, so `git add -A` never stages it and no host needs an ignore line. A row
-# counts only if the call log holds `ran` for its id: a create that failed did
-# not open anything, and must not consume the audit.
+# lets `gh pr create` through, `.orrery/local/pr-gate.tsv` in the main checkout
+# beside the log, ignored by its own `.gitignore`. It lived in git's common
+# directory until Orrery's files moved into `.orrery/`; its rows come with it
+# once. A row counts only if the call log holds `ran` for its id: a create that
+# failed did not open anything, and must not consume the audit.
 #
 # What this proves is that an auditor was spawned, not that its verdict was
 # read — a background spawn is `ran` the moment it launches.
+# The work's record, missing from commit $1 — or the one the default branch
+# already holds, an earlier work's met again under a reused branch or worktree
+# name. It travels with the work and arrives on the default branch with the
+# merge, which is the closing act. Where the project ignores `.orrery/work/`, on
+# disk is all there can be.
+record_missing() { # $1 = commit, $2 = the work's name (default: this tree's)
+  local base last
+  rec=".orrery/work/${2:-$(orrery_work "$dir")}/retrospective.md"
+  base="$(git -C "$top" rev-parse -q --verify refs/remotes/origin/HEAD 2>/dev/null \
+    || git -C "$top" rev-parse -q --verify main 2>/dev/null || true)"
+  last="$(git -C "$top" log -1 --format=%H "$1" -- "$rec" 2>/dev/null || true)"
+  { ! git -C "$top" cat-file -e "$1:$rec" 2>/dev/null \
+    || { [ -n "$base" ] && [ -n "$last" ] && git -C "$top" merge-base --is-ancestor "$last" "$base"; }; } \
+    && ! { git -C "$top" check-ignore -q "$rec" 2>/dev/null && [ -f "$top/$rec" ]; }
+}
+no_record() { # $1 = the act, $2 = where the record had to be
+  deny "$1 is where the work heads for the default branch, and its record is not
+committed: $rec is not in $2, or is the one the default branch already holds
+from an earlier work of the same name.
+
+Write it and commit it with the work:
+
+  $here/../skills/build/record.sh write --what \"one line on what happened\"
+
+It builds the spend table from this session's transcripts. Re-run it before a
+later push and it refreshes. Work that ends without merging is closed with
+record.sh close refused|withdrawn|answered|enacted instead.
+
+If the owner told you in this session to skip the record, quote them:
+
+  ORRERY_WAIVE=\"owner: <their words>\" $1 …"
+}
+# Whether this session spawned an auditor after $1. Reads $log, $fp.
+audited() {
+  awk -F'\t' -v fp="$fp" -v since="$1" '
+        $2 == fp && $3 == "Agent" && ($4 == "auditor" || $4 ~ /:auditor$/) &&
+        $6 == "ran" && $1 > since { found = 1 } END { exit !found }' "$log"
+}
+no_auditor() { # $1 = the act, $2 = since when
+  deny "$1 is where a change heads for main, and no auditor has run in this
+session since $2.
+
+Spawn the auditor agent against the plan, or the change's stated intent, read
+its verdict, and then run it again. This guard sees only that an auditor was
+spawned — reading what it said is yours.
+
+If the owner told you in this session to skip the audit, quote them:
+
+  ORRERY_WAIVE=\"owner: <their words>\" $1 …
+
+That is recorded in .orrery/local/waivers.tsv, which the next sharpen pass
+reads. Your own judgement that this change needs no audit is not a reason it
+accepts."
+}
+# Sets $log: the call log, or nothing where the project switched it off or has
+# none yet. Read only once a gated act matched — every Bash call passes here.
+read_log() {
+  log=""
+  if [ "$(orrery_config callLog true "$dir")" != false ]; then
+    log="$(orrery_local_read calls.tsv "${ORRERY_CALL_LOG:-.claude/orrery-calls.tsv}" "$dir")"
+  fi
+  [ -r "$log" ] || log=""
+}
+
+# With a GitHub tracker the gated act is the pull request; without one, the
+# first push of a branch, below. One gated act per mode, never two on one state.
 pr="gh[[:space:]]+${ghflags}pr[[:space:]]+create\\b"
 prmatch="$(grep -oE "${pos}${pr}" <<<"$scan" | head -1 || true)"
-if [ -n "$prmatch" ]; then
-  log="${ORRERY_CALL_LOG:-}"
-  case "$log" in
-    ''|/*) ;;
-    *) if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then log="$CLAUDE_PROJECT_DIR/$log"; else log=""; fi ;;
-  esac
-  gitdir="$(git -C "${CLAUDE_PROJECT_DIR:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-  if [ -n "$log" ] && [ -r "$log" ] && [ -n "$gitdir" ]; then
-    state="$gitdir/orrery-pr-gate"
+if [ -n "$prmatch" ] && [ "$(orrery_tracker "$dir")" = github ]; then
+  top="$(orrery_toplevel "$dir")"; read_log
+  # A waiver passes both halves, and is recorded before anything else — with the
+  # call log switched off, the auditor half below never runs, and a waiver
+  # recorded only there would pass unrecorded.
+  waived=""
+  if grep -q 'ORRERY_WAIVE=' <<<"$prmatch"; then waive "$prmatch" "gh pr create"; waived=1; fi
+  if [ -n "$top" ] && [ -z "$waived" ] && record_missing HEAD; then no_record "gh pr create" HEAD; fi
+  gitdir="$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [ -n "$log" ] && [ -n "$gitdir" ]; then
+    state="$(orrery_local_file pr-gate.tsv "$gitdir/orrery-pr-gate" "$dir" || true)"
     fp="$(fingerprint)"
     since=""
     [ ! -f "$state" ] || since="$(awk -F'\t' -v fp="$fp" '
       NR == FNR { if ($6 == "ran") ran[$7] = 1; next }
       $2 == fp && ($3 in ran) { s = $1 } END { print s }' "$log" "$state" 2>/dev/null || true)"
-    if grep -q 'ORRERY_WAIVE=' <<<"$prmatch"; then
-      waive "$prmatch" "gh pr create"
-    elif ! awk -F'\t' -v fp="$fp" -v since="$since" '
-        $2 == fp && $3 == "Agent" && ($4 == "auditor" || $4 ~ /:auditor$/) &&
-        $6 == "ran" && $1 > since { found = 1 } END { exit !found }' "$log"; then
-      deny "Opening a pull request is where a change heads for main, and no auditor has
-run in this session since its last pull request.
-
-Spawn the auditor agent against the plan, or the change's stated intent, read
-its verdict, and then open the pull request. This guard sees only that an
-auditor was spawned — reading what it said is yours.
-
-If the owner told you in this session to skip the audit, quote them:
-
-  ORRERY_WAIVE=\"owner: <their words>\" gh pr create …
-
-That is recorded in .claude/orrery-waivers.tsv, which the next sharpen pass
-reads. Your own judgement that this change needs no audit is not a reason it
-accepts."
-    fi
+    if [ -z "$waived" ] && ! audited "$since"; then no_auditor "gh pr create" "its last pull request"; fi
     { printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$fp" \
         "$(jq -r '.tool_use_id // "-"' <<<"$input" 2>/dev/null || true)" >>"$state"; } 2>/dev/null || true
   fi
 fi
 
-matched="$(grep -oE "${pos}(${close}|${api}|${xargsform})" <<<"$scan" | head -1 || true)"
-[ -n "$matched" ] || exit 0
-
-if grep -q 'ORRERY_WAIVE=' <<<"$matched"; then
-  # The number, so a row can be reconciled against the issue it belongs to.
-  # Without it every row read `gh issue close` and you could not go and look.
-  # Trim to the argument first, then read from its start. A leading `.*` is
-  # greedy, so `s/.*close *#\?\([0-9][0-9]*\).*/\1/` returned the LAST digit of
-  # the number rather than the number.
-  #
-  # **A URL is tried first, and that order is the whole fix.** The general form
-  # below stops at the first digit run anywhere in the argument, which inside a
-  # URL is part of the host or the repository name: `.../o/web3-app/issues/42`
-  # recorded `#3`, and `.../o/app-v2/issues/306` recorded `#2`. The
-  # `issues/` branch existed but sat behind `[ -n "$n" ] ||`, and the general
-  # form always returns something for a URL — so it was unreachable, and
-  # deleting it changed no output and left the corpus green. A row pointing at
-  # the wrong issue is worse than a row pointing at none, in the one file whose
-  # value is that its rows are true.
-  tail="${matched##*close}"
-  case "$tail" in
-    *issues/*) n="$(sed -n 's|^.*issues/\([0-9][0-9]*\).*$|\1|p' <<<"$tail" | head -1)" ;;
-    *)         n="" ;;
-  esac
-  [ -n "$n" ] || n="$(sed -n 's/^[[:space:]]*[^0-9#]*#\{0,1\}\([0-9][0-9]*\).*/\1/p' <<<"$tail" | head -1)"
-  waive "$matched" "gh issue close${n:+ #$n}"
-  exit 0
+# --- without a tracker, the first push of a branch ------------------------
+# A project with no tracker opens no pull request through `gh`, so the moment a
+# work leaves the machine is its branch's first push: no remote-tracking ref for
+# it yet, a remote that is a URL, or `-u` given. The audit counts from the
+# branch's first reflog entry, so no state file is kept. Later pushes pass — the
+# same gap as commits pushed after an audit. Not gated, and stated as lacking:
+# a push straight to the default branch. Read against the payload's tree even
+# for `git -C <path> push`; a remote-tracking ref left after its branch was
+# deleted on the remote reads as pushed; `push.default=upstream` naming another
+# branch is read as the same name.
+#
+# Prints the first local branch this push sends for the first time. $1 = the
+# push's own words, split on spaces with quoting not honoured.
+first_push() {
+  local w remote="" u=0 tags=0 skip=0 cur def src dst
+  local -a words refs=()
+  read -ra words <<<"$1 "
+  # `${a[@]+…}`: bash 3.2 calls an empty array unbound under `set -u`.
+  for w in ${words[@]+"${words[@]}"}; do
+    # The value of an option that takes one separately is neither the remote nor
+    # a refspec. `--repo <remote>` is not among them: its value is the remote.
+    [ "$skip" = 0 ] || { skip=0; continue; }
+    case "$w" in
+      -o|--push-option|--receive-pack|--exec) skip=1 ;;
+      -u|--set-upstream) u=1 ;;
+      # `--tags` pushes tags in addition to any refspec named, and alone only tags.
+      --tags) tags=1 ;;
+      -d|--delete|--mirror) return 0 ;;
+      --all|--branches) while IFS= read -r src; do refs+=("$src"); done \
+          < <(git -C "$top" for-each-ref --format='%(refname:short)' refs/heads) ;;
+      -*) ;;
+      *) if [ -z "$remote" ]; then remote="$w"; else refs+=("$w"); fi ;;
+    esac
+  done
+  cur="$(git -C "$top" symbolic-ref --short -q HEAD || true)"
+  def="$(git -C "$top" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  def="${def#origin/}"; def="${def:-main}"
+  [ -n "$remote" ] || remote="$(git -C "$top" config "branch.$cur.pushRemote" || git -C "$top" config remote.pushDefault \
+    || git -C "$top" config "branch.$cur.remote" || echo origin)"
+  [ "${#refs[@]}" -gt 0 ] || { [ "$tags" = 0 ] || return 0; refs=(HEAD); }
+  for w in "${refs[@]}"; do
+    w="${w#+}"; src="${w%%:*}"; dst="${w#*:}"
+    [ "$src" != HEAD ] || src="$cur"
+    [ "$dst" != HEAD ] || dst="$src"
+    src="${src#refs/heads/}"
+    case "$dst" in refs/heads/*) dst="${dst#refs/heads/}" ;; refs/*) continue ;; esac
+    git -C "$top" show-ref -q --verify "refs/heads/$src" || continue
+    [ "$dst" != "$def" ] || continue
+    # A URL for a remote has no remote-tracking ref, so it reads as first too.
+    if [ "$u" = 1 ] || ! git -C "$top" rev-parse -q --verify "refs/remotes/$remote/$dst" >/dev/null; then
+      printf '%s' "$src"; return 0
+    fi
+  done
+}
+pushmatch="$(grep -oE "${pos}(rtk[[:space:]]+)?git[[:space:]]+${gitflags}push\\b[^;&|]*" <<<"$scan" | head -1 || true)"
+if [ -n "$pushmatch" ] && [ "$(orrery_tracker "$dir")" = none ] \
+   && top="$(orrery_toplevel "$dir")" && [ -n "$top" ]; then
+  read_log
+  # The words after the matched head: `push` can also sit in `-c push.default=…`
+  # or in a `-C` path before it.
+  head="$(grep -oE "${pos}(rtk[[:space:]]+)?git[[:space:]]+${gitflags}push\b" <<<"$pushmatch" | head -1 || true)"
+  first="$(first_push "${pushmatch#"$head"}" || true)"
+  if [ -n "$first" ]; then
+    if grep -q 'ORRERY_WAIVE=' <<<"$pushmatch"; then waive "$pushmatch" "git push"; exit 0; fi
+    # On the main checkout a branch is its own work, checked out or not.
+    work=""
+    [ "$top" != "$(orrery_main "$dir")" ] || work="${first//\//-}"
+    if record_missing "refs/heads/$first" "$work"; then no_record "git push" "the pushed branch $first"; fi
+    fp="$(fingerprint)"
+    if [ -n "$log" ] && ! audited "$(orrery_born "$first" "$top")"; then
+      no_auditor "git push" "branch $first began"
+    fi
+  fi
 fi
-
-deny "Closing an issue is where its retrospective is posted, and this command posts none.
-
-Across three host projects in one week: 179 issues closed, 218 pull requests
-merged, 2 retrospectives. Nobody decided to stop writing them — there was
-simply nothing that noticed.
-
-Use the path that does both:
-
-  $here/../skills/build/close-issue.sh <N> --what \"one line on what happened\"
-
-It builds the spend table from this session's own transcripts, posts it, and
-then closes the issue. Add --since <iso8601> when this session already reported
-on an earlier issue, or that issue's spend is counted here again.
-
-Closing an umbrella is the other case: its retrospective is summed from the
-children rather than measured from this session, so assemble it and pass it in.
-
-  $here/../skills/build/close-issue.sh <N> --body-file <path>
-
-If this issue really should close without one, say why and it is recorded:
-
-  $here/../skills/build/close-issue.sh <N> --waive \"why\"
-
-That posts the reason on the issue, where a project running
-install/ci/retrospective-on-close.yml reads it, and writes it to
-.claude/orrery-waivers.tsv. It is the supported way past this gate; there is no
-quiet one. ORRERY_WAIVE=\"why\" gh issue close <N> records the row only — use it
-where that workflow is not installed, or the server reopens what you excused."

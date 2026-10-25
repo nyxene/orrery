@@ -5,9 +5,9 @@ evidence: "a library skill queried an issue label spelled the way one host proje
 ---
 
 A library skill states the distinction it owns and delegates the vocabulary. It
-declares what the host project must supply — labels, paths, commands — in the
-library's install declaration, reads that declaration at runtime, and hard-codes
-none of it.
+declares what the host project must supply — labels, paths, commands —
+documented in the library's install guide, read from `.orrery/config.json` at
+runtime, and hard-codes none of it.
 
 **Why:** a baked-in taxonomy is correct in exactly one project and wrong in
 every other, and it is wrong *silently*. `gh issue list --label tech-debt`

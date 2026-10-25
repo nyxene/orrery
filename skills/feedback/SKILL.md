@@ -30,7 +30,7 @@ and the next person writes the same workaround. That is the gap this closes.
 
 - **The tooling behaved correctly and you disliked it.** A refusal you disagree
   with is a conversation, not a defect. Say so directly instead.
-- **A problem in the host project.** That is an issue in the host's own tracker.
+- **A problem in the host project.** That belongs in the host's own tracker, or its debt register.
 - **Something you can fix here and now.** Fix it. A report is for what you
   cannot reach from where you are.
 

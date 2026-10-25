@@ -9,6 +9,101 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.32.0
+
+**Minor, and it changes what an install that does nothing gets.** Everything
+Orrery keeps in a project moves into `.orrery/`, the tracker becomes a setting,
+and a project with no `.orrery/config.json` runs as if it had no tracker — on
+GitHub that moves the audit gate from `gh pr create` to a branch's first push.
+Five steps put it back where it was; do them in this order.
+
+### Upgrade, in order
+
+1. **Delete a copied `retrospective-on-close.yml`** from `.github/workflows/`, if
+   you have one. Records are files now, never comments, so left in place it
+   reopens every issue a merge closes. `doctor` fails while it is there.
+2. **Create `.orrery/config.json`, by hand, and commit it.** On GitHub at least
+   `{"tracker": "github"}`; move the declarations your `CLAUDE.md` carried for
+   Orrery into it — the keys are in `install/into-project.md`, *What the project
+   declares*.
+3. **Update the plugin** and restart Claude Code.
+4. **Merge `hooks/permissions.json` again**, from the updated plugin — the old
+   one does not have it. It adds `Edit(**/.orrery/config.json)`, which keeps a
+   session from editing the file that switches gates off.
+5. **Run `doctor`.** It names a missing or malformed config, the files left at
+   the places used before, and how many changes on the default branch brought a
+   record.
+
+### Where things live
+
+| What | Before | Now |
+|---|---|---|
+| Settings | a table in your `CLAUDE.md` | `.orrery/config.json` |
+| Call log, waivers, pull-request gate state | `.claude/`, `.git/` | `.orrery/local/` |
+| Deny-list report state | `~/.claude/orrery/permissions/` | `.orrery/local/` |
+| Deny rules you declined | `.claude/orrery-deny.json` | `.orrery/deny-declined.json`, committed |
+| `doctor`'s log and cache baseline | `~/.claude/orrery/doctor/` | `.orrery/local/doctor/` |
+| Session markers | `$TMPDIR` | `.orrery/local/sessions/` |
+| A work's record and handoff | tracker comments | `.orrery/work/<work>/` |
+| A plan, with no plan directory declared | `docs/planning/plans/` | `.orrery/work/<work>/plan.md` |
+| Debt, with no tracker | — | `.orrery/work/debt/<slug>.md` |
+
+`.orrery/local/` carries its own `.gitignore`; Orrery never edits yours. Each
+old file is copied once, the first time a hook needs it, and left where it was.
+
+### A work's record is a file
+
+`build`'s record — the spend table, from the session's own transcripts, now with
+model, cache writes and fix-loop retries — is written by `skills/build/record.sh`
+to `.orrery/work/<work>/retrospective.md` and committed with the work. It
+reaches the default branch with the merge, which is the closing act. Work that
+ends unmerged is closed on its branch with `record.sh close`.
+
+- `gh issue close` is no longer gated. Closing an issue is yours again.
+- `gh pr create` is refused until the record is committed — and a record the
+  default branch already holds, from an earlier work of the same name, does not
+  count. The auditor half of the gate is unchanged.
+- `close-issue.sh` and the `retrospective-on-close` workflow are gone.
+
+### Without a tracker
+
+- The gated act is a branch's **first push**: it needs the record in the pushed
+  branch and an auditor from this session since the branch began. Later pushes,
+  tags, deletes and a push to the default branch pass.
+- `debt` keeps its register as files; `doctor` runs without one.
+- What a tracker gives is stated rather than imitated, and is missing: issues
+  containing their work, a release container, closure by merge, links between
+  items, and a gate for a push straight to the default branch.
+
+### Smaller
+
+- The call log is on by default; `"callLog": false` switches it off, and the
+  audit gate with it.
+- The project's declarations reach subagents too, not only the main session.
+- `handoff` writes `.orrery/work/<work>/handoff.md`; it needs no tracker.
+- A project that ignores `.orrery/work/` keeps records only in their worktree;
+  `doctor` says so on every run.
+- `ORRERY_CALL_LOG` now only names an old log to copy rows from, once; remove
+  it from your settings once the new log exists.
+- An umbrella issue a merge closed early is reported to you and reopened on your
+  word, never on an agent's own judgement.
+- Rules about issues and pull requests carry `tracker: github` and load only
+  where that tracker is declared; skills and rules say what to do without one.
+- The process rules — consent, fix it now — load on a session's first
+  `git push` as well as on `gh`, so a project with no tracker gets them too.
+- `sharpen`'s log defaults to `.orrery/sharpen-log.md`. A log at the old
+  default, `docs/sharpen-log.md`, is moved there by the next `sharpen` pass;
+  a project that declared `sharpenLog` keeps its own place.
+
+### Going back
+
+Install 0.31.x. It reads the files this release left at their old places; rows
+written since live only in `.orrery/local/`, and 0.31 does not see them. Its
+close gate is back, without the workflow step 1 deleted — copy it again if you
+want issues a merge closed bare reopened. A `sharpen` log moved into `.orrery/`
+is not read by 0.31: move it back, or declare `sharpenLog`. A fix to this release
+ships as 0.32.1.
+
 ## 0.31.0
 
 **Minor.** A command that used to run is now refused: a session can no longer

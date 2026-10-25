@@ -59,24 +59,21 @@ case "$source" in command|stated) ;; *)
   exit 1 ;;
 esac
 
-# A relative path needs a root the code names, never the directory the process
-# happens to be in: one host project collected twenty call logs as deep as six
-# directories that way. `CLAUDE_PROJECT_DIR` when a hook is calling, the git
-# top level when a person is, and a refusal when neither — a waiver written
-# somewhere nobody will look is worse than the refusal, because it reads as
-# recorded.
-log="${ORRERY_WAIVER_LOG:-.claude/orrery-waivers.tsv}"
-case "$log" in
-  /*) ;;
-  *)  root="${CLAUDE_PROJECT_DIR:-}"
-      [ -n "$root" ] || root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-      if [ -z "$root" ]; then
-        printf 'waiver.sh: no project root, so %s cannot be resolved.\n' "$log" >&2
-        printf 'Set ORRERY_WAIVER_LOG to an absolute path, or run inside the repository.\n' >&2
-        exit 1
-      fi
-      log="$root/$log" ;;
-esac
+# `.orrery/local/waivers.tsv` in the main checkout, found by git from the
+# directory this runs in — a person's project, or the session's tree when the
+# process guard calls. Never a path relative to that directory: one host project
+# collected twenty call logs as deep as six directories that way. Outside a
+# repository it refuses, because a waiver written somewhere nobody will look is
+# worse than the refusal — it reads as recorded. `ORRERY_WAIVER_LOG`, read for
+# one release, names only the old file whose rows are carried over.
+here="$(cd "$(dirname "$0")" && pwd -P)"
+# shellcheck source=hooks/orrery-config.sh
+. "$here/orrery-config.sh"
+if ! log="$(orrery_local_file waivers.tsv "${ORRERY_WAIVER_LOG:-.claude/orrery-waivers.tsv}")"; then
+  printf 'waiver.sh: not inside a git repository, so there is nowhere to record this.\n' >&2
+  printf 'Run it from inside the project.\n' >&2
+  exit 1
+fi
 
 session="${ORRERY_WAIVE_SESSION:-}"
 if [ -z "$session" ]; then
@@ -96,7 +93,6 @@ fi
 # incriminates. Tabs do the same thing one field over.
 clean() { LC_ALL=C tr -d '\000-\037\177' <<<"$1"; }
 
-mkdir -p "$(dirname "$log")"
 printf '%s\t%s\t%s\t%s\t%s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   "$(clean "$session")" \

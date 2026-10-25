@@ -91,8 +91,8 @@ evidence, the ranking. Then add the one thing the agent could not know: whether
 its findings are already tracked. A CRITICAL that duplicates an open issue is a
 different fact than a new one.
 
-Anything real that is **not** being fixed here goes to the tracker through the
-`debt` skill before this skill reports done. A review whose findings evaporate
+Anything real that is **not** being fixed here goes to the debt register through
+`debt` before this skill reports done. A review whose findings evaporate
 when the conversation ends has reviewed nothing — and a review is the second
 richest source of debt a project has, after an audit.
 
