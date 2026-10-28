@@ -675,13 +675,39 @@ if [ -n "$(orrery_toplevel "$PROJECT")" ]; then
   case "$(orrery_config_problem "$PROJECT")" in
     malformed) bad ".orrery/config.json does not parse — every declaration in it reads as its default"
                row "config" "malformed" ;;
-    missing)   warn "no .orrery/config.json beside a GitHub remote — the tracker reads as none, so a branch's first push is gated rather than gh pr create; declare \"tracker\": \"github\" to keep the pull request as the gate"
+    malformed-local) bad "this machine's .orrery/local/config.json does not parse — every declaration in it reads as its default"
+               row "config" "local malformed" ;;
+    malformed-both) bad "neither .orrery/config.json nor .orrery/local/config.json parses — every setting reads as its default"
+               row "config" "both malformed" ;;
+    missing)   warn "no .orrery/config.json beside a GitHub remote, and no tracker in .orrery/local/config.json — the tracker reads as none, so a branch's first push is gated rather than gh pr create; declare \"tracker\": \"github\" to keep the pull request as the gate"
                row "config" "missing" ;;
-    *)         ok "config read: tracker $(orrery_tracker "$PROJECT")"
+    *)         ok "config read: tracker $(orrery_tracker "$PROJECT") ($(orrery_config_source tracker "$PROJECT"))"
                row "config" "tracker $(orrery_tracker "$PROJECT")" ;;
   esac
+  # This machine's settings: outside review, so what they set is said by name —
+  # a gate key loudest. A `local/` with no `.gitignore` at all is repaired by this
+  # very run, which wrote its log there through `orrery_local_ensure`; one whose
+  # `.gitignore` was edited to cover less is not, so that is asked of git below.
+  lcfg="$(orrery_config_local_file "$PROJECT")"
+  if [ -e "$lcfg" ]; then
+    lkeys="$(jq -r --argjson c "$(orrery_config_obj "$(orrery_config_file "$PROJECT")")" \
+      '[keys[] | select(. as $k | $c | has($k) | not)] | join(", ")' "$lcfg" 2>/dev/null || true)"
+    lgate="$(jq -r --argjson c "$(orrery_config_obj "$(orrery_config_file "$PROJECT")")" \
+      '[to_entries[] | .key as $k | select(($k == "callLog" or $k == "tracker" or $k == "branchFlow") and ($c | has($k) | not)) | "\($k)=\(.value | tojson)"] | join(", ")' "$lcfg" 2>/dev/null || true)"
+    if [ -n "$lgate" ]; then
+      warn "this machine's .orrery/local/config.json sets $lgate — gate settings outside review"
+    elif [ -n "$lkeys" ]; then
+      ok "this machine's .orrery/local/config.json supplies: $lkeys"
+    fi
+    row "local config" "${lkeys:-nothing in effect}"
+  fi
+  if [ -d "$(dirname "$lcfg")" ] && ! git -C "$(orrery_main "$PROJECT")" check-ignore -q .orrery/local/config.json 2>/dev/null; then
+    bad ".orrery/local/ does not ignore config.json, so this machine's settings can be committed — make .orrery/local/.gitignore a single * line"
+    row "local ignored" "no"
+  fi
   # Copied once into `.orrery/` when a hook first needed them, and left where
-  # they were so nothing was lost. Nothing reads them now.
+  # they were so nothing was lost. One is still read: `.claude/orrery-deny.json`,
+  # by permissions-check.sh, while `.orrery/deny-declined.json` does not exist.
   left="" nleft=0
   common="$(git -C "$PROJECT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
   for f in "$PROJECT/.claude/orrery-calls.tsv" "$PROJECT/.claude/orrery-waivers.tsv" \
@@ -698,7 +724,7 @@ if [ -n "$(orrery_toplevel "$PROJECT")" ]; then
   # is work merged without its record. Not a fault — a gate may have been waived,
   # or the change predates records — so it is counted, not failed.
   if git -C "$PROJECT" check-ignore -q .orrery/work/x 2>/dev/null; then
-    warn ".orrery/work/ is ignored here, so each record lives only in its worktree and is deleted with it — the project's choice; commit it to keep them"
+    warn ".orrery/work/ is ignored here, so records are in no branch: each is copied to .orrery/local/work/ in the main checkout when record.sh or the Write and Edit tools write it, and that copy is the only one once its worktree is removed — the project's choice; commit .orrery/work/ to keep them in the repository"
     row "records" "work ignored"
   else
     # The default branch as the guard finds it; HEAD only where neither exists.

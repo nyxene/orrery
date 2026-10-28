@@ -1,6 +1,6 @@
 {
   "name": "orrery",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "description": "A plugin that runs a method for coding agents: consensus planning, fan-out execution, debt tracking, rules earned from real incidents, and guards that fire before every shell call.",
   "author": {
     "name": "Evgeniy Kovrov",
@@ -21,6 +21,7 @@
     "./skills/feedback",
     "./skills/handoff",
     "./skills/learn",
-    "./skills/sharpen"
+    "./skills/sharpen",
+    "./skills/onboard"
   ]
 }

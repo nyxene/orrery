@@ -57,15 +57,23 @@ fi
 . "$(dirname "$0")/orrery-config.sh"
 cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || true)"
 [ -n "$cwd" ] || cwd="${CLAUDE_PROJECT_DIR:-.}"
-decl=""
-cfg="$(orrery_config_file "$cwd")"
-if [ -n "$cfg" ] && [ -r "$cfg" ]; then
-  decl="$(jq -r 'if type == "object" then to_entries[] | "- \(.key): \(if (.value | type) == "string" then .value else (.value | tojson) end)" else empty end' "$cfg" 2>/dev/null || true)"
-fi
+# A key only this machine's `.orrery/local/config.json` supplies is marked, so the
+# model can say where a setting came from.
+committed="$(orrery_config_obj "$(orrery_config_file "$cwd")")"
+merged="$(orrery_config_json "$cwd" 2>/dev/null || printf '{}')"
+decl="$(jq -r --argjson c "$committed" 'to_entries[] | .key as $k | "- \($k): \(if (.value | type) == "string" then .value else (.value | tojson) end)\(if ($c | has($k)) then "" else " (local)" end)"' <<<"$merged" 2>/dev/null || true)"
 [ -z "$decl" ] || decl="
 
-Settings this project declared for Orrery, from .orrery/config.json:
+Settings this project declared for Orrery, from .orrery/config.json and this machine's .orrery/local/config.json:
 $decl"
+# The keys that move or switch off a gate, when they come from the local file,
+# go to the person and not only to the model: that file is outside review, and a
+# line in the model's context is not something the owner sees.
+notice=""
+if [ "$event" = SessionStart ]; then
+  notice="$(jq -r --argjson c "$committed" '[to_entries[] | .key as $k | select(($k == "callLog" or $k == "tracker" or $k == "branchFlow") and ($c | has($k) | not)) | "\(.key)=\(.value | tojson)"] | join(", ")' <<<"$merged" 2>/dev/null || true)"
+  [ -z "$notice" ] || notice="Orrery: this machine's .orrery/local/config.json sets $notice — outside review; edit or delete that file to change it."
+fi
 # Said once per session, not once per spawn: a pool spawns dozens of agents.
 problem=""
 [ "$event" = SessionStart ] && problem="$(orrery_config_problem "$cwd")"
@@ -73,14 +81,14 @@ case "$problem" in
   missing)   decl="$decl
 
 WARNING: this project is on GitHub and has no .orrery/config.json, so Orrery runs as if no tracker were configured. Tell the owner; only they write that file." ;;
-  malformed) decl="$decl
+  malformed*) decl="$decl
 
-WARNING: .orrery/config.json is not a valid JSON object, so every setting falls back to its default. Tell the owner; only they write that file." ;;
+WARNING: $(case "$problem" in malformed) printf '.orrery/config.json is' ;; malformed-local) printf "this machine's .orrery/local/config.json is" ;; *) printf 'neither .orrery/config.json nor .orrery/local/config.json is' ;; esac) not a valid JSON object, so its settings fall back to their defaults. Tell the owner; only they write that file." ;;
 esac
 
-jq -n --arg e "$event" --arg c "$(cat "$canon")" --arg d "$decl" '{
+jq -n --arg e "$event" --arg c "$(cat "$canon")" --arg d "$decl" --arg n "$notice" '{
   hookSpecificOutput: {
     hookEventName: $e,
     additionalContext: ("The following is the non-negotiable core of how work is done in this project. It binds in every session and overrides convenience.\n\n" + $c + $d)
   }
-}'
+} + (if $n == "" then {} else {systemMessage: $n} end)'

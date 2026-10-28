@@ -34,7 +34,7 @@ friction is still legible.
    `hooks/call-log.sh`, holding no content at all: timestamp, session
    fingerprint, tool, subagent type, whether the spawn was named, the event —
    `call` or `ran` — and the harness's id for the call. It is on unless
-   `.orrery/config.json` says `"callLog": false`; switched off is not a finding.
+   `.orrery/config.json` or `.orrery/local/config.json` says `"callLog": false`; switched off is not a finding.
 
    **Read the pair, not the row.** `ran` is written only when a tool succeeds, so
    a `call` with no `ran` under the same id did not run — refused by a guard, by

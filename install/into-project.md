@@ -5,12 +5,17 @@
 /plugin install orrery@orrery
 ```
 
+**Or let a session do the rest.** After these two lines, `/orrery:onboard` reads
+the project, asks only what is yours to decide, drafts the settings and hands
+you one script, `onboard.sh`, that writes them — the same steps this page
+describes, in order. It also moves an older install onto this version.
+
 Skills become available as `orrery:frame`, `orrery:plan`, `orrery:build`,
 `orrery:review`, `orrery:diagnose`, `orrery:pare`, `orrery:verify`,
 `orrery:debt`, `orrery:doctor`, `orrery:feedback`, `orrery:handoff`,
 `orrery:learn`,
 `orrery:sharpen`. Agents (`architect`, `critic`, `auditor`) resolve
-by name. All eight hooks start firing immediately — including the one that stops
+by name. All nine hooks start firing immediately — including the one that stops
 the first compaction of a session to ask whether there is unfinished work to
 hand off.
 
@@ -52,7 +57,9 @@ folder that is not its own:
   config.json      the project's settings — committed; written by a person, never the model
   deny-declined.json  deny rules a person declined on purpose — committed
   local/           this machine's files, never committed: call log, waivers, gate state,
-                   doctor's log, session markers. Carries its own `.gitignore`
+                   doctor's log, session markers. Carries its own `.gitignore`.
+                   Written by Orrery's hooks and scripts, never by the model —
+                   except onboard's drafts, under local/onboard/<project>/
   work/<work>/     a piece of work's record, handoff and plan — committed with the work
   work/debt/       the debt register, where there is no tracker
   sharpen-log.md   what each `sharpen` pass proposed and decided — committed
@@ -91,12 +98,38 @@ Orrery holds the skills and guards. The project holds its own facts, in
 | `sharpenLog` | where `sharpen` keeps its log | `sharpen` | `.orrery/sharpen-log.md`, created on first use; one at the old `docs/sharpen-log.md` is moved there |
 | `incidentInbox` | `<owner>/<repo>` — see below | `learn` | Rules stay local, which is the correct default |
 
-**You write it, by hand.** The deny-list below carries `Edit(**/.orrery/config.json)`,
-so a session cannot edit it — a setting that switches a gate off is a change a
-person makes in a reviewed commit. A missing file beside a GitHub remote, or one
+**You write it, by hand.** The process guard refuses a session's edit tools on it
+from the first session after install, and the deny-list below carries
+`Edit(**/.orrery/config.json)` once merged — a setting that switches a gate off is
+a change a person makes in a reviewed commit. A missing file beside a GitHub remote, or one
 that does not parse, is said at the start of every session and by `doctor`.
 Declarations that used to live in a table in your `CLAUDE.md` move here; that file
 stays yours, for what Orrery does not read.
+
+**Or keep them on this machine.** The same keys in `.orrery/local/config.json`, in
+the main checkout, are read from every worktree of the clone and never committed —
+`local/` ignores itself. For a repository that will be public, or settings that are
+one person's. Write it after one session has run in the clone, or create
+`.orrery/local/.gitignore` holding a single `*` first: until something has, a
+`local/` you made by hand ignores nothing. `doctor` says when it does not.
+Three things differ from the committed file:
+
+- **The committed file wins.** A key both declare takes the committed value; the
+  local file only fills keys the committed one leaves out. So a reviewed setting
+  is never reversed by one nobody reviewed — which protects only a repository that
+  has both files. With the local file alone, everything in it is outside review.
+- **What it does to a gate is said to you, not only to the model.** When
+  `callLog`, `tracker` or `branchFlow` comes from the local file, every session
+  starts with a line naming it and its value; `doctor` says the same. Every other
+  key is marked `(local)` in what the session is told.
+- **It is no more writable by a session than the committed one.** The process
+  guard refuses the edit tools on either file from the first session after
+  install, and a shell write to either — a redirect, `tee`, `sed -i`, either file
+  anywhere in `mv`, `rm` or a link (`ln`, `link`, `cp -l`), or as the last argument of `cp`. The deny list
+  adds `Edit(**/.orrery/local/config.json)` once merged, and that rule is the
+  boundary; before the merge the guard is all there is. A spelling it misses gets
+  through, as with every check in that guard; the line at session start is what
+  would show it.
 
 ## The call log
 
@@ -176,7 +209,7 @@ local layer, not in a library that installs into all of them.
 
 ## Merge the deny-list
 
-`hooks/permissions.json` holds 122 deny rules — system paths, secret files,
+`hooks/permissions.json` holds 131 deny rules — system paths, secret files,
 destructive git. Merge its `permissions.deny` array into the project's
 `.claude/settings.json`. It is additive and safe to apply to any repository.
 
@@ -191,7 +224,12 @@ file-editing tool including `Write`. Claude Code says so on every config run,
 once per rule.
 
 **0.32.0 adds `Edit(**/.orrery/config.json)`**, the rule that keeps a session
-from editing the settings file. Merge again to get it.
+from editing the settings file, **and 0.33.0 `Edit(**/.orrery/local/config.json)`**
+for this machine's one, with eight more that keep a session off the records the
+gates read: `.orrery/local/*.tsv`, `deny.json`, `sessions/**`, `doctor/**`,
+`work/**`, `onboard/install-record.json`, `.orrery/deny-declined.json` and the legacy `.claude/orrery-deny.json`. The
+process guard refuses the same writes from the first session after install;
+merge again to make the rules the boundary.
 
 **Then merge it again after an update.** This is not a step you finish. Every
 release that adds a deny rule adds it to the file you copied by hand — the plugin
@@ -228,14 +266,16 @@ startup line and in the doctor's list alike. **Commit that file.** It is your
 team's decision rather than your laptop's: committed, it holds for everyone in
 the repository and it turns up in a pull request where someone can push back on
 it, which is the only review a deliberately widened gap gets. To un-decline a
-rule, edit the file and commit that. If you would rather keep the decision to
+rule, edit the file yourself and commit that — a session is refused it, since
+the file silences a warning. If you would rather keep the decision to
 your own machine, add the path to your `.gitignore` in the same edit — Orrery
 never edits that file, so nothing else will.
 
 **Why we do not merge it for you.** `.claude/settings.json` carries every deny
 decision in your project, and a plugin that edits it is a plugin that can quietly
 widen what it is allowed to do. So this check reads that file and never writes
-it, and no skill here will merge on your behalf. `deny-declined.json` is the only
+it, and no skill will merge on your behalf: `onboard` drafts, and the merge
+happens only when you run its script. `deny-declined.json` is the only
 file it writes, and it is a different kind of thing: no permission rules, no
 grants, read by this check alone, and written only when you type the command
 above.
@@ -421,8 +461,13 @@ without merging is closed on its branch with
 
 **Or keep records off the branch.** Add `.orrery/work/` to your own
 `.gitignore` — your edit; Orrery never makes it. The gate then accepts a record
-on disk, and each record lives only in its worktree: removing the worktree
-deletes it, and `doctor` says so on every run.
+on disk, and records are in no branch. Each one is written in its worktree,
+and a hook copies it, each time it is written, to the main checkout's
+`.orrery/local/work/<work>@<when its branch began>/` — or `@<its first own
+commit>`, or the name alone when neither is known — and that copy outlives
+`git worktree remove`. A record written some other way than `record.sh` or
+the Write and Edit tools is copied the next time either runs. `doctor` says
+where they are on every run.
 
 The reason is a measurement, not a preference: across three projects in one
 week, 179 issues closed and 218 pull requests merged with **two** retrospectives

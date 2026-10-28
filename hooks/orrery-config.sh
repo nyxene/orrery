@@ -48,15 +48,54 @@ orrery_config_file() {
   printf '%s/.orrery/config.json' "$top"
 }
 
+# This machine's settings, shared by every worktree of the clone. Under `local/`,
+# so ignored by construction — for a project that keeps its settings out of the
+# repository. Resolution only: reading never creates the directory.
+orrery_config_local_file() {
+  local main; main="$(orrery_main "${1:-.}")"
+  [ -n "$main" ] || return 0
+  printf '%s/.orrery/local/config.json' "$main"
+}
+
+# Whether file $1 is exactly one JSON object. Slurped, because `{} {}` is two
+# documents that each pass `type == "object"` and then reach a caller as two lines.
+orrery_config_valid() { jq -e -s 'length == 1 and (.[0] | type) == "object"' "$1" >/dev/null 2>&1; }
+
+# One file as a JSON object: `{}` when absent, empty, or not exactly one object.
+orrery_config_obj() {
+  local o=""
+  [ -n "$1" ] && [ -r "$1" ] && o="$(jq -c -s 'if length == 1 and (.[0] | type) == "object" then .[0] else {} end' "$1" 2>/dev/null)"
+  [ -n "$o" ] || o='{}'
+  printf '%s' "$o"
+}
+
+# The settings in force: every key the committed file declares, and the local
+# file's only where the committed one is silent. A file outside review never
+# overrides one inside it; in a project with no committed file the local one is
+# all there is, and the loader shows its gate keys to the person instead.
+orrery_config_json() {
+  jq -c -n --argjson c "$(orrery_config_obj "$(orrery_config_file "${1:-.}")")" \
+    --argjson l "$(orrery_config_obj "$(orrery_config_local_file "${1:-.}")")" '$l + $c'
+}
+
 # orrery_config <key> [default] [dir] — the declared value, or the default.
 # A string prints as itself; anything else as compact JSON.
 orrery_config() {
-  local f v
-  f="$(orrery_config_file "${3:-.}")"
-  if [ -n "$f" ] && [ -r "$f" ]; then
-    v="$(jq -r --arg k "$1" 'if (.[$k] | type) == "string" then .[$k] elif has($k) then (.[$k] | tojson) else empty end' "$f" 2>/dev/null)" || v=""
-  fi
+  local v
+  v="$(jq -r --arg k "$1" 'if (.[$k] | type) == "string" then .[$k] elif has($k) then (.[$k] | tojson) else empty end' \
+    <<<"$(orrery_config_json "${3:-.}")" 2>/dev/null)" || v=""
   printf '%s' "${v:-${2:-}}"
+}
+
+# orrery_config_source <key> [dir] — `committed`, `local` or `default`.
+orrery_config_source() {
+  if jq -e --arg k "$1" 'has($k)' <<<"$(orrery_config_obj "$(orrery_config_file "${2:-.}")")" >/dev/null 2>&1; then
+    printf committed
+  elif jq -e --arg k "$1" 'has($k)' <<<"$(orrery_config_obj "$(orrery_config_local_file "${2:-.}")")" >/dev/null 2>&1; then
+    printf local
+  else
+    printf default
+  fi
 }
 
 # `none` unless the project declared a tracker. Every tracker-dependent
@@ -67,17 +106,25 @@ orrery_tracker() {
   case "$t" in github) printf github ;; *) printf none ;; esac
 }
 
-# Why the config would not be read, or nothing when it is fine: `missing` or
-# `malformed`. Only worth saying where the project is plainly on GitHub — a
-# project with no config and no GitHub remote is the default case, not a fault.
+# Why the config would not be read, or nothing when it is fine: `malformed`,
+# `malformed-local` or `malformed-both`, else `missing`. Missing is only worth
+# saying where the project is plainly on GitHub, has no committed file — one
+# that leaves the tracker out has decided — and no tracker locally either: a
+# local file that sets only the language must not hide that the gate moved.
 orrery_config_problem() {
-  local f; f="$(orrery_config_file "${1:-.}")"
+  local f l c=ok lo=ok
+  f="$(orrery_config_file "${1:-.}")"; l="$(orrery_config_local_file "${1:-.}")"
   [ -n "$f" ] || return 0
-  if [ ! -e "$f" ]; then
-    git -C "${1:-.}" remote get-url origin 2>/dev/null | grep -q 'github\.com' && printf missing
-  elif ! jq -e 'type == "object"' "$f" >/dev/null 2>&1; then
-    printf malformed
-  fi
+  [ ! -e "$f" ] || orrery_config_valid "$f" || c=bad
+  [ ! -e "$l" ] || orrery_config_valid "$l" || lo=bad
+  case "$c/$lo" in
+    bad/bad) printf malformed-both ;;
+    bad/ok)  printf malformed ;;
+    ok/bad)  printf malformed-local ;;
+    *) if [ ! -e "$f" ] && [ "$(orrery_config_source tracker "${1:-.}")" = default ]; then
+         git -C "${1:-.}" remote get-url origin 2>/dev/null | grep -q 'github\.com' && printf missing
+       fi ;;
+  esac
   return 0
 }
 
@@ -162,4 +209,35 @@ orrery_local_read() {
   new="$main/.orrery/local/$1"
   case "$2" in /*) old="$2" ;; *) old="$main/$2" ;; esac
   if [ ! -e "$new" ] && [ -n "$2" ] && [ -e "$old" ]; then printf '%s' "$old"; else printf '%s' "$new"; fi
+}
+
+# orrery_work_archive <dir> — where the tree $1 stands in ignores `.orrery/work/`,
+# copy its records into the main checkout's `.orrery/local/work/`, so they outlive
+# `git worktree remove`: an ignored file is in no branch. Records stay written in
+# the tree, where a sandboxed session can write them; this runs from a hook, which
+# can reach the main checkout. Each work lands in `<work>@<when its branch began>`
+# — a reused name is a new copy, never the old one's — or, with no reflog entry,
+# `<work>@<its first own commit>`, or `<work>` alone. Copied over, never replaced:
+# a record deleted or half-written in the tree takes nothing from the copy.
+# `debt/` merges per file. The main checkout and committed records need nothing.
+orrery_work_archive() {
+  local top main base key d n dst
+  top="$(orrery_toplevel "$1")"; main="$(orrery_main "$1")"
+  [ -n "$top" ] && [ "$top" != "$main" ] && [ -d "$top/.orrery/work" ] || return 0
+  git -C "$top" check-ignore -q .orrery/work/x 2>/dev/null || return 0
+  key="$(orrery_born "$(git -C "$top" symbolic-ref --short -q HEAD 2>/dev/null)" "$top")"
+  key="${key//[-:]/}"
+  if [ -z "$key" ]; then
+    base="$(git -C "$top" rev-parse -q --verify refs/remotes/origin/HEAD 2>/dev/null \
+      || git -C "$top" rev-parse -q --verify main 2>/dev/null || true)"
+    [ -z "$base" ] || key="$(git -C "$top" rev-list --reverse "$base..HEAD" 2>/dev/null | head -1 | cut -c1-12)"
+  fi
+  d="$(orrery_local_ensure "$top")" || return 0
+  for n in "$top"/.orrery/work/*/; do
+    [ -d "$n" ] || continue
+    n="$(basename "$n")"
+    if [ "$n" = debt ]; then dst="$d/work/debt"; else dst="$d/work/$n${key:+@$key}"; fi
+    mkdir -p "$dst" && cp -R "$top/.orrery/work/$n/." "$dst/" 2>/dev/null || true
+  done
+  return 0
 }

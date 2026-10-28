@@ -10,16 +10,18 @@ Two modes. Filing is the frequent one.
 
 **This skill owns the distinction, not the taxonomy.** What counts as debt is
 settled here and is the same everywhere. Which labels carry it is the project's,
-declared in its `.orrery/config.json` (`debtLabels`) — a label list baked in here is a label list that is
+declared in its settings (`debtLabels` in `.orrery/config.json`, or in this machine's `.orrery/local/config.json`) — a label list baked in here is a label list that is
 wrong in every project but one, and wrong silently, because a query against a
 label nobody uses returns an empty pool rather than an error.
 
 The register of debt is the tracker, where the project has one (`"tracker":
-"github"` in `.orrery/config.json`). Without one it is `.orrery/work/debt/` — one
+"github"` in its settings). Without one it is `.orrery/work/debt/` — one
 file per item, committed with the work that found it, reaching the default
 branch with that work's merge. **One register per project, never both:** a
 second ledger beside the first has no reader, and it rots within a week of the
-first item that only lands in one of the two.
+first item that only lands in one of the two. Where the project ignores
+`.orrery/work/`, the register is still the tree's `work/debt/`; the copy a hook
+keeps in `.orrery/local/work/debt/` is history — a paid item stays there.
 
 ---
 
@@ -90,7 +92,7 @@ Priority is set by consequence:
 - `low` — cosmetic, or unreachable today
 
 Labels: the project's debt label, its scope label for the area, and its priority
-label. All three come from the project's `.orrery/config.json` (`debtLabels`). If it declares none, say
+label. All three come from the project's settings (`debtLabels`). If it declares none, say
 so and use what the tracker already has rather than inventing a scheme — a
 taxonomy invented per session is worse than no taxonomy.
 
@@ -142,7 +144,7 @@ task closes that many debt issues from the active pool. When none is declared,
 the skill only tracks and reports.
 
 **The pool is narrow on purpose.** Each project declares its own pool — the
-area labels whose debt feeds this rule — in its `.orrery/config.json`
+area labels whose debt feeds this rule — in its settings
 (`debtLabels.pool`). Query once per
 pool label: repeated `--label` flags are ANDed, so two in one call ask for
 issues carrying both. Debt outside that

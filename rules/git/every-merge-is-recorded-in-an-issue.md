@@ -12,7 +12,8 @@ to do with whether anyone can find out later why it happened.
 
 This binds where `.orrery/config.json` declares `"tracker": "github"`. Without
 a tracker the record of what reached the default branch is the work's
-`.orrery/work/<work>/`, committed with it.
+`.orrery/work/<work>/`, committed with it — or, where the project ignores
+that directory, its copy in the main checkout's `.orrery/local/work/`.
 
 **Work found mid-task joins the issue you are already under.** A defect you hit
 while doing something else is fixed in the same pull request — its own commit if

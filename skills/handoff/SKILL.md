@@ -39,8 +39,9 @@ piece of work, replaced each time, and deleted when the work closes:
 | Needs no tracker | It is a file, so a project with no tracker, or one at work that uses none, has the same handoff |
 
 It is committed like the rest of `.orrery/work/` unless the project ignores that
-directory in its own `.gitignore` — then it lives only in its worktree, which is
-the project's choice to make. Committed, it is never merged: the record deletes
+directory in its own `.gitignore` — then it is in no branch, and a hook copies it,
+each time it is written, to the main checkout's `.orrery/local/work/`, where it
+outlives its worktree. Committed, it is never merged: the record deletes
 it before the final push.
 
 ### Finding it
@@ -52,7 +53,10 @@ be left to memory. In order, stopping at the first that answers:
 2. **The worktrees.** `ls .claude/worktrees/*/.orrery/work/*/handoff.md` from the
    main checkout. One result is the answer; several mean you have to pick, so
    print each with its work's name rather than guessing.
-3. **Ask.** Cheaper than resuming the wrong work.
+3. **The archive.** `ls .orrery/local/work/*/handoff.md` from the main checkout,
+   where the project ignores `.orrery/work/`. One whose worktree is gone is
+   history, not work to resume: say so, and resume it only on the owner's word.
+4. **Ask.** Cheaper than resuming the wrong work.
 
 **Nothing to hand off?** The test is whether the work closes. Name what is
 outstanding and what would finish it; if you cannot, there was no work to hand

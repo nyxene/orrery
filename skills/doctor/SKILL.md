@@ -116,7 +116,7 @@ news.
   `/plugin marketplace remove orrery-method` takes out the marketplace and the
   plugin installed from it.
 - **Usage: no log** — no call log, so nothing can say what ran here. Either
-  `.orrery/config.json` says `"callLog": false`, or no session has run since
+  `.orrery/config.json` (or this machine's `.orrery/local/config.json`) says `"callLog": false`, or no session has run since
   the install. Not an install fault.
 - **Usage: no skills in N days** — the plugin loads and nothing invokes it.
   Nothing to repair in the install; say it to whoever directs the work, since
@@ -124,7 +124,7 @@ news.
 - **Spawns: k/n untyped** — those agents ran with no type or as
   `general-purpose`, so no role's model or tool list applied. Pass the role as
   `subagent_type` (`orrery:critic`, `orrery:auditor`, …) when spawning.
-- **Config: missing** — a GitHub remote and no `.orrery/config.json`, so the
+- **Config: missing** — a GitHub remote, no `.orrery/config.json` and no tracker in `.orrery/local/config.json`, so the
   tracker reads as none and the guard gates a branch's first push rather than
   `gh pr create`. Declaring `"tracker": "github"` is the project's edit to make;
   the model may not write that file. **malformed** — it does not parse, and every

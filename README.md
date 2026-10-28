@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.32.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.33.0-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -46,7 +46,7 @@ exactly what to declare. Without a tracker, records, handoffs and debt are files
 in `.orrery/work/`. A library that hard-codes one project's labels is
 wrong in every project but one, and wrong silently.
 
-## The thirteen skills
+## The fourteen skills
 
 Each one is invoked by name (`/plan`, `/learn`) or proposed by the agent when
 its moment arrives.
@@ -62,6 +62,7 @@ its moment arrives.
 | ✂️ | **`pare`** | Take the smallest solution that actually works |
 | 📋 | **`debt`** | File the mess you chose not to fix — and pay the declared quota down every feature task |
 | 🧭 | **`doctor`** | Check the plugin is actually loaded and current, not just installed |
+| 🚪 | **`onboard`** | Bring Orrery into a project, or an older install onto this version — settings drafted, one script to run |
 | 📮 | **`feedback`** | Report friction with the tooling itself, sanitized, and only on your word |
 | 🤝 | **`handoff`** | Carry the dead ends across a context reset, where they would otherwise evaporate |
 | 🎓 | **`learn`** | Turn an incident into a rule, while the cause is still known |
@@ -84,15 +85,17 @@ charges, not staking a claim on the work.
   consensus-planning loop, and the independent audit that runs before anything
   is committed. Drafting a plan is not one of them — `plan` writes in the
   session that invoked it, and spends agents only on reading what it wrote.
-- **Eight hooks** — three guards (a Bash guard with a mutation-tested case
+- **Nine hooks** — three guards (a Bash guard with a mutation-tested case
   corpus, an agent guard, and a process gate that refuses to open a pull
   request — or, with no tracker, a branch's first push — before the work's
   record is committed and an auditor has run), two
   loaders for the canon and for scoped rules, a prompt that catches unfinished
   work before a context reset takes it, a reporter that tells you when your
-  project's copy of the deny-list has fallen behind the one shipped here, and a
-  recorder of which tools were called, on by default and kept on your machine.
-- **A deny-list** — 122 deny rules covering system paths, secret files and
+  project's copy of the deny-list has fallen behind the one shipped here, a
+  recorder of which tools were called, on by default and kept on your machine,
+  and an archiver that keeps a work's records past its worktree where your
+  project chooses not to commit them.
+- **A deny-list** — 131 deny rules covering system paths, secret files and
   destructive git, additive to your existing settings and safe on any repo.
 
 ## Which platforms this holds on
@@ -225,7 +228,7 @@ gh release verify v0.30.4 -R nyxene/orrery
 
 <div align="center">
 
-Version 0.32.0 · Canon, thirteen skills, three agents, 23 rules, eight hooks
+Version 0.33.0 · Canon, fourteen skills, three agents, 23 rules, nine hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

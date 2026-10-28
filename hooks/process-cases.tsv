@@ -113,6 +113,71 @@ allow	echo "use EnterWorktree, not git worktree add"
 allow	gitk worktree add
 deny	git -C "/repo with space" worktree add ../x
 deny	git -c core.x='a b' worktree add ../x
+
+# The settings files are a person's to write: a shell write to either is refused,
+# a read and a copy out of them pass.
+deny	echo '{}' > .orrery/config.json
+deny	printf x >> .orrery/local/config.json
+deny	jq '.callLog=false' c.json > "/repo/.orrery/local/config.json"
+deny	echo x | tee .orrery/local/config.json
+deny	tee -a .orrery/config.json < x
+deny	sed -i '' 's/github/none/' .orrery/config.json
+deny	perl -pi -e 's/a/b/' .orrery/local/config.json
+deny	cp /tmp/c.json .orrery/local/config.json
+deny	mv x .orrery/config.json && git add -A
+deny	rm -f .orrery/local/config.json
+deny	cd /repo; truncate -s0 .orrery/config.json
+allow	cat .orrery/config.json
+allow	jq . .orrery/local/config.json
+allow	cp .orrery/config.json /tmp/backup.json
+allow	git diff .orrery/config.json
+allow	grep tracker .orrery/local/config.json > /tmp/out
+allow	sed -n 1p .orrery/config.json
+allow	echo "never write .orrery/config.json yourself"
+deny	echo x >| .orrery/config.json
+deny	sed --in-place 's/a/b/' .orrery/config.json
+deny	sed -i.bak s/a/b/ .orrery/local/config.json
+deny	mv .orrery/config.json /tmp/away
+deny	rm .orrery/local/config.json other.txt
+allow	perl -Mstrict -ne print .orrery/config.json
+allow	tee /tmp/out < .orrery/config.json
+# Case: on macOS the capitalised spelling is the same file. The flags keep their
+# case, and it means different things per tool: BSD sed's `-I` is in place, and
+# `-ie` is `-i` with the backup suffix `e`; perl's `-I lib` is a read.
+deny	echo x > .Orrery/Config.json
+deny	sed -I "" s/a/b/ .orrery/config.json
+deny	sed -ie s/a/b/ .orrery/local/config.json
+allow	perl -I lib -ne print .orrery/config.json
+allow	sed -n 's/i/I/p' .orrery/config.json
+# A link is a second name to write the file by: refused with the file anywhere.
+deny	ln -s .orrery/config.json alias.json
+deny	ln -sf /repo/.orrery/local/config.json ~/c.json
+deny	link .orrery/config.json alias.json
+deny	cp -l .orrery/config.json alias.json
+deny	cp --link .orrery/local/config.json alias.json
+#
+# The edit tools, the same two files. The deny list keeps them off only once it
+# is merged into the project's settings; before that a session wrote the local
+# one with Write (the 0.33.0 rehearsal). `@edit`, `@write` and `@notebook` make
+# that tool's payload, carrying a path and no command.
+deny	@write /repo/.orrery/local/config.json
+deny	@edit /repo/.orrery/config.json
+deny	@write .orrery/config.json
+deny	@edit /repo/.Orrery/Local/Config.JSON
+deny	@write /repo/.orrery//config.json
+deny	@write /repo/.orrery/./local/config.json
+deny	@write /repo/.orrery/././config.json
+deny	@write /repo/.orrery/local/../config.json
+deny	@write /repo/.claude/worktrees/w/.orrery/config.json
+deny	@notebook /repo/.orrery/config.json
+deny	@write /repo/.orrery/config.json/
+deny	@write /repo/.orrery/local/config.json/x/..
+allow	@write /repo/.orrery/local/onboard/project/config.json
+allow	@write /repo/app/config.json
+allow	@edit /repo/.orrery/config.json.bak
+allow	@write /repo/x.orrery/config.json
+allow	@edit /repo/.orrery/work/w/retrospective.md
+allow	@nopath
 # Quote-blind, as for the other acts: `do` is a command-position word, so this
 # echo is refused. It costs an argument, not a boundary.
 deny	echo "do git worktree add"
@@ -159,3 +224,88 @@ allow	echo "git push origin solo"	@push
 allow	gh pr create --fill	@push
 # With a tracker the pull request is the act, and a push passes.
 allow	git push -u origin HEAD:refs/heads/topic
+#
+# The records the gates read: a session neither erases nor rewrites them. Each
+# file, by the edit tools and by the shell's write shapes; reads and copies out pass.
+deny	@write /repo/.orrery/local/calls.tsv
+deny	@edit /repo/.orrery/local/pr-gate.tsv
+deny	@write /repo/.orrery/local/waivers.tsv
+deny	@write /repo/.orrery/local/deny.json
+deny	@write /repo/.orrery/local/.gitignore
+deny	@write /repo/.orrery/local/sessions/s.worktree
+deny	@write /repo/.orrery/local/doctor/cache-digest
+deny	@write /repo/.orrery/local/work/w@1/retrospective.md
+deny	@write /repo/.orrery/local/onboard/install-record.json
+deny	@write /repo/.orrery/deny-declined.json
+deny	@write /repo/.claude/orrery-deny.json
+deny	@edit /repo/.Orrery/Local/Calls.TSV
+deny	@write /repo/.orrery//local//calls.tsv
+deny	@write /repo/.orrery/local/onboard/../calls.tsv
+deny	@write /repo/.orrery/local/work/../pr-gate.tsv
+deny	@write /repo/.orrery/local/onboard/../sessions/s.worktree
+deny	@write /repo/.orrery/local/calls.tsv/
+deny	@notebook /repo/.orrery/local/waivers.tsv
+allow	@write /repo/.orrery/local/onboard/proj/config.json
+allow	@write /repo/.orrery/work/w/retrospective.md
+allow	@write /repo/logs/calls.tsv
+allow	@write /repo/.claude/orrery-deny.json.bak
+deny	printf 'x\tauditor\tran\n' >> .orrery/local/calls.tsv
+deny	: > .orrery/local/calls.tsv
+deny	sed -i '' '/auditor/d' .orrery/local/calls.tsv
+deny	truncate -s0 .orrery/local/waivers.tsv
+deny	rm .orrery/local/pr-gate.tsv
+deny	rm .orrery/local/pr-gate*
+deny	mv .orrery/local/waivers.tsv /tmp/w
+deny	cp /tmp/f .orrery/local/deny.json
+deny	echo '{}' > .orrery/deny-declined.json
+deny	echo '{}' > .claude/orrery-deny.json
+deny	rm -f .orrery/local/sessions/abc.worktree
+deny	rm -rf .orrery/local
+deny	rm -rf .orrery
+deny	mv .orrery /tmp/x
+deny	echo x > .Orrery/Local/Calls.tsv
+deny	hooks/call-log.sh --purge
+deny	bash "/x/hooks/call-log.sh" --purge
+allow	cat .orrery/local/calls.tsv
+allow	wc -l .orrery/local/calls.tsv
+allow	awk -F'\t' '$6 == "ran"' .orrery/local/calls.tsv
+allow	grep x .orrery/local/waivers.tsv > /tmp/out
+allow	jq . .orrery/deny-declined.json
+allow	git add .orrery/deny-declined.json
+allow	git diff .orrery/deny-declined.json
+allow	cp .orrery/local/calls.tsv /tmp/calls.tsv
+allow	cp -r .orrery /tmp/backup
+allow	ORRERY_CALL_LOG=.orrery/local/calls.tsv tools/report.sh
+allow	bash hooks/waiver.sh "gh pr create" "owner: skip" stated
+allow	hooks/call-log.sh
+allow	echo "call-log.sh --purge is the owner's"
+allow	ls > .orrery-list.txt
+deny	rm .orrery/local/*
+deny	rm -rf .orrery/local/doctor
+deny	echo x > .orrery/local/onboard/install-record.json
+allow	echo '{}' > .orrery/local/onboard/proj/config.json
+# From the audit. The last-argument shape with a command after it — one ending
+# had eaten the `;` and the other found `ls`; the settings file passed too.
+deny	cp /tmp/f .orrery/local/calls.tsv; ls
+deny	truncate -s0 .orrery/local/calls.tsv; echo done
+deny	cp /tmp/f .orrery/config.json; ls
+# A `.`/`..` segment right after `.orrery/`, and on the legacy name.
+deny	echo x > .orrery/./local/calls.tsv
+deny	echo x > .orrery/./config.json
+deny	echo x > .orrery/local/onboard/../calls.tsv
+deny	echo x > .claude/./orrery-deny.json
+deny	@write /repo/.claude/./orrery-deny.json
+deny	@write /repo/.claude/x/../orrery-deny.json
+deny	echo x > .orrery/local/work/w/r.md
+deny	echo x > .orrery/local/doctor/log.md
+# A draft directory is the session's own, itself included.
+allow	cp /tmp/f .orrery/local/onboard/proj/
+# `--purge` however it is quoted or started.
+deny	hooks/call-log.sh "--purge"
+deny	zsh hooks/call-log.sh --purge
+deny	. hooks/call-log.sh --purge
+deny	source hooks/call-log.sh --purge
+# Known limits, written down: these pass.
+allow	find .orrery/local -delete
+# A known false refusal: the redirect shape does not see quotes.
+deny	echo "x > .orrery/local/calls.tsv"

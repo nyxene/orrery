@@ -8,7 +8,8 @@
 # `hooks/guard-test-lib.sh`. What is stated here is what makes this guard
 # different, and one of the three differences is an inversion:
 #
-#   * the payload is a Bash command, like the Bash guard's;
+#   * the payload is a Bash command, like the Bash guard's — or an edit tool's
+#     path, for the settings files (`@edit`, `@write`, `@notebook` in the corpus);
 #   * the decision lines include a `sed` extraction, not only greps;
 #   * **it fails open**, where both other guards fail closed.
 #
@@ -59,7 +60,7 @@ CASES="$here/process-cases.tsv"
 # were about something else entirely. Blanking any of these leaves the variable
 # unset under `set -u`, the guard exits non-zero, and every `deny` case in the
 # corpus goes red, which is a real kill rather than an artifact.
-MUTANTS_RE='^[[:space:]]*(if )?grep -q|^[[:space:]]*if \[ -z "\$reason" \]|^(assign|pos|ghflags|gitflags)=|^[[:space:]]*(scan|pr|prmatch|since|gitdir|log|state|top|rec|base|last|waived|first|pushmatch|def|cur|head|work)=|^[[:space:]]*(\{ ! git|\|\| \{ \[ -n "\$base"|&& ! \{ git|if record_missing|if \[ -n "\$log" \]|if \[ -n "\$first" \]|if \[ "\$u" = 1|\|\| ! git|-u\||-d\||--all\||\[ "\$(src|dst)" !=|\[ -n "\$remote"|\[ "\$\{#refs|src="\$\{src#|case "\$dst"|git -C "\$top" show-ref|w="\$\{w#)|^if \[ -n "\$pushmatch" \]|^[[:space:]]*fp="\$\(fingerprint\)"|^if \[ -n "\$prmatch" \]|^[[:space:]]*if \[ -n "\$top" \]|^[[:space:]]*if \[ -n "\$log" \]|^[[:space:]]*if \[ -z "\$waived" \]|^[[:space:]]*waive "|^[[:space:]]*\[ ! -f "\$state" \]|^[[:space:]]*\$2 == fp|^[[:space:]]*\$6 == "ran"|^[[:space:]]*hd \{|^[[:space:]]*if \(match'
+MUTANTS_RE='^[[:space:]]*(if )?grep -q|^[[:space:]]*if \[ -z "\$reason" \]|^(assign|pos|ghflags|gitflags|cfg|cfgpath|target|settings_msg)=|^[[:space:]]*(scan|pr|prmatch|since|gitdir|log|state|top|rec|base|last|waived|first|pushmatch|def|cur|head|work)=|^[[:space:]]*(\{ ! git|\|\| \{ \[ -n "\$base"|&& ! \{ git|if record_missing|if \[ -n "\$log" \]|if \[ -n "\$first" \]|if \[ "\$u" = 1|\|\| ! git|-u\||-d\||--all\||\[ "\$(src|dst)" !=|\[ -n "\$remote"|\[ "\$\{#refs|src="\$\{src#|case "\$dst"|git -C "\$top" show-ref|w="\$\{w#)|^if \[ -n "\$pushmatch" \]|^[[:space:]]*fp="\$\(fingerprint\)"|^if \[ -n "\$prmatch" \]|^[[:space:]]*if \[ -n "\$top" \]|^[[:space:]]*if \[ -n "\$log" \]|^[[:space:]]*if \[ -z "\$waived" \]|^[[:space:]]*waive "|^[[:space:]]*\[ ! -f "\$state" \]|^[[:space:]]*\$2 == fp|^[[:space:]]*\$6 == "ran"|^[[:space:]]*hd \{|^[[:space:]]*if \(match'
 
 tmp="${TMPDIR:-/tmp}/orrery-process-guard-test.$$"
 mutdir="$tmp.mut"
@@ -79,6 +80,14 @@ ln -s "$(command -v bash)" "$fakebin/bash"
 
 payload() { # $1 = command, $2 = tool_use_id or `@push`, $3 = cwd (default: none, the launch directory)
   local u="${2:-toolu_test}" d="${3:-}"
+  # `@edit <path>`, `@write <path>`, `@notebook <path>`: an edit tool's payload,
+  # carrying the path where that tool carries it and no command at all;
+  # `@nopath`, one carrying neither.
+  case "$1" in
+    @nopath) jq -n '{session_id:"test-session",tool_input:{content:"x"}}'; return ;;
+    "@edit "*|"@write "*) jq -n --arg p "${1#* }" '{session_id:"test-session",tool_input:{file_path:$p,content:"x"}}'; return ;;
+    "@notebook "*) jq -n --arg p "${1#* }" '{session_id:"test-session",tool_input:{notebook_path:$p,new_source:"x"}}'; return ;;
+  esac
   [ "$u" != @push ] || { u=toolu_test; d="$push"; }
   jq -n --arg c "$1" --arg u "$u" --arg d "$d" \
     '{session_id:"test-session",tool_use_id:$u,tool_input:{command:$c}} + (if $d == "" then {} else {cwd:$d} end)'
@@ -132,6 +141,10 @@ probes() { # $1 = guard path — prints how many it gets wrong
 
   # No jq, same direction.
   out="$(payload 'gh pr create --fill' \
+    | PATH="$fakebin" "$fakebin/bash" "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" && fails=$((fails + 1))
+  # And for an edit tool on a settings file: the fail-open holds there too.
+  out="$(payload '@write /repo/.orrery/config.json' \
     | PATH="$fakebin" "$fakebin/bash" "$1" 2>/dev/null || true)"
   grep -q '"deny"' <<<"$out" && fails=$((fails + 1))
 
@@ -299,6 +312,15 @@ fi
 total="$(grep -cE '^(deny|allow)	' "$CASES")"
 fails="$(VERBOSE=1 corpus "$guard")"
 if [ "$fails" -eq 0 ]; then ok "$total corpus cases"; else bad "$total corpus cases" "$fails failing"; fi
+
+# The corpus feeds payloads to the script directly, so it cannot see whether the
+# plugin routes a tool to it at all. A matcher reverted to `^Bash$` would leave
+# every edit-tool case green and the settings files open to Write again.
+for t in Bash Edit Write MultiEdit NotebookEdit; do
+  if jq -e --arg t "$t" '[.hooks.PreToolUse[] | select(any(.hooks[]; .command | test("process-guard\\.sh"))) | .matcher as $m | $t | test($m)] | any' "$here/hooks.json" >/dev/null 2>&1; then
+    ok "hooks.json routes $t to the guard"
+  else bad "hooks.json routes $t to the guard" "no process-guard matcher matches it"; fi
+done
 
 # The refusal is read by a session that has to act on it, so it has to name the
 # way out. A deny that only says no gets worked around rather than followed.

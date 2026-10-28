@@ -185,6 +185,42 @@ else
   bad "a malformed config is warned about and the canon still loads" "$out"
 fi
 
+# --- this machine's local file: marked for the model, gate keys told the person
+mkdir -p "$repo/.orrery/local"
+printf '{"planDirectory":"p/"}' > "$repo/.orrery/config.json"
+printf '{"callLog":false,"outputLanguage":"Russian"}' > "$repo/.orrery/local/config.json"
+out="$(feed SessionStart "$repo")"; ctx="$(context "$out")"
+if grep -qF -- '- callLog: false (local)' <<<"$ctx" && grep -qF -- '- planDirectory: p/' <<<"$ctx" \
+   && ! grep -qF -- 'p/ (local)' <<<"$ctx"; then
+  ok "a key from the local file is marked (local), a committed one is not"
+else
+  bad "a key from the local file is marked (local), a committed one is not" "$ctx"
+fi
+if jq -e '(.systemMessage | test("callLog=false")) and (.systemMessage | test("outputLanguage") | not) and (.hookSpecificOutput.additionalContext | test("non-negotiable"))' <<<"$out" >/dev/null 2>&1; then
+  ok "a local gate key reaches the person, beside the canon, and only gate keys do"
+else
+  bad "a local gate key reaches the person, beside the canon, and only gate keys do" "$out"
+fi
+printf '{"planDirectory":"p/","callLog":true}' > "$repo/.orrery/config.json"
+if jq -e 'has("systemMessage") | not' <<<"$(feed SessionStart "$repo")" >/dev/null 2>&1; then
+  ok "a gate key the committed file declares is not told as local"
+else
+  bad "a gate key the committed file declares is not told as local" "systemMessage present"
+fi
+printf '{"tracker":"github"}' > "$repo/.orrery/local/config.json"
+if jq -e 'has("systemMessage") | not' <<<"$(feed SubagentStart "$repo")" >/dev/null 2>&1; then
+  ok "the person is told once per session, not once per subagent"
+else
+  bad "the person is told once per session, not once per subagent" "SubagentStart carried it"
+fi
+printf 'nope' > "$repo/.orrery/local/config.json"
+if grep -q "local/config.json is not a valid JSON object" <<<"$(context "$(feed SessionStart "$repo")")"; then
+  ok "a malformed local file is named as the local one"
+else
+  bad "a malformed local file is named as the local one" "no warning"
+fi
+rm -rf "$repo/.orrery/local" "$repo/.orrery/config.json"
+
 # --- outside a repository the canon still arrives ----------------------------
 # A project that is not a git repository, a payload cwd that no longer exists:
 # the config lookup finds nothing, and that must mean defaults, not an exit.

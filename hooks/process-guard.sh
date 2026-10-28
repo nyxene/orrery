@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# PreToolUse guard for the Bash tool. One act refused until its obligation is
+# PreToolUse guard for the Bash tool, and for the edit tools on Orrery's two
+# settings files (see that block below). One act refused until its obligation is
 # met — where the work heads for the default branch, with no auditor run in this
 # session since it last did, or with no record of the work committed — and one
 # act refused outright, because the harness does it the safe way:
@@ -208,6 +209,87 @@ if grep -qE "${pos}(rtk[[:space:]]+)?git[[:space:]]+${gitflags}worktree[[:space:
 fails on protected .claude/ paths, and outside it nothing is protected. Use
 EnterWorktree for this session, or isolation: \"worktree\" on an Agent. If
 neither fits, ask the person to run it in their terminal."
+fi
+
+# --- the settings, and the records the gates read, are not a session's -------
+# `.orrery/config.json` and this machine's `.orrery/local/config.json`: either
+# can switch a gate off, and the local one is outside review entirely — written
+# by a session, nothing would show it until the next session's start.
+#
+# And the records (`orrery-config.sh` states the rule: `.orrery/local/` is
+# written only by hooks). What is at stake is the evidence, not the gates' force
+# — every gate here is a nudge, and an idle auditor is cheaper than a forged
+# row — so the threat is erasing or rewriting: the call log, the gate's state
+# (deleted, its "since" resets), the waiver log, `deny.json` (a matching hash
+# silences the startup line), the session markers (a worktree's creator record), the
+# doctor's cache-digest baseline, the archived records, `onboard/install-record.json`
+# (rollback writes it into the plugin registry), and the decline record with its
+# legacy name, which silences the missing-deny-rules line. Every file directly in
+# `.orrery/local/` is protected, and everything under `sessions/`, `doctor/` and
+# `work/`; open are only onboard's draft directories, `onboard/<project>/`, and
+# only on a path with no `.`/`..` segment after `.orrery/`. Their writers are
+# hooks and scripts, whose command lines name none of this, so nothing they do is
+# refused. The deny rules, once merged, cover the same files by name — never
+# `Edit(**/.orrery/local/*)`, which as a directory pattern could deny the draft
+# directories themselves.
+#
+# The edit tools. The deny list keeps them off both files, but only once it is
+# merged into the project's settings, and a session in a fresh project wrote the
+# local one with Write before that (the 0.33.0 rehearsal). Plugin hooks arrive
+# with the install, so this holds from the first session; the deny rule, once
+# merged, is the boundary, and this is the nudge before it. No `tool_name` test:
+# the matcher already scopes, and a Bash payload has no file_path, so such a
+# line could be deleted without anything changing. The pattern absorbs `//`;
+# a `config.json` on a path with a `.` or `..` segment is refused outright, and
+# so is anything below either file (`config.json/`, `config.json/x/..`), which
+# a resolver folds back onto it — a legitimate one is rare where the tools take
+# absolute paths, and rewriting the path first missed `/././` (one pass cannot
+# see overlapping matches). Not modelled: a directory symlink written through
+# (`link/config.json`), Windows separators.
+#
+# The shell. A redirect (`>`, `>>`, `>|`), `tee` (up to a `<`, which feeds it
+# instead), `sed`/`perl` in place, either file anywhere in `mv`, `rm`, `ln`,
+# `link` or `cp -l` — a link to it is a second name to write it by — or as the
+# last argument of `cp`, `install` or `truncate`. Reads pass, and so does the
+# file as a copy's source. The path is matched without regard to case on both
+# sides — on macOS `.Orrery/Config.json` is the same file — and the flags are
+# not: for `sed` any `i` or `I` in a flag group is in place (BSD's `-I` is,
+# and `-ie` is `-i` with the backup suffix `e`; sed has no other flag of either
+# letter), while for `perl` the `i` must end the group, so `perl -Mstrict` and
+# `perl -I lib` are reads. The shell side is not anchored on the left, so it
+# also refuses `x.orrery/config.json`, which the edit side passes; erring that
+# way costs a false refusal, not a write. Deleting `.orrery` or
+# `.orrery/local` whole is refused with them, and so is a glob in the file name
+# (`rm .orrery/local/*`); `find … -delete` and a glob in a directory segment
+# (`.orrery/l*/calls.tsv`) are not. `call-log.sh --purge` empties the call log without naming it, and is the
+# owner's (`--reconcile` is refused by `bash-guard.sh`). A spelling this misses
+# passes, as everywhere here.
+settings_msg="Orrery's settings and the records its gates read — .orrery/config.json,
+.orrery/deny-declined.json and its older name .claude/orrery-deny.json, and what
+sits in .orrery/local/ outside onboard's draft directories — are written by a
+person or by Orrery's own hooks, never by a session: they switch gates off, or
+are what the gates decide from. Say what you
+would change and why, and let the owner write it. A skip the owner gave you in
+words is recorded with: hooks/waiver.sh \"<act>\" \"<reason>\" stated — and if
+that fails with Operation not permitted, quote the skip to the owner instead.
+call-log.sh --purge and permissions-check.sh --reconcile are the owner's to run.
+A test fixture is written from a test script, not from the command line."
+# The names, each letter in either case: on the shell side the flags around them
+# must keep their case, so the path cannot be matched with `grep -i`.
+lit() { awk '{ o = ""; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); u = toupper(c); o = o (c != u ? "[" c u "]" : c) } printf "%s", o }' <<<"$1"; }
+# `cfgpath` is the path alone and `cfg` the path with what may end it; the
+# last-argument shape needs the first, since it reads its own ending — with both,
+# `cp f .orrery/config.json; ls` had its `;` eaten by one and `ls` met by the
+# other. A `.`/`..` segment anywhere after `.orrery/` or `.claude/` refuses the
+# rest of the path. A draft directory under `onboard/` stays open, named with its
+# trailing slash; bare, it cannot be told from `install-record.json`.
+cfgpath="($(lit '\.orrery/+')($(lit '(local/+)?config\.json|deny-declined\.json')|$(lit 'local/+')[^/[:space:]\"${q};&|]+|$(lit 'local/+(sessions|doctor|work)/')[^[:space:]\"${q};&|]*)/*|$(lit '\.orrery/+local/+onboard/+')[^/[:space:]\"${q};&|]+|$(lit '\.orrery(/+local)?')/*|$(lit '\.claude/+orrery-deny\.json')/*|$(lit '\.(orrery|claude)/')([^[:space:];&|]*/)?\\.\\.?(/[^[:space:]\"${q};&|]*)?)"
+cfg="${cfgpath}([\"${q}[:space:];&|)]|\$)"
+target="$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input" 2>/dev/null || true)"
+if grep -qiE "(^|/)\\.orrery/+(local/+)?config\\.json(/.*)?\$|(^|/)\\.\\.?/(.*/)?config\\.json\$|(^|/)\\.orrery/+(deny-declined\\.json|local/+([^/]+|(sessions|doctor|work)/.*|onboard/+[^/]+))/*\$|(^|/)\\.orrery/(.*/)?\\.\\.?(/|\$)|(^|/)\\.claude/+orrery-deny\\.json/*\$|(^|/)\\.\\.?/(.*/)?orrery-deny\\.json\$" <<<"$target"; then deny "$settings_msg"; fi
+if grep -qE "${pos}([a-z]*sh[[:space:]]+|(\\.|source)[[:space:]]+)?[^;&|[:space:]]*call-log\\.sh[^;&|]*[[:space:]][\"${q}]?--purge" <<<"$scan"; then deny "$settings_msg"; fi
+if grep -qE ">[>|]?[[:space:]]*[\"${q}]?[^[:space:];&|]*${cfg}|${pos}tee\\b[^;&|<]*${cfg}|${pos}sed\\b[^;&|]*[[:space:]](-[A-Za-z]*[iI]|--in-place)[^;&|]*${cfg}|${pos}perl\\b[^;&|]*[[:space:]](-[A-Za-z]*i([^A-Za-z]|$)|--in-place)[^;&|]*${cfg}|${pos}(mv|rm|ln|link)\\b[^;&|]*${cfg}|${pos}cp\\b[^;&|]*[[:space:]](-[A-Za-z]*l|--link)[^;&|]*${cfg}|${pos}(cp|install|truncate)\\b[^;&|]*${cfgpath}[\"${q}]?[[:space:]]*($|[;&|)])" <<<"$scan"; then
+  deny "$settings_msg"
 fi
 
 # --- a pull request is opened only after an auditor ran --------------------

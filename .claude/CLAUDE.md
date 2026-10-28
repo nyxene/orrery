@@ -16,7 +16,7 @@ Ground rules for any session here:
   nobody; the bump is part of the change, not an afterthought.
 - The quality gates are `claude plugin validate . --strict`, a suite beside each
   hook that has one — the three guards, the call log, the two loaders, the handoff
-  prompt and the deny-list check — and `skills/sharpen/check-claims.sh`.
+  prompt, the work archive and the deny-list check — and `skills/sharpen/check-claims.sh`.
   `.githooks/pre-commit` runs them; count them there rather than here. Enable it
   per clone: `git config core.hooksPath .githooks`. A gate named here that this
   repository cannot run is a defect, not a formality — every command in that
