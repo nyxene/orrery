@@ -109,7 +109,7 @@ word() { case "$1" in
   3) echo three;; 4) echo four;; 5) echo five;; 6) echo six;; 7) echo seven;;
   8) echo eight;; 9) echo nine;;
   10) echo ten;; 11) echo eleven;;
-  12) echo twelve;; 13) echo thirteen;;
+  12) echo twelve;; 13) echo thirteen;; 14) echo fourteen;;
   *) echo "$1";; esac; }
 
 # The host's sharpen log records what each pass changed, and a logged
@@ -132,7 +132,7 @@ word() { case "$1" in
 check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated number
   local stated
   stated=$(grep -rhoiE "${FIXTURES[@]}" "$3" "${COUNT_SCOPE[@]}" 2>/dev/null \
-             | grep -oiE '[0-9]+|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen' \
+             | grep -oiE '[0-9]+|three|fourteen|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen' \
              | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')
   if [ -z "$stated" ]; then note "$1: nothing states it ($2 on disk)"; return; fi
   for s in $stated; do
@@ -142,7 +142,7 @@ check_count() { # $1 = what, $2 = expected, $3 = regex capturing the stated numb
   done
   ok "$1: $2, and every sentence agrees"
 }
-check_count "skills"     "$n_skills" '(eleven|ten|twelve|thirteen|[0-9]+) skills'
+check_count "skills"     "$n_skills" '(eleven|ten|twelve|thirteen|fourteen|[0-9]+) skills'
 check_count "rules"      "$n_rules"  '[0-9]+ rules'
 check_count "agents"     "$n_agents" '(three|four|five|[0-9]+) agents'
 check_count "hooks"      "$n_hooks"  '(four|five|six|seven|eight|nine|[0-9]+) hooks'

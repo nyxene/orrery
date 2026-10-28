@@ -78,6 +78,9 @@ jobs:
       - name: Handoff prompt
         run: ./hooks/handoff-prompt.test.sh
 
+      - name: Work archive
+        run: ./hooks/work-archive.test.sh
+
       # The deny-list reporter's failure is silence too: a detector that stops
       # noticing drift looks identical to a project with nothing missing.
       - name: Permissions check

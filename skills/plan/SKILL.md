@@ -11,7 +11,7 @@ sometimes three, often one, and sometimes none — the route is decided first an
 most of this file describes the heaviest case, not the usual one.
 
 Plans are written to the plan directory the project declares (`planDirectory` in
-`.orrery/config.json`), or with none declared to `.orrery/work/<work>/plan.md` in
+`.orrery/config.json`, or this machine's `.orrery/local/config.json`), or with none declared to `.orrery/work/<work>/plan.md` in
 the work's own tree — never into a folder of the project's it did not name. Execution is autonomous by
 default; `--interactive` adds human checkpoints.
 

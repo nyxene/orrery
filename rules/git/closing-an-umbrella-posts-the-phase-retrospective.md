@@ -34,7 +34,9 @@ form is the one part nothing generates, which is why it is here.
 **How to apply:**
 
 1. Before closing, list the children's records on the default branch —
-   `.orrery/work/*/retrospective.md` for the works the phase spanned — and sum
+   `.orrery/work/*/retrospective.md` for the works the phase spanned, or
+   `.orrery/local/work/*/retrospective.md` in the main checkout where the
+   project ignores `.orrery/work/` — and sum
    their header blocks rather than re-reading any transcript.
 2. Write the phase record in the full four-part form — the header, the summed
    spend table with each row's model, the wall-clock table across the phase's

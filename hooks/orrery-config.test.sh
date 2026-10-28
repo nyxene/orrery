@@ -52,6 +52,34 @@ eq "14 no config and no GitHub remote is not a problem" "" "$(orrery_config_prob
 git -C "$main" remote add origin https://github.com/example/example.git
 eq "15 no config beside a GitHub remote is reported" "missing" "$(orrery_config_problem "$main")"
 
+# --- a machine-local config: the main checkout's, read from every worktree ----
+loc="$main/.orrery/local/config.json"; mkdir -p "$main/.orrery/local"
+printf '{"outputLanguage":"Russian"}' > "$loc"
+eq "15a a local file with no tracker does not hide that it is missing" "missing" "$(orrery_config_problem "$wt")"
+printf '{"tracker":"github","callLog":false}' > "$loc"
+eq "15b a worktree reads the main checkout's local file" "github" "$(orrery_tracker "$wt")"
+eq "15c and the tracker is no longer missing" "" "$(orrery_config_problem "$wt")"
+eq "15d its source is named as local" "local" "$(orrery_config_source tracker "$wt")"
+mkdir -p "$wt/.orrery"; printf '{"callLog":true}' > "$wt/.orrery/config.json"
+eq "15e a key both declare: the committed file wins" "true" "$(orrery_config callLog x "$wt")"
+eq "15f a key only the local file declares still fills in" "github" "$(orrery_tracker "$wt")"
+eq "15g and the winning key's source is the committed file" "committed" "$(orrery_config_source callLog "$wt")"
+printf '{}' > "$loc"
+eq "15h a committed file that leaves the tracker out has decided" "" "$(orrery_config_problem "$wt")"
+printf 'nope' > "$loc"
+eq "15i a malformed local file is reported as such" "malformed-local" "$(orrery_config_problem "$wt")"
+eq "15j and the committed file is still read" "true" "$(orrery_config callLog x "$wt")"
+printf 'nope' > "$wt/.orrery/config.json"
+eq "15k both malformed is said of both" "malformed-both" "$(orrery_config_problem "$wt")"
+printf '[1]' > "$loc"; printf '{"tracker":"github"}' > "$wt/.orrery/config.json"
+eq "15l a local file that is not an object is reported, and ignored" "malformed-local/github" \
+  "$(orrery_config_problem "$wt")/$(orrery_tracker "$wt")"
+printf '{"tracker":"github"} {}' > "$wt/.orrery/config.json"; rm -f "$loc"
+eq "15n two documents in one file are malformed, not one setting each" "malformed/none" \
+  "$(orrery_config_problem "$wt")/$(orrery_tracker "$wt")"
+rm -rf "$wt/.orrery" "$loc"
+eq "15m with neither file a key's source is the default" "default" "$(orrery_config_source tracker "$wt")"
+
 # --- the work's name -----------------------------------------------------------
 eq "16 a worktree's work is its directory name" "feat-x" "$(orrery_work "$wt")"
 git -C "$main" checkout -q -b team/fix 2>/dev/null

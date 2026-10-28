@@ -17,7 +17,7 @@
       "name": "control plane",
       "line": "let a session rewrite its own guard rails",
       "match": [
-        "Edit(~/.claude", "Edit(**/.orrery/config.json)", "Bash(gh alias", "Bash(gh extension", "Edit(~/Library/LaunchAgents/"
+        "Edit(~/.claude", "Edit(**/.orrery/", "Edit(**/.claude/orrery-deny.json)", "Bash(gh alias", "Bash(gh extension", "Edit(~/Library/LaunchAgents/"
       ]
     },
     {
@@ -116,6 +116,15 @@
       "Edit(//var/db/**)",
       "Edit(//var/root/**)",
       "Edit(**/.orrery/config.json)",
+      "Edit(**/.orrery/local/config.json)",
+      "Edit(**/.orrery/local/*.tsv)",
+      "Edit(**/.orrery/local/deny.json)",
+      "Edit(**/.orrery/local/sessions/**)",
+      "Edit(**/.orrery/local/doctor/**)",
+      "Edit(**/.orrery/local/work/**)",
+      "Edit(**/.orrery/local/onboard/install-record.json)",
+      "Edit(**/.orrery/deny-declined.json)",
+      "Edit(**/.claude/orrery-deny.json)",
       "Edit(~/.aws/**)",
       "Edit(~/.azure/**)",
       "Edit(~/.claude.json)",

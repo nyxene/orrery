@@ -9,6 +9,16 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/call-log.sh\""
           }
         ]
+      },
+      {
+        "matcher": "^(Bash|Write|Edit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/work-archive.sh\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -76,13 +86,13 @@
         ]
       },
       {
-        "matcher": "^Bash$",
+        "matcher": "^(Bash|Edit|Write|MultiEdit|NotebookEdit)$",
         "hooks": [
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/process-guard.sh\"",
             "timeout": 10,
-            "statusMessage": "Checking a pull request carries its record and its audit..."
+            "statusMessage": "Checking the process gates and the settings files..."
           }
         ]
       },
