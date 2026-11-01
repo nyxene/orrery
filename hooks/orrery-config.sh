@@ -24,11 +24,17 @@
 # The main checkout of the repository containing $1 (default: the current
 # directory). Empty outside a repository.
 orrery_main() {
-  local common
-  common="$(git -C "${1:-.}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 0
+  local both common top
+  # One process for both answers. rev-parse prints them in order and stops at the
+  # first it cannot give, so inside a `.git` directory, where there is no
+  # toplevel, the common directory still arrives; its status is not the answer.
+  both="$(git -C "${1:-.}" rev-parse --path-format=absolute --git-common-dir --show-toplevel 2>/dev/null)" || :
+  common="${both%%$'\n'*}"; top=""
+  [ "$common" = "$both" ] || top="${both#*$'\n'}"
   case "$common" in
+    "")     return 0 ;;
     */.git) printf '%s' "${common%/.git}" ;;
-    *)      printf '%s' "$(git -C "${1:-.}" rev-parse --show-toplevel 2>/dev/null)" ;;
+    *)      printf '%s' "$top" ;;
   esac
 }
 

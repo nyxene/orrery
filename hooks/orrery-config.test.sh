@@ -30,6 +30,11 @@ eq "1 the main checkout, from the main checkout" "$main" "$(orrery_main "$main")
 eq "2 the main checkout, from inside a worktree" "$main" "$(orrery_main "$wt")"
 eq "3 the toplevel of a worktree is the worktree" "$wt" "$(orrery_toplevel "$wt")"
 eq "4 outside a repository there is no main checkout" "" "$(orrery_main "$tmp")"
+eq "4b from inside .git, which has no toplevel, the main checkout" "$main" "$(orrery_main "$main/.git")"
+# Twelve callers run under `set -e`; a failed git inside the function must not
+# end them, outside a repository or inside `.git`.
+eq "4c a set -e caller survives a direct call where git fails" "survived survived" \
+  "$(bash -c 'set -e; . "$1"; orrery_main "$2"; orrery_main "$3/.git" >/dev/null; printf "survived survived"' _ "$here/orrery-config.sh" "$tmp" "$main")"
 
 # --- defaults, values, and a file that cannot be read --------------------------
 eq "5 no config: the default" "none" "$(orrery_tracker "$main")"

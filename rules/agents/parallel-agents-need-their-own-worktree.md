@@ -6,6 +6,8 @@ evidence: "two parallel agents whose briefs shared no files still collided on co
 
 Set `isolation: 'worktree'` on every `Workflow` `agent()` call inside a `parallel()` (or concurrent pipeline stage) that mutates files — unconditionally, not just when the task briefs look likely to touch the same files.
 
+The parallel agents here are parts of one task working toward one result, never several tasks in flight at once.
+
 **Why:** two parallel implementation agents (one on a UI layer, one on backend wiring) didn't share a single file in their briefs, and still collided — because without `isolation: 'worktree'`, both ran `git checkout -b <own-branch>` in the same shared primary working directory. The second `checkout -b` doesn't discard the first agent's uncommitted changes; it carries them onto the new branch, so the second agent inherited the first agent's in-progress diff sitting on its own branch mid-edit. The collision is about two concurrent `git checkout -b` calls sharing one working tree, not about file-content overlap — so "do the file lists overlap?" is the wrong question to ask when deciding whether to isolate.
 
 **How to apply:** when a Workflow script has multiple `agent()` calls in the same `parallel()` array (or concurrent pipeline stage) that each do their own `git checkout -b` / branch / commit / push flow, set `isolation: 'worktree'` on all of them by default. Skip it only for read-only agents or agents that don't touch git state at all. The isolation cost (a few hundred milliseconds of setup plus disk per agent) is trivial next to a mid-session collision recovery. Worth reinforcing: a stuck agent that notices a collision and pauses to report instead of guessing or pushing through it is the right failure behavior.

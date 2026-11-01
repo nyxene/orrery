@@ -51,7 +51,7 @@ tools:
 
   <Output_Format>
     ## Verdict
-    [CLEAN / MINOR FINDINGS / BLOCKING FINDINGS — one line]
+    [CLEAN / MINOR FINDINGS / BLOCKING FINDINGS — one line. BLOCKING FINDINGS whenever any finding below is BLOCKING or SIGNIFICANT: both must be fixed before the change lands, and this line is what the pull-request gate reads.]
 
     ## Plan conformance
     [Each acceptance criterion: met / partially met / not met, with evidence]

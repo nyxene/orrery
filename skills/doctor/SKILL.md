@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Check whether orrery is actually loaded and current in a host project — enabled on the checked-out branch, cache matching the marketplace source, no conflicting global install, and no leftover `orrery-method` plugin. It also reports whether any of it is actually being *used* here — which skills fired, whether agent spawns carried a type, and whether the pull-request gate a hook cannot be is installed. Invoke on "doctor", "is orrery working", "check the plugin install", "why isn't the plugin loading", "is anyone using this", or periodically as a health check independent of any specific symptom.
+description: Check whether orrery is actually loaded and current in a host project — enabled on the checked-out branch, cache matching the marketplace source, no conflicting global install, and no leftover `orrery-method` plugin. It also reports whether any of it is actually being *used* here — which skills fired, whether agent spawns carried a type, and whether the pull-request gate a hook cannot be is installed. Invoke on "doctor", "is orrery working", "check the plugin install", "why isn't the plugin loading", "is anyone using this", or after installing or updating the plugin as a health check independent of any specific symptom.
 argument-hint: "[optional: a project path, default is the current one]"
 ---
 
@@ -29,10 +29,12 @@ skills/doctor/check-install.sh [project-dir]
 
 `project-dir` defaults to `$CLAUDE_PROJECT_DIR` or the current directory. No
 Claude session required — plain bash, `jq`, and (for most checks) the `claude`
-CLI on `PATH`. Run it from cron, from a terminal, or invoke this skill inside a
-session; either way it runs every check and exits non-zero if any of them
-needs attention, so it is scriptable without anyone reading prose to find out.
-If `claude` isn't reachable (common under cron — login-shell PATH additions
+CLI on `PATH`. Run it after an install or an update, or when a session behaves
+like an old version — the events it rides, never a schedule — from a terminal,
+or invoke this skill inside a session; either way it runs every check and exits
+non-zero if any of them needs attention, so it is scriptable without anyone
+reading prose to find out.
+If `claude` isn't reachable (common in a non-login shell — login-shell PATH additions
 like nvm/homebrew shims often aren't loaded), it says so explicitly rather than
 reporting "not installed."
 

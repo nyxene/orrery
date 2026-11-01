@@ -195,6 +195,7 @@ deny	RTK_DISABLED=1 git push origin solo	@push
 deny	git push origin feat solo	@push
 deny	git push origin solo:solo	@push
 deny	git push origin +solo:refs/heads/solo	@push
+deny	git push origin refs/heads/solo	@push
 deny	git push https://example.invalid/r.git feat	@push
 deny	git push --all origin	@push
 deny	git commit -m x && git push origin solo	@push
@@ -277,7 +278,13 @@ allow	cp .orrery/local/calls.tsv /tmp/calls.tsv
 allow	cp -r .orrery /tmp/backup
 allow	ORRERY_CALL_LOG=.orrery/local/calls.tsv tools/report.sh
 allow	bash hooks/waiver.sh "gh pr create" "owner: skip" stated
-allow	hooks/call-log.sh
+deny	hooks/call-log.sh
+deny	printf '{}' | hooks/call-log.sh
+deny	bash hooks/call-log.sh < payload.json
+deny	true; ./hooks/call-log.sh
+allow	bash hooks/call-log.test.sh
+allow	cat hooks/call-log.sh
+allow	git diff hooks/call-log.sh
 allow	echo "call-log.sh --purge is the owner's"
 allow	ls > .orrery-list.txt
 deny	rm .orrery/local/*
