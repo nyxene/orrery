@@ -18,21 +18,17 @@ opt-in this skill's invocation supplies. **Where it does not exist, the fallback
 is plain parallel `Agent` calls in one message**, which costs the pipelining and
 nothing else; say which you used. Either way, pin `model` per the table below —
 a spawned agent that silently inherits the session default has left its tier.
-
-`hooks/agent-guard.sh` denies a named spawn whose brief never tells the agent to
-send its deliverable back, so the lost-report failure is blocked rather than
-remembered. **Recovering an already-lost report** is the part no guard can do:
-the payloads are in
-`~/.claude/projects/<project>/<session>/subagents/agent-*.jsonl`, and an agent
-that "went silent" is this failure until proven otherwise.
+Every agent in the fan-out serves the one plan this build is for — parts of one
+result, never several tasks in flight at once. An agent that "went silent" has
+likely lost its report; recovering it is in `<that directory>/reference.md`,
+where `<that directory>` is the base directory this skill was loaded from.
 
 ## Flags
 
 - `--interactive`: pause via `AskUserQuestion` after the architecture and
   task-breakdown step (proceed / adjust). Without it, the whole pipeline runs
-  unattended through to the final report. It does not change what may be
-  decided without asking — a licence that needs a ruling goes to the owner in
-  every mode, and a defensible default is taken autonomously in every mode.
+  unattended through to the final report. It never changes what may be
+  decided without asking.
 - Default (no flag): fully autonomous end to end. This skill's entire point is
   that decisions get made and logged, not deferred — don't stop to ask
   domain/convention/technical questions, per Canon §6.
@@ -57,19 +53,9 @@ model throughout.
 
 A host may declare a budget regime that reassigns tiers; follow the declaration.
 
-The audit tier is the one that is about context rather than capability. A judge
-that ran inside the session which produced the work inherits its reasoning whole
-— the same files in the same order, the same alternatives already dismissed — so
-whatever was missed is missing from the judge as well. A fresh session is the
-mechanism, and it is what the gate buys. Spawning the `auditor` agent type is
-what supplies it.
-
-A different model family on top of that is an amplifier rather than the
-mechanism: two fresh sessions of one model already have separate contexts, and
-two families additionally have separate blind spots, which is worth buying where
-the stake earns it. This repository buys it — `auditor` pins Fable — but a
-project with one family available conforms, and nothing in this table says
-otherwise.
+The audit tier is a fresh session first and a different model family second;
+why, in `<that directory>/reference.md` — the base directory this skill was
+loaded from.
 
 ## Procedure
 
@@ -112,23 +98,9 @@ otherwise.
      the rationale. An agent that hits no open question returns an empty list
      — don't manufacture entries.
    - **Licensing/legal questions get escalated scrutiny, never a silent
-     default**: anything touching data provenance (third-party constant or
-     reference tables, named-author formulas, scraped or verbatim text,
-     patented algorithms) defaults to the most independently-defensible
-     option — attribute to the original human or public-domain source,
-     re-derive rather than copy, avoid copyleft-triggering redistribution —
-     per `rules/craft/third-party-content-splits-into-idea-vs-expression.md`. The defensible
-     option costs a little now; the other one carries an unbounded liability
-     the moment the work reaches anyone outside the room.
-
-     **Taking the defensible default is autonomous. Ruling on a licence is
-     not.** Re-deriving instead of copying sidesteps the question and needs
-     nobody's permission. Deciding that a particular third-party artifact may
-     be used *as it is* is a legal judgement, and Canon §6 reserves it — an
-     agent presents the risk and the mechanism, never the verdict. Where no
-     defensible default exists, stop and put it to the owner, in any mode.
-     Either way the decision is mandatory in the log, never omitted for being
-     "obviously fine."
+     default**: the defensible option is autonomous, a ruling on a licence is
+     the owner's. Read *Licensing and provenance* in
+     `<that directory>/reference.md` the moment one comes up.
 
 4. **Aggregate.** Collect every agent's diff and `decisions[]` into one
    running list, assigning each entry a stable id in the order it was made
@@ -149,7 +121,9 @@ otherwise.
 6. **Fix loop** (max 3 iterations). Any BLOCKING/SIGNIFICANT audit finding
    routes back to the tier that owns the affected file for a fix, then
    re-audits. If 3 iterations pass without a clean or minor-only audit, stop
-   and hand the remaining findings to the user instead of looping forever.
+   and hand the remaining findings to the user instead of looping forever. The
+   pull request stays refused while the latest verdict is BLOCKING: opening it
+   anyway is the user's ruling, given as a waiver, not the loop's way out.
 
 7. **Debt accounting** (both directions, via the `debt` skill — do not improvise
    this bookkeeping inline). Any audit finding NOT fixed here gets filed as a
@@ -185,25 +159,9 @@ otherwise.
    <that directory>/record.sh write --what "<one line>" [--retries <n>]
    ```
 
-   Re-run it before every later push and it refreshes; it measures from the
-   branch's first reflog entry unless `--since` says otherwise. `--retries` is
-   how many times step 6 went round — no transcript says it, so you do, and an
-   unstated count is written `not recorded`, never 0. `--final` on the last
-   write also deletes the work's handoff. **No step above records anything for
-   it** — the transcripts already hold the usage, which is why this step is at
-   the end and costs the run nothing. If it reports no transcripts, the cells
-   are `not captured`; never fill them with an estimate. Writing from a session
-   that did not do the work: `--not-captured`, or the table reports the
-   writer's spend as the work's.
-
-   Work that ends without merging is closed on its branch, once:
-   `record.sh close refused|withdrawn|answered|enacted --why "<one line>"`. The
-   outcome cannot be overwritten, and the branch keeps the record.
-
-   An umbrella or a phase is summed from its children's records rather than
-   measured — the closer's spend is not the phase's — and written with
-   `record.sh write --body-file <path>`. Do not invent a second format — the
-   rule exists because a second one was invented.
+   Re-running it, `--retries`, `--final`, work that ends without merging and an
+   umbrella's record are in `<that directory>/reference.md`; read it before the
+   first write of a work.
 
 10. **Final report — in chat, in the project's configured output language**
    (Canon §8; English unless the project declares otherwise). Summarize what
@@ -212,8 +170,9 @@ otherwise.
    decision-log table covering every autonomously-resolved question from
    any step that produced one (including ones the audit merely confirmed, not just ones it
    disputed — and never omitting a licensing decision, however minor it
-   seemed). Translate the column headings into the output language; the
-   columns themselves are fixed:
+   seemed). The columns are fixed and so are their headings: they stay in
+   English whatever the output language, because a fixed identifier keeps one
+   name in every language. Only the prose around the table is translated:
 
    | ID | Question | Decision taken | Options available | Rationale |
    |---|---|---|---|---|
@@ -226,11 +185,8 @@ otherwise.
   to them, per Canon §6.
 - Every decision gets its id and one-line rationale the moment it's made, not
   reconstructed after the fact for the report.
-- Licensing and provenance are the exception, and step 3 states where the line
-  falls: taking the defensible default is autonomous, ruling on a licence is
-  the owner's under Canon §6. That carve-out holds in every mode, not only
-  `--interactive`; the flag changes when you are interrupted, never what may
-  be decided without asking.
+- Licensing and provenance are the exception, in every mode: the defensible
+  default is autonomous, a ruling on a licence is the owner's (Canon §6).
 - Everything else stays autonomous even in `--interactive` mode.
 
 ## When to use

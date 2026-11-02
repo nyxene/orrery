@@ -136,7 +136,8 @@ Three things differ from the committed file:
 `hooks/call-log.sh` appends a line per tool event to `.orrery/local/calls.tsv`
 in the main checkout: a timestamp, a fingerprint of the session, the tool name,
 the subagent type where there is one, whether the spawn was named, the event —
-`call` or `ran` — and the harness's id for that call. **It is on by default,**
+`call` or `ran` — and the harness's id for that call; an auditor's verdict is one
+more row, `pass`, `fail` or `unread`, and never its text. **It is on by default,**
 because the audit gate before a pull request reads it (below). It stays on this
 machine: nothing in it is sent anywhere.
 
@@ -476,12 +477,15 @@ noticed. Until this release that refusal sat on `gh issue close`, with a copied
 workflow reopening what a merge closed bare; both are gone, and closing an issue
 is yours again.
 
-**An auditor has run in this session since its last pull request.** Every route
-in `plan`, the smallest included, ends with that audit before the change heads
-for the default branch; the guard is what makes the sentence hold where it can
-see the session. It reads the call log, so with the log switched off this half
-passes everything through. It sees that an auditor was spawned, not what it
-said.
+**The latest audit in this session since its last pull request passed.** Every
+route in `plan`, the smallest included, ends with that audit before the change
+heads for the default branch; the guard is what makes the sentence hold where it
+can see the session. It reads the verdict the call log records when the auditor
+finishes: CLEAN or MINOR FINDINGS opens the pull request; BLOCKING FINDINGS, an
+unreadable verdict line, or an auditor still owed a verdict refuses it. With the
+log switched off this half passes everything through. After updating the plugin,
+restart running sessions: one begun before the update has no verdict recorder
+and is refused until it restarts.
 
 **And there is a way past both, which writes itself down:** the owner's word,
 quoted.

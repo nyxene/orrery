@@ -9,6 +9,69 @@ without a bump reaches nobody.
      this file: one release is one file there, and that file is also the body
      of its GitHub release page. -->
 
+## 0.34.0
+
+**Minor.** The audit gate before a pull request now reads what the auditor
+ruled, not only that one was spawned.
+
+### The gate reads the verdict
+
+Until now `gh pr create` (or, without a tracker, a branch's first push) opened
+once an `auditor` had been spawned in the session — and a background spawn
+counts the moment it launches, so a BLOCKING verdict and an opened pull request
+could coexist. When an auditor finishes, the call log now records its verdict
+line as one word, `pass`, `fail` or `unread`, never the report's text; the
+gate opens on the latest audit's verdict:
+
+- CLEAN or MINOR FINDINGS — the pull request opens;
+- BLOCKING FINDINGS — refused until a later audit passes;
+- a verdict line that is none of the three — refused, audit again;
+- an auditor spawned after the last verdict — refused until it rules.
+
+The auditor's verdict line is BLOCKING FINDINGS whenever any of its findings is
+BLOCKING or SIGNIFICANT — both are what `build` requires fixed — so a report
+with a SIGNIFICANT finding no longer opens the pull request under "MINOR
+FINDINGS".
+
+A session's command line may no longer run `hooks/call-log.sh` itself: a
+`pass` row is now what opens the gate, so the log is written by the hooks only.
+
+### Smaller
+
+- After compaction Claude Code keeps the first 5,000 tokens of each invoked
+  skill. `sharpen`, `build` and `plan` were longer, so their tails — `build`'s
+  final report among them — were gone for the rest of a session. Their
+  reference parts now live beside them, each named where it is needed
+  (`sharpen`: the prune pass, retiring a rule, reading the call log; `build`:
+  the record, licensing and provenance, a lost report, why the audit tier is
+  its own session; `plan`: the re-review), and the checker refuses a
+  `SKILL.md` over 12,500 bytes.
+
+- `build`'s decision-log table keeps its column headings in English in every
+  output language; only the prose around it is translated. It asked for them to
+  be translated, which gave one fixed identifier a second name per language.
+- Text that contradicted the method it follows: `doctor` and `sharpen` name the
+  events they run on — after an install or update, a release's close, a session
+  that went badly — instead of a schedule or cron; `plan` prices a route in
+  agent runs and tokens, not minutes; parallel agents are stated as parts of one
+  task, never several tasks at once; and this README, the plugin manifest and
+  the marketplace entry say Orrery is built to follow the method rather than
+  that it runs it.
+
+### Upgrade
+
+Restart running sessions after updating. A session begun before the update has
+no verdict recorder registered, so its audits leave no verdict and the gate
+answers that one is still owed.
+
+### Going back
+
+For one pull request, the owner's word as a waiver, as before:
+`ORRERY_WAIVE="owner: <their words>" gh pr create …` (without a tracker, the same
+prefix on the branch's first `git push …`). To switch the gate off for
+a project, `"callLog": false` in `.orrery/config.json`, which also stops the
+call log.
+
 ## 0.33.0
 
 **Minor.** A new skill brings Orrery into a project, settings can stay on the

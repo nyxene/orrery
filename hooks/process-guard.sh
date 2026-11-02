@@ -39,6 +39,14 @@
 # boundary — nothing here resists a session that means to get past it, and the
 # waiver below is the supported way to do exactly that.
 #
+# One exception, and it is narrow. The pull-request gate reads an auditor's
+# verdict from the call log, where `call-log.sh` writes it when the auditor
+# finishes. That recorder fails open, so a verdict can be missing — a recorder
+# without jq, a session older than its registration, an auditor that stopped
+# without one — and a missing verdict is refused here rather than read as a
+# pass. Refusing costs one more audit or a recorded waiver; passing would be the
+# gate this exception exists to end, letting a BLOCKING verdict through.
+#
 # ## What it actually enforces, and what it stopped enforcing
 #
 # Measured over one week across three host projects: 179 issues closed, 218
@@ -287,12 +295,12 @@ cfgpath="($(lit '\.orrery/+')($(lit '(local/+)?config\.json|deny-declined\.json'
 cfg="${cfgpath}([\"${q}[:space:];&|)]|\$)"
 target="$(jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input" 2>/dev/null || true)"
 if grep -qiE "(^|/)\\.orrery/+(local/+)?config\\.json(/.*)?\$|(^|/)\\.\\.?/(.*/)?config\\.json\$|(^|/)\\.orrery/+(deny-declined\\.json|local/+([^/]+|(sessions|doctor|work)/.*|onboard/+[^/]+))/*\$|(^|/)\\.orrery/(.*/)?\\.\\.?(/|\$)|(^|/)\\.claude/+orrery-deny\\.json/*\$|(^|/)\\.\\.?/(.*/)?orrery-deny\\.json\$" <<<"$target"; then deny "$settings_msg"; fi
-if grep -qE "${pos}([a-z]*sh[[:space:]]+|(\\.|source)[[:space:]]+)?[^;&|[:space:]]*call-log\\.sh[^;&|]*[[:space:]][\"${q}]?--purge" <<<"$scan"; then deny "$settings_msg"; fi
+if grep -qE "${pos}([a-z]*sh[[:space:]]+|(\\.|source)[[:space:]]+)?[^;&|[:space:]]*call-log\\.sh([\"${q}[:space:];&|)]|\$)" <<<"$scan"; then deny "$settings_msg"; fi
 if grep -qE ">[>|]?[[:space:]]*[\"${q}]?[^[:space:];&|]*${cfg}|${pos}tee\\b[^;&|<]*${cfg}|${pos}sed\\b[^;&|]*[[:space:]](-[A-Za-z]*[iI]|--in-place)[^;&|]*${cfg}|${pos}perl\\b[^;&|]*[[:space:]](-[A-Za-z]*i([^A-Za-z]|$)|--in-place)[^;&|]*${cfg}|${pos}(mv|rm|ln|link)\\b[^;&|]*${cfg}|${pos}cp\\b[^;&|]*[[:space:]](-[A-Za-z]*l|--link)[^;&|]*${cfg}|${pos}(cp|install|truncate)\\b[^;&|]*${cfgpath}[\"${q}]?[[:space:]]*($|[;&|)])" <<<"$scan"; then
   deny "$settings_msg"
 fi
 
-# --- a pull request is opened only after an auditor ran --------------------
+# --- a pull request is opened only on a passing audit ----------------------
 # `build` held the only "auditor before commit", and told its reader to skip
 # itself for small changes; `plan` said to implement at once with script gates
 # only. So a change smaller than `build` reached `main` with nothing asking for
@@ -314,8 +322,20 @@ fi
 # once. A row counts only if the call log holds `ran` for its id: a create that
 # failed did not open anything, and must not consume the audit.
 #
-# What this proves is that an auditor was spawned, not that its verdict was
-# read — a background spawn is `ran` the moment it launches.
+# What passes is the latest audit's verdict, not an auditor having been spawned:
+# a background spawn is `ran` the moment it launches, and this gate read only
+# that until a BLOCKING verdict and an opened pull request were found compatible.
+# The verdict is a row `call-log.sh` writes when the auditor finishes; rows are
+# compared in the order they were written, because foreground rows share a
+# second. An auditor spawned after the last verdict is still owed one — its
+# `call` row is the one compared, since a foreground spawn's `ran` lands after its
+# verdict. With two auditors at once, the one that finished last decides.
+#
+# The log is a session's to read and not to write: a row that says `pass` is the
+# one forgery that would now open a gate, so the recorder named at a command's
+# start, bare or after a shell, is refused below. A script file, `bash -c`,
+# `exec`, `xargs` and the like still reach it; like every refusal here it is a
+# nudge, not a boundary.
 # The work's record, missing from commit $1 — or the one the default branch
 # already holds, an earlier work's met again under a reused branch or worktree
 # name. It travels with the work and arrives on the default branch with the
@@ -348,19 +368,43 @@ If the owner told you in this session to skip the record, quote them:
 
   ORRERY_WAIVE=\"owner: <their words>\" $1 …"
 }
-# Whether this session spawned an auditor after $1. Reads $log, $fp.
-audited() {
+# What this session's audits since $1 come to: pass, fail, unread, pending — an
+# auditor spawned after the last verdict — or nothing. Reads $log, $fp.
+audit() {
   awk -F'\t' -v fp="$fp" -v since="$1" '
-        $2 == fp && $3 == "Agent" && ($4 == "auditor" || $4 ~ /:auditor$/) &&
-        $6 == "ran" && $1 > since { found = 1 } END { exit !found }' "$log"
+        $2 == fp && $3 == "Agent" && ($4 == "auditor" || $4 ~ /:auditor$/) && $1 > since {
+          if ($6 == "call") call[$7] = NR
+          else if ($6 == "ran") ran[$7] = 1
+          else if ($6 == "pass" || $6 == "fail" || $6 == "unread") { at = NR; v = $6 }
+        }
+        END { for (id in call) if ((id in ran) && call[id] > at) v = "pending"; print v }
+  ' "$log"
 }
-no_auditor() { # $1 = the act, $2 = since when
-  deny "$1 is where a change heads for main, and no auditor has run in this
-session since $2.
+blocking="The latest auditor ruled BLOCKING FINDINGS. Fix what it found and audit again;
+whether to open it anyway is the owner's to rule."
+unreadable="The latest auditor's verdict line is none of CLEAN, MINOR FINDINGS or BLOCKING
+FINDINGS, so it cannot be read as a pass. Audit again."
+owed="An auditor was spawned after the last verdict and none has arrived from it. It
+is still running, or it stopped without a verdict, or this session began before
+the verdict recorder was registered — a session older than the plugin update;
+restart it. Wait for the verdict, or audit again."
+# Refuses $1 unless the audits since $2 passed; $3 names that moment. One test a
+# line, so the mutation pass can take each one out.
+audited() {
+  local v why="No auditor has run in this session since then."
+  v="$(audit "$2")"
+  [ "$v" != pass ] || return 0
+  [ "$v" != fail ] || why="$blocking"
+  [ "$v" != unread ] || why="$unreadable"
+  [ "$v" != pending ] || why="$owed"
+  no_auditor "$1" "$3" "$why"
+}
+no_auditor() { # $1 = the act, $2 = since when, $3 = what the log shows
+  deny "$1 is where a change heads for main, and no passing audit stands in this
+session since $2. $3
 
-Spawn the auditor agent against the plan, or the change's stated intent, read
-its verdict, and then run it again. This guard sees only that an auditor was
-spawned — reading what it said is yours.
+Spawn the auditor agent against the plan, or the change's stated intent, and
+wait for its verdict: a pull request opens on CLEAN or MINOR FINDINGS.
 
 If the owner told you in this session to skip the audit, quote them:
 
@@ -400,7 +444,7 @@ if [ -n "$prmatch" ] && [ "$(orrery_tracker "$dir")" = github ]; then
     [ ! -f "$state" ] || since="$(awk -F'\t' -v fp="$fp" '
       NR == FNR { if ($6 == "ran") ran[$7] = 1; next }
       $2 == fp && ($3 in ran) { s = $1 } END { print s }' "$log" "$state" 2>/dev/null || true)"
-    if [ -z "$waived" ] && ! audited "$since"; then no_auditor "gh pr create" "its last pull request"; fi
+    [ -n "$waived" ] || audited "gh pr create" "$since" "its last pull request"
     { printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$fp" \
         "$(jq -r '.tool_use_id // "-"' <<<"$input" 2>/dev/null || true)" >>"$state"; } 2>/dev/null || true
   fi
@@ -475,8 +519,6 @@ if [ -n "$pushmatch" ] && [ "$(orrery_tracker "$dir")" = none ] \
     [ "$top" != "$(orrery_main "$dir")" ] || work="${first//\//-}"
     if record_missing "refs/heads/$first" "$work"; then no_record "git push" "the pushed branch $first"; fi
     fp="$(fingerprint)"
-    if [ -n "$log" ] && ! audited "$(orrery_born "$first" "$top")"; then
-      no_auditor "git push" "branch $first began"
-    fi
+    [ -z "$log" ] || audited "git push" "$(orrery_born "$first" "$top")" "branch $first began"
   fi
 fi

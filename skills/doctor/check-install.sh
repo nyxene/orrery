@@ -4,8 +4,8 @@
 #
 # `claude plugin validate --strict` can pass a manifest that still fails to
 # load; the only reliable signal is `claude plugin list` inside the host
-# project. This script runs that check (and the others below) on a schedule
-# instead of by memory, so a stale install (edited source, un-updated cache)
+# project. This script runs that check (and the others below) as one command
+# for whoever installs or updates the plugin to run then, so a stale install (edited source, un-updated cache)
 # shows up before it causes a session that behaves like an old version.
 #
 # Notes on the checks: `claude plugin list --json` carries no status/error
@@ -90,7 +90,7 @@ else bad "jq missing — loaders announce failure, guards fail closed (deny ever
 if [ "$have_claude" -eq 1 ]; then ok "claude CLI on PATH"; row "claude CLI" "ok"
 else
   warn "claude CLI not on PATH — cannot check install/enablement state this way"
-  warn "common under cron: cron's PATH usually lacks nvm/homebrew shims — use an absolute path or a login shell"
+  warn "common in a non-login shell: its PATH often lacks nvm/homebrew shims — use an absolute path or a login shell"
   row "claude CLI" "missing"
 fi
 
@@ -671,8 +671,12 @@ fi
 # none of them announce themselves — a config that does not parse reads as the
 # defaults, a file left at its old place still looks like the live one, and work
 # that merged with no record looks exactly like work that had one.
-if [ -n "$(orrery_toplevel "$PROJECT")" ]; then
-  case "$(orrery_config_problem "$PROJECT")" in
+# Asked once: each answer is several git and jq processes, and checks 11 and the
+# pull-request gate below both need all three.
+top="$(orrery_toplevel "$PROJECT")" problem="" tracker=""
+[ -z "$top" ] || { problem="$(orrery_config_problem "$PROJECT")"; tracker="$(orrery_tracker "$PROJECT")"; }
+if [ -n "$top" ]; then
+  case "$problem" in
     malformed) bad ".orrery/config.json does not parse — every declaration in it reads as its default"
                row "config" "malformed" ;;
     malformed-local) bad "this machine's .orrery/local/config.json does not parse — every declaration in it reads as its default"
@@ -681,8 +685,8 @@ if [ -n "$(orrery_toplevel "$PROJECT")" ]; then
                row "config" "both malformed" ;;
     missing)   warn "no .orrery/config.json beside a GitHub remote, and no tracker in .orrery/local/config.json — the tracker reads as none, so a branch's first push is gated rather than gh pr create; declare \"tracker\": \"github\" to keep the pull request as the gate"
                row "config" "missing" ;;
-    *)         ok "config read: tracker $(orrery_tracker "$PROJECT") ($(orrery_config_source tracker "$PROJECT"))"
-               row "config" "tracker $(orrery_tracker "$PROJECT")" ;;
+    *)         ok "config read: tracker $tracker ($(orrery_config_source tracker "$PROJECT"))"
+               row "config" "tracker $tracker" ;;
   esac
   # This machine's settings: outside review, so what they set is said by name —
   # a gate key loudest. A `local/` with no `.gitignore` at all is repaired by this
@@ -774,8 +778,7 @@ fi
 # GitHub remote with no config yet, which the config check above already names.
 # A repository with neither has no issue to name, and is not told it lacks a gate
 # for one. Outside a repository there is no telling, so the check runs.
-if [ -n "$(orrery_toplevel "$PROJECT")" ] && [ "$(orrery_tracker "$PROJECT")" != github ] \
-   && [ "$(orrery_config_problem "$PROJECT")" != missing ]; then
+if [ -n "$top" ] && [ "$tracker" != github ] && [ "$problem" != missing ]; then
   row "pr gate" "n/a — no tracker"
 elif grep -rlq 'names-an-issue' "$PROJECT/.github/workflows" 2>/dev/null; then
   ok "a workflow refuses a pull request that names no issue"

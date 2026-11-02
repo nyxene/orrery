@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tool-call recorder, on PreToolUse and PostToolUse. Appends a line per event to
+# Tool-call recorder, on PreToolUse and PostToolUse, and an auditor's verdict on
+# SubagentStop and SubagentHandback. Appends a line per event to
 # a local file so that a change to how the library works can be observed instead
 # of assumed.
 #
@@ -27,7 +28,9 @@
 # Seven fields, tab separated: an ISO-8601 UTC timestamp, a session fingerprint,
 # the tool name, the kind where the tool has one — a subagent type for `Agent`,
 # a skill name for `Skill` — whether the spawn was named, the event — `call` or
-# `ran` — and the harness's id for this tool call.
+# `ran` — and the harness's id for this tool call. An auditor's verdict is one
+# more row of the same shape: tool `Agent`, its type, `-`, the event `pass`,
+# `fail` or `unread`, and the agent's id.
 #
 # `Skill` was added to the matcher after the fact. Until then no skill invocation
 # was recorded anywhere, so which of this library's own skills had ever run was
@@ -143,6 +146,41 @@ dir="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || true)"
 log="$(orrery_local_file calls.tsv "$old" "$dir")" || exit 0
 
 tool="$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null || true)"
+hook="$(jq -r '.hook_event_name // empty' <<<"$input" 2>/dev/null || true)"
+session="$(jq -r '.session_id // "nosession"' <<<"$input" 2>/dev/null || true)"
+
+# ## An auditor's verdict, and nothing else it said
+#
+# `process-guard.sh` lets a pull request through on the latest audit's verdict,
+# not on an auditor having been spawned: a background spawn is `ran` the moment
+# it launches, so a gate reading spawns let a BLOCKING verdict and an opened pull
+# request coexist. The report arrives one of two ways — through the
+# `SubagentHandback` tool, whose `message` it is, or as the subagent's final text
+# on `SubagentStop` — and both are read. Only the enum is kept: `pass` for CLEAN
+# or MINOR FINDINGS, `fail` for BLOCKING FINDINGS, `unread` for a verdict line
+# that is neither. A report with no `## Verdict` heading writes nothing, so the
+# closing words after a handback cannot overwrite the verdict it carried.
+# The heading may be bolded, and the verdict may share its line after a colon.
+verdict() { # $1 = the report; prints the enum, or nothing without a heading
+  # `[` is not stripped: the auditor's own template line is `[CLEAN / MINOR …]`,
+  # and an auditor that echoes it unfilled has ruled nothing.
+  awk 'function rule(s) { sub(/^[*[:space:]]+/, "", s)
+                          if (s ~ /^(CLEAN|MINOR FINDINGS)([^A-Za-z]|$)/) return "pass"
+                          if (s ~ /^BLOCKING FINDINGS([^A-Za-z]|$)/) return "fail"
+                          return "unread" }
+       !f && /^[*[:space:]]*##[[:space:]]*Verdict[*[:space:]]*(:|$)/ {
+         f = 1; sub(/^[*[:space:]]*##[[:space:]]*Verdict[*[:space:]]*:?/, "")
+         if (NF) { print rule($0); exit }
+         next }
+       f && NF { print rule($0); exit }' <<<"$1"
+}
+if [ "$hook" = SubagentStop ] || { [ "$hook" = PostToolUse ] && [ "$tool" = SubagentHandback ]; }; then
+  agent="$(jq -r '.agent_type // empty' <<<"$input" 2>/dev/null || true)"
+  case "$agent" in auditor|*:auditor) ;; *) exit 0 ;; esac
+  event="$(verdict "$(jq -r '.last_assistant_message // .tool_input.message // empty' <<<"$input" 2>/dev/null || true)")"
+  [ -n "$event" ] || exit 0
+  tool=Agent named=- use_id="$(jq -r '.agent_id // "-"' <<<"$input" 2>/dev/null || true)"
+else
 [ -n "$tool" ] || exit 0
 
 # The event decides the marker, read from the harness rather than inferred from
@@ -155,7 +193,7 @@ tool="$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null || true)"
 # unrecognised* records nothing: that can only happen if someone registers a
 # third event and does not teach this file, and an unlabelled row would then be
 # counted as a call by everything that reads the log.
-case "$(jq -r '.hook_event_name // empty' <<<"$input" 2>/dev/null || true)" in
+case "$hook" in
   PostToolUse) event=ran ;;
   PreToolUse|"") event=call ;;
   *)           exit 0 ;;
@@ -164,7 +202,6 @@ esac
 # same — the one-line-per-event property is worth more than the assumption.
 use_id="$(jq -r '.tool_use_id // "-"' <<<"$input" 2>/dev/null || true)"
 
-session="$(jq -r '.session_id // "nosession"' <<<"$input" 2>/dev/null || true)"
 # Whichever of the two is present. Neither is a personal identifier, and both are
 # **caller-supplied free text** — `subagent_type` is whatever string the model
 # passes on a spawn, not a value from a fixed list. The comment here claimed the
@@ -181,6 +218,7 @@ agent="$(jq -r '.tool_input.subagent_type // .tool_input.agentType // .tool_inpu
 # Whether a name was given, never the name itself.
 named=no
 [ -z "$(jq -r '.tool_input.name // empty' <<<"$input" 2>/dev/null || true)" ] || named=yes
+fi
 
 # `|| true` on both, because the claim above is that every failure path here
 # exits 0 and these were the two that did not: under `set -e` a hashing tool

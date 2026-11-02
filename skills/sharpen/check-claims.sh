@@ -353,6 +353,24 @@ if [ -z "$unparseable" ]; then ok "every skill, agent and rule frontmatter parse
 else bad "frontmatter carries an unquoted value containing a colon and a space"
      for f in $unparseable; do note "$f"; done; fi
 
+# --- 11. A skill fits what Claude Code keeps of it after compaction ---------
+# After compaction Claude Code re-attaches each invoked skill and keeps its first
+# 5,000 tokens (code.claude.com/docs/en/skills, "Skill content lifecycle"); the
+# rest is gone for the rest of the session. These files run 2.6 to 3.0
+# characters to a token, measured from session transcripts, so 12,500 bytes is
+# about 4,800 tokens at the worst sample and 4,450 at the mean. Bytes, not
+# characters: `wc -m` follows the locale. A skill past it loses its tail;
+# reference read only when needed goes in a file beside the skill.
+skill_ceiling=12500
+long=""
+for f in skills/*/SKILL.md; do
+  n=$(wc -c < "$f" | tr -d ' ')
+  [ "$n" -le "$skill_ceiling" ] || long="$long $f:${n}bytes"
+done
+if [ -z "$long" ]; then ok "every SKILL.md fits what survives compaction"
+else bad "skills longer than what survives compaction (ceiling $skill_ceiling bytes)"
+     for f in $long; do note "$f"; done; fi
+
 echo
 [ "$fail" -eq 0 ] && echo "claims check: clean" || echo "claims check: $fail area(s) need attention"
 exit "$fail"

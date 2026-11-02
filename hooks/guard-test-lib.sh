@@ -91,10 +91,11 @@ report_probes() { # $1 = guard path, $2 = label, $3 = what the probes cover
 # pre-commit mode, where only what the change touched is worth minutes. Unset
 # means every candidate, which is what CI and a manual `--mutate` run.
 #
-# MUTATE_JOBS runs that many mutants at once, each in its own file, in batches
-# (bash 3.2 has no `wait -n`). Default 1. Only a guard that keeps no state
-# between invocations may run in parallel, so process-guard's suite pins 1
-# whatever the environment says: its gate file would be shared by every mutant.
+# MUTATE_JOBS runs that many mutants at once, each in its own file. Default 1. A guard that keeps state between
+# invocations runs in parallel only if its suite defines `mutant_env`, called in
+# each mutant's own subshell with the line number, to give that mutant its own
+# copy of the state: process-guard's gate file and call log would otherwise be
+# shared by every mutant.
 mutant_verdict() { # $1 = guard, $2 = line, $3 = mutant file — prints one verdict word
   local op
   # Three operators, first one that both changes the line and keeps the file
@@ -116,7 +117,17 @@ mutant_verdict() { # $1 = guard, $2 = line, $3 = mutant file — prints one verd
 
 mutation_pass() { # $1 = guard path, $2 = scratch file to write mutants to
   local guard="$1" tmp="$2" n v killed=0 survived=0 skipped=0 all=0 tried=0
-  local jobs="${MUTATE_JOBS:-1}" lines="" batch=0 f
+  local jobs="${MUTATE_JOBS:-1}" lines="" f
+  # Where a suite gives each mutant its own environment, an unmutated copy runs
+  # in that environment too, as one more job: it must pass every case and every
+  # probe, or each mutant is killed by where it ran and `survived=0` means
+  # nothing. A `mutant_env` that copied a fixture from a path that did not exist
+  # went one run unnoticed, because both passes it was compared with said 0.
+  if declare -F mutant_env >/dev/null; then
+    cp "$guard" "$tmp.clean"
+    ( mutant_env 0
+      [ "$(corpus "$tmp.clean")" -eq 0 ] && [ "$(probes "$tmp.clean")" -eq 0 ] && echo CLEAN ) > "$tmp.clean.v" &
+  fi
   for n in $(grep -nE "$MUTANTS_RE" "$guard" | cut -d: -f1); do
     all=$((all + 1))
     if [ -n "${MUTATE_LINES+set}" ]; then
@@ -127,11 +138,21 @@ mutation_pass() { # $1 = guard path, $2 = scratch file to write mutants to
     # One at a time the mutant sits exactly at the path the caller named,
     # which process-guard's probe 0 pins; side by side each needs its own.
     f="$tmp"; [ "$jobs" -gt 1 ] && f="$tmp.$n"
-    mutant_verdict "$guard" "$n" "$f" > "$tmp.$n.v" &
-    batch=$((batch + 1))
-    [ "$batch" -ge "$jobs" ] && { wait; batch=0; }
+    # A pool, not batches. A batch waits for its slowest mutant, and one the
+    # corpus does not kill runs every case and every probe: eight slots in
+    # batches kept two cores busy. Read into a file, because `jobs` in a
+    # command substitution would list the subshell's jobs; polled, because
+    # bash 3.2 has no `wait -n`.
+    while jobs -rp > "$tmp.running" && [ "$(wc -l < "$tmp.running")" -ge "$jobs" ]; do sleep 0.2; done
+    ( if declare -F mutant_env >/dev/null; then mutant_env "$n"; fi
+      mutant_verdict "$guard" "$n" "$f" ) > "$tmp.$n.v" &
   done
+  rm -f "$tmp.running"
   wait
+  if [ -f "$tmp.clean.v" ]; then
+    v="$(cat "$tmp.clean.v")"; rm -f "$tmp.clean" "$tmp.clean.v"
+    [ "$v" = CLEAN ] || { printf 'an unmutated copy fails where the mutants run — no verdict here means anything\n'; return 1; }
+  fi
   for n in $lines; do
     v="$(cat "$tmp.$n.v")"
     rm -f "$tmp.$n.v"; [ "$jobs" -gt 1 ] && rm -f "$tmp.$n"

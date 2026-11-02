@@ -24,7 +24,9 @@ single delegation, so `pair`'s lone critic is spawned without the wait.
 
 ## Route first — how many agents this work earns
 
-Every agent run costs minutes of the owner's wall clock. Decide the route
+Every agent run costs tokens — the one input that is spent and does not return —
+and the owner's attention to what it reports. Price a route in agent runs and
+their tokens, never in minutes. Decide the route
 **before** spawning anything, from facts you look up rather than impressions.
 
 **The disqualifier is evaluated first, and size does not answer it.** Work that
@@ -55,7 +57,7 @@ Before choosing between `pair` and `consensus`, ask what the uncertainty is
   again afterwards — usually one step lower, because the thing that made it
   uncertain is now a fact.
 
-A spike costs minutes. `consensus` costs two agents at maximum effort. Reaching
+A spike costs one small run. `consensus` costs two agents at maximum effort. Reaching
 for the second where the first applies is the most expensive mistake available
 here.
 
@@ -169,42 +171,14 @@ the absence of a spike is a claim like any other.
 
 ## The re-review — only what moved
 
-A non-APPROVE verdict revises the plan. It does not restart the pass.
-
-- **The draft** is revised here against the findings, and the revision states
-  how each one was answered. An architect antithesis you reject is answered in
-  writing, not ignored.
-- **Critic** re-checks **its own prior findings** and anything the revision newly
-  touched. Not a fresh full pass — the plan it already read has not changed
-  underneath it.
-- **Architect** re-checks **its own prior findings** whenever it raised any —
-  narrowly, like the critic: did each fix hold. Nobody else reads them. The
-  critic re-checks only its own, so without this an accepted architect finding
-  is marked answered by the draft that answered it and verified by no one — a
-  trust-boundary plan once went to build on four of them that way, and the
-  security audit afterwards found three high-severity holes in the same area.
-- It **re-argues the direction only if the approach changed** — or if the
-  revision rejected its antithesis. A finding about a missing function name
-  does not warrant re-arguing the direction; a rejected argument does, because
-  nobody else can weigh it. The critic never saw the antithesis, by design, so a
-  rejection the architect does not re-read is an argument that dies unopposed
-  after being answered once by the party it was aimed at.
-- A rejection the architect **accepts** ends it. It says so in one line and the
-  iteration closes.
-
-**Two iterations, then stop** — and the count belongs to the work rather than to
-the document. If the critic still withholds APPROVE after two, the defect is in
-the brief rather than the plan. Present the best version, name what the critic
-will not pass, and hand it to the owner.
+A non-APPROVE verdict revises the plan, it does not restart the pass: read
+`re-review.md` beside this skill first. **Two iterations, then stop** and hand
+the owner the best version with what the critic will not pass.
 
 **Before drafting, look in the plan directory for a plan already covering this
 work.** If one is there, this is a second attempt and the draft says so. A third
 is not written: two documents for one task means planning is not what the work
 is short of, and the next move is a spike or a build.
-
-Five plans for one task, each of them inside the two-iteration cap, is how ten
-checker rounds produced no code. Every round was within the limit; nothing
-counted the sequence.
 
 ## Ship
 
@@ -226,7 +200,7 @@ owes is one line naming the decision and why the route was inline, then the same
 - Default: proceed to implementation immediately in this session, and before the
   pull request spawn `auditor` against this plan — `build`'s audit gate without
   its parallel agents. No route skips it. Where the project keeps a call log,
-  `hooks/process-guard.sh` refuses `gh pr create` until one has run — a
+  `hooks/process-guard.sh` refuses `gh pr create` until its verdict passes — a
   branch's first `git push` where the project has no tracker; only the
   owner's quoted word, as `ORRERY_WAIVE`, gets past.
 - *(--interactive only)*: ask first — approve / request changes / reject.

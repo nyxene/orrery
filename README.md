@@ -2,13 +2,13 @@
 
 # Orrery
 
-**A Claude Code plugin that runs a method for software written by AI agents and directed by people.**
+**A Claude Code plugin built to follow a method for software written by AI agents and directed by people.**
 
 Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.33.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.34.0-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -25,7 +25,7 @@ consent before work starts, evidence before a claim is made, and a rule filed
 the moment something breaks — so the next session inherits the lesson instead
 of the wall.
 
-Orrery is the tool that executes such a method. The method itself is
+Orrery is a tool built to follow such a method. The method itself is
 [Orrery Method](https://github.com/nyxene/orrery-method): text for people to
 read, which installs nothing. The plugin depends on `jq`, and on GitHub only
 where `.orrery/config.json` declares `"tracker": "github"`.
@@ -88,7 +88,7 @@ charges, not staking a claim on the work.
 - **Nine hooks** — three guards (a Bash guard with a mutation-tested case
   corpus, an agent guard, and a process gate that refuses to open a pull
   request — or, with no tracker, a branch's first push — before the work's
-  record is committed and an auditor has run), two
+  record is committed and the latest audit passed), two
   loaders for the canon and for scoped rules, a prompt that catches unfinished
   work before a context reset takes it, a reporter that tells you when your
   project's copy of the deny-list has fallen behind the one shipped here, a
@@ -228,7 +228,7 @@ gh release verify v0.30.4 -R nyxene/orrery
 
 <div align="center">
 
-Version 0.33.0 · Canon, fourteen skills, three agents, 23 rules, nine hooks
+Version 0.34.0 · Canon, fourteen skills, three agents, 23 rules, nine hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

@@ -220,7 +220,9 @@ hj="$here/hooks.json"
 # entry once per matching hook, so a second call-log hook on one entry would make
 # this two lines and the comparison red with identical matchers — a false red.
 pre_m="$(jq -r '.hooks.PreToolUse[]  | select(any(.hooks[]; .command | test("call-log"))) | .matcher' "$hj" 2>/dev/null)"
-post_m="$(jq -r '.hooks.PostToolUse[] | select(any(.hooks[]; .command | test("call-log"))) | .matcher' "$hj" 2>/dev/null)"
+# The verdict's own registration, on `SubagentHandback` alone, is not one of the
+# pair and is left out.
+post_m="$(jq -r '.hooks.PostToolUse[] | select(any(.hooks[]; .command | test("call-log"))) | .matcher | select(. != "^SubagentHandback$")' "$hj" 2>/dev/null)"
 if [ -n "$pre_m" ] && [ "$pre_m" = "$post_m" ]; then
   ok "the PreToolUse and PostToolUse registrations watch the same tools"
 else
@@ -375,6 +377,39 @@ if [ "$(wc -l < "$forge_skill" | tr -d ' ')" = 1 ]; then
 else
   bad "a newline in a skill name cannot forge a second line" "$(wc -l < "$forge_skill") lines"
 fi
+
+# --- an auditor's verdict, and nothing else it said --------------------------
+# The PR gate reads these rows. Each payload carries a secret in the report; the
+# log keeps only the enum.
+stop() { # $1 = agent type, $2 = report text
+  jq -cn --arg t "$1" --arg m "$2" '{session_id:"abc-123",hook_event_name:"SubagentStop",agent_type:$t,agent_id:"a1",last_assistant_message:$m}'
+}
+handback() { # $1 = agent type, $2 = report text
+  jq -cn --arg t "$1" --arg m "$2" '{session_id:"abc-123",hook_event_name:"PostToolUse",tool_name:"SubagentHandback",agent_type:$t,agent_id:"a2",tool_input:{message:$m}}'
+}
+vrow() { # $1 = log; prints "tool kind named event id" of its last row
+  tail -1 "$1" 2>/dev/null | awk -F'\t' '{ print $3, $4, $5, $6, $7 }'
+}
+log="$(fresh v1)"; run "$log" "$(handback auditor $'## Verdict\n\n**MINOR FINDINGS** — PASS. /Users/someone/secret')"
+eq_v() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected [$2], got [$3]"; fi; }
+eq_v "a handed-back MINOR FINDINGS verdict is a pass row, id the agent's" "Agent auditor - pass a2" "$(vrow "$log")"
+grep -q 'someone' "$log" 2>/dev/null && bad "the report's text is not kept" "$(cat "$log")" || ok "the report's text is not kept"
+log="$(fresh v2)"; run "$log" "$(stop orrery:auditor $'## Verdict\nBLOCKING FINDINGS — the gate is open')"
+eq_v "a namespaced auditor's BLOCKING FINDINGS on stop is a fail row" "Agent orrery:auditor - fail a1" "$(vrow "$log")"
+log="$(fresh v3)"; run "$log" "$(stop auditor $'## Verdict\nPASS WITH FINDINGS')"
+eq_v "a verdict line that is none of the three is unread" "Agent auditor - unread a1" "$(vrow "$log")"
+log="$(fresh v4)"; run "$log" "$(handback auditor $'## Verdict\nCLEAN')"; run "$log" "$(stop auditor 'Delivering the report.')"
+eq_v "closing words with no verdict after a handback write nothing" "Agent auditor - pass a2" "$(vrow "$log")"
+log="$(fresh v7)"; run "$log" "$(stop auditor $'**## Verdict**\nCLEAN')"; run "$log" "$(stop auditor $'## Verdict: BLOCKING FINDINGS')"
+eq_v "a bolded heading, and a verdict on the heading's own line, are read" "pass fail" "$(awk -F'\t' '{ printf "%s%s", s, $6; s = " " }' "$log")"
+# The template line as the auditor ships it, read from its definition.
+tpl="$(awk '/## Verdict/ { getline; sub(/^[[:space:]]+/, ""); print; exit }' "$here/../agents/auditor.md")"
+log="$(fresh v8)"; run "$log" "$(stop auditor "## Verdict"$'\n'"$tpl")"; run "$log" "$(stop auditor $'## Verdict\nCLEANUP NEEDED')"
+eq_v "the unfilled template line and a word that only starts like CLEAN are unread" "unread unread" "$(awk -F'\t' '{ printf "%s%s", s, $6; s = " " }' "$log")"
+log="$(fresh v5)"; run "$log" "$(stop critic $'## Verdict\nCLEAN')"; run "$log" "$(handback Explore $'## Verdict\nCLEAN')"
+[ ! -s "$log" ] && ok "another agent's verdict is not recorded" || bad "another agent's verdict is not recorded" "$(cat "$log")"
+log="$(fresh v6)"; run "$log" "$(stop $'x\tauditor' $'## Verdict\nCLEAN')"
+[ ! -s "$log" ] && ok "a type with a tab in it is not taken for the auditor" || bad "a type with a tab in it is not taken for the auditor" "$(cat "$log")"
 
 printf '\n%s cases, %s passing, %s failing\n' "$((pass + fail))" "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -5,7 +5,7 @@
     "url": "https://github.com/nyxene"
   },
   "metadata": {
-    "description": "Tooling that runs AI-agent software projects on GitHub with Claude, following Orrery Method."
+    "description": "Tooling for AI-agent software projects run with Claude, following Orrery Method."
   },
   "plugins": [
     {
