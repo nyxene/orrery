@@ -1,6 +1,6 @@
 ---
 name: frame
-description: Turn a vague idea into a stated goal by asking, before any planning starts. Invoke when the request is a wish rather than a task — "something for X", "I want it better", "we should probably" — or when you notice you are about to guess what someone meant. Ends with one sentence they agree with.
+description: Turn a vague idea into a stated goal by asking, before any planning starts. Invoke when the request is a wish rather than a task — "something for X", "I want it better", "we should probably" — or when you notice you are about to guess what someone meant. Ends with one sentence they agree with, written into the work's item.
 argument-hint: "[the rough idea, however vague]"
 ---
 
@@ -90,6 +90,12 @@ That sentence *is* the deliverable. Say it back and get a yes before going
 further — a goal you inferred but never confirmed is still a guess, just a
 better-dressed one.
 
+**If they are away, do not block on the yes** (Canon §7). Away means the
+session runs without them, or a question has gone unanswered. Take your own
+reading, write it as the goal, and mark it unagreed (below), so the first person
+to read the item sees it is a guess and whose. A reading taken in their absence
+is a goal, not consent to build (Canon §1).
+
 ## The cap
 
 If seven or so questions have not produced a goal, stop asking. Say plainly
@@ -98,22 +104,30 @@ questioning is its own failure — it feels diligent and reads as stalling.
 
 ## Then hand off
 
-Once the goal is agreed:
+Once the goal is agreed, or taken in their absence:
 
-1. State it in one sentence.
+1. **Write it into the work's item**, `.orrery/work/<work>/item.md`, in the
+   work's own tree — `<work>` is the worktree's name, or the branch on the main
+   checkout. Two sections, in the form `skills/plan/item-format.md` gives:
+   - `## Goal` — the sentence. If they were away, add the line
+     `Not agreed: the owner was away; this is the reading taken.`
+   - `## Out of scope` — what was ruled out, and where each piece went.
+
+   Create the file if the work has none, and leave every other section to
+   `plan`. The conversation is lost at the next reset; the item is not, and
+   `plan` keeps the Goal and Out of scope it finds there rather than
+   re-deriving them.
 2. Offer 2-3 approaches with real trade-offs, carrying your recommendation the
-   same way every question above did.
-3. On their choice, hand to `plan`. It prices the work itself — an obvious
-   reversible change takes its `inline` route and spends no agents at all — so
-   there is no judgement to make here about whether the work is "big enough".
+   same way every question above did. If they are away, take your
+   recommendation and say so in the item, under the Goal.
+3. Hand to `plan`. It prices the work itself — a reversible change of one file
+   plus its tests, whose approach is obvious, takes its `inline` route and
+   spends no checker — so there is no judgement to make here about whether the
+   work is "big enough".
 
-**Keep framing and planning in one unbroken context window.** Do not compact or
-clear between them. The plan is built on the thinking that produced the goal,
-and most of that thinking is in the conversation rather than in the sentence —
-a `plan` started after a reset re-derives it, badly, from one line.
-
-`build` is the opposite: each execution starts fresh, from the plan alone. That
-is the boundary, and it is the only one.
+The thinking behind the sentence matters as much as the sentence. Whatever of
+it the plan will need — a constraint they named, a reading they rejected —
+goes into the item with the Goal, not only into the conversation.
 
 ## The one guardrail
 

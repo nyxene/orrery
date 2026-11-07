@@ -119,7 +119,7 @@ State what the output said, not what you hoped it would say.
 
 ## Closing something larger than a change
 
-Before recommending that an epic, an issue or a milestone be closed, two extra
+Before recommending that an epic, an item or a milestone be closed, two extra
 reads — both of things that already track doneness and are easy to walk past.
 
 **The design document's resolved decisions, not just its phase list.** A
@@ -128,8 +128,9 @@ decision settled on paper in an Open Questions section and never implemented
 belongs to no phase, so no phase's absence reveals it. Each resolved decision
 needs its own check against shipped code.
 
-**Any artefact that already says the thing is incomplete** — a dashboard, a
-handoff note, a comment on the issue. Treat it as a lead to chase with fresh
+**Any artefact that already says the thing is incomplete** — the work's own
+record under `.orrery/work/<work>/` first, its handoff note among it, then a
+dashboard, and a comment on the issue where a tracker exists. Treat it as a lead to chase with fresh
 evidence, never as something to quietly overrule because your own read
 disagrees. When your read and the artefact conflict, resolve it with a targeted
 search of the code before acting, and say in the report that they disagreed.

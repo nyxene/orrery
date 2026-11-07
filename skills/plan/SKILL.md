@@ -1,6 +1,6 @@
 ---
 name: plan
-description: "Produce a plan someone else can execute, checked by as many independent agents as the stake earns — none, a critic, or a critic and an architect in parallel until APPROVE. Use before any change, including a one-line one: it prices the work and an obvious fix spends no agents. Not for building (use `build`)."
+description: "Produce a plan someone else can execute, checked by as many independent agents as the stake earns — none, a critic, or a critic and an architect in parallel until APPROVE. Use before any change, including a one-line one: it prices the work, and a one-file fix whose approach is obvious spends no checker. Not for building (use `build`)."
 argument-hint: "[--interactive] [--deliberate] <task description>"
 ---
 
@@ -10,10 +10,11 @@ A plan, checked by as many independent agents as the work earns. That is
 sometimes three, often one, and sometimes none — the route is decided first and
 most of this file describes the heaviest case, not the usual one.
 
-Plans are written to the plan directory the project declares (`planDirectory` in
-`.orrery/config.json`, or this machine's `.orrery/local/config.json`), or with none declared to `.orrery/work/<work>/plan.md` in
-the work's own tree — never into a folder of the project's it did not name. Execution is autonomous by
-default; `--interactive` adds human checkpoints.
+A plan is the work's item, `.orrery/work/<work>/item.md` in the work's own tree:
+read `item-format.md` beside this skill for its sections, what it records and
+what it leaves out — code — and for a feature of several tasks. No plan lives in
+a folder of the project's or in a tracker. Execution is autonomous by default;
+`--interactive` adds human checkpoints.
 
 **Spawning the checkers is a parallel fan-out**, which
 `rules/agents/confirm-scope-before-parallel-agents.md` gates: name the agents,
@@ -42,7 +43,7 @@ Everything else, first match wins:
 
 | Route | When | Runs |
 |---|---|---|
-| `inline` | One file, or the approach is already obvious | 0 — plan here, in this session, and say you did |
+| `inline` | One file plus its tests, and the approach is already obvious | 0 — plan here, in this session, and say you did |
 | `pair` | The approach is known, or has precedent in this codebase | 1 — Critic |
 | `consensus` | The approach is genuinely uncertain | 2 — Architect ∥ Critic |
 
@@ -72,9 +73,11 @@ costs the most.
 
 **`inline` still finishes the job.** Plan it here, say you did and why the route
 was inline, then build it, then prove it with `verify` before claiming anything.
-Taking `inline` is a decision about how many checkers the work earns — never a
-decision to skip the gate at the end, and that gate includes `auditor` before
-the pull request, as on every route (§Ship).
+It is the method's one named exception to *02 · The separations are what bind*
+— a party never implements the plan it wrote — and to *Four stations guard the
+flow*, since nothing rules on its plan. Taking `inline` is a decision about how
+many checkers the work earns — never a decision to skip the gate at the end, and
+that gate includes `auditor` before the work lands, as on every route (§Ship).
 
 **`consensus` reached by a risk signal is DELIBERATE.** Reaching it because the
 approach is merely uncertain is not. The difference is what the plan must carry:
@@ -132,30 +135,17 @@ the absence of a spike is a claim like any other.
 
 ## The pass
 
-1. **Draft to the plan directory, here, in this session.** The drafting is not
-   an agent — the checkers are. **Open the draft with the route and the mode**,
-   because what it must contain depends on both:
-   - Always: steps with acceptance criteria, an **Assumptions** list rated
-     VERIFIED / REASONABLE / FRAGILE, and per-step dependencies. The checkers
-     verify that list rather than rebuilding it, which is where the time goes —
-     and an entry marked VERIFIED with no command beside it is a finding, or the
-     rating is a self-assessment they are auditing instead of the work.
+**A Goal marked `Not agreed` stops the work at the plan, on every route,
+`inline` included.** `frame` took that reading while the owner was away, and a
+reading is not consent to build (Canon §1): put the plan to the owner, naming the
+Goal as unagreed, and build only on their yes.
 
-     **VERIFIED means a command was run, its output was read, and the command is
-     written beside the assumption.** Nothing else earns the word. Without one,
-     the entry is REASONABLE at best — a rating applied to a prediction after
-     reading the code is Canon §3 suspended at exactly the point where it decides
-     a design. FRAGILE that the design rests on is the trigger for §Spike, not a
-     label to ship.
-   - `consensus` only: principles (3-5), decision drivers (top 3), and options
-     (2+, or what invalidated the rest). On `pair` the approach is known by
-     definition — demanding alternatives there manufactures the token ones the
-     critic is supposed to reject.
-   - `consensus` only: a pre-mortem of three concrete failure scenarios.
-   - DELIBERATE only: the expanded test plan.
-   - Always, when §Spike applies: the spike's result as a fact, with the command
-     that produced it. A plan that turns on an unread number and carries no
-     command is redrafted rather than checked.
+1. **Draft into the work's item, here, in this session**, keeping the Goal and
+   Out of scope `frame` already wrote there. The drafting is not an agent — the
+   checkers are. **Open it with the route, the mode and the attempt**, because
+   what it must contain depends on them: `item-format.md` says what, section by section. An
+   Assumption marked VERIFIED with no command beside it is a finding — the
+   rating is then a self-assessment the checkers audit instead of the work.
 2. *(--interactive only)* **Stop on the draft and wait.** Put it to the owner with
    `AskUserQuestion` — proceed / request changes — and do not spawn a checker
    until they answer. Displaying the draft and carrying on is not this step: the
@@ -175,34 +165,38 @@ A non-APPROVE verdict revises the plan, it does not restart the pass: read
 `re-review.md` beside this skill first. **Two iterations, then stop** and hand
 the owner the best version with what the critic will not pass.
 
-**Before drafting, look in the plan directory for a plan already covering this
-work.** If one is there, this is a second attempt and the draft says so. A third
-is not written: two documents for one task means planning is not what the work
-is short of, and the next move is a spike or a build.
+**Before drafting, read the item's `Attempt:`.** Attempt 2 says so in the
+draft; attempt 3 is not written — two plans for one work means planning is not
+what the work is short of, and the next move is a spike or a build. A parent's
+item is never an attempt for its tasks.
 
 ## Ship
 
-**This section is about a plan document, so it is about `pair` and `consensus`.**
-`inline` produces no document — it is decided and said in the session, per
+**This section is about a ruled item, so it is about `pair` and `consensus`.**
+`inline` writes no plan into the item — it is decided and said in the session, per
 §Route — and an ADR listing "alternatives considered" for a change whose approach
 was obvious by definition is paperwork with nothing in it. What `inline` still
 owes is one line naming the decision and why the route was inline, then the same
 `verify` at the end as everything else. The gate is never what `inline` skips.
 
-- The final plan carries an ADR: Decision, Drivers, Alternatives considered, Why
-  chosen, Consequences, Follow-ups.
+- The item's *Decided* carries what an ADR did — each decision, the alternative
+  it beat and why — and *Consequences and follow-ups* the rest.
 - **Open questions** — questions you can state precisely, answered or not — are
   resolved by `build` and logged, or escalated per Canon §6.
 - **Not yet specified** — areas you can tell are coming but cannot yet phrase as
   a question — are not planned, not decomposed, and not argued about. The loop
   burns its iterations trying to sharpen these; keeping them in their own section
   is what stops it.
-- Default: proceed to implementation immediately in this session, and before the
-  pull request spawn `auditor` against this plan — `build`'s audit gate without
-  its parallel agents. No route skips it. Where the project keeps a call log,
-  `hooks/process-guard.sh` refuses `gh pr create` until its verdict passes — a
-  branch's first `git push` where the project has no tracker; only the
-  owner's quoted word, as `ORRERY_WAIVE`, gets past.
+- Default: invoke `build` here, in this session, on the ruled item. This session
+  orchestrates and writes none of the plan's code: `build`'s agents implement
+  it, and its audit gate spawns `auditor` against this plan before the pull
+  request, where the code host has one, or the push. No route skips
+  `auditor`, `inline` included — there this session spawns it itself. Where
+  the project keeps a call log, `hooks/process-guard.sh` refuses `gh pr create`
+  until its verdict passes — a branch's first `git push` where the project has
+  no tracker; only the owner's quoted word, as `ORRERY_WAIVE`, gets past.
+- A feature of several tasks is the exception: its planning work stops at its
+  own landing and builds no task (`item-format.md`).
 - *(--interactive only)*: ask first — approve / request changes / reject.
 - An open question that materially changes scope, or is destructive or
   irreversible, goes to the owner before that part is built, in any mode.
@@ -211,7 +205,7 @@ owes is one line naming the decision and why the route was inline, then the same
 
 - Multi-file features, cross-package changes, DB migrations, auth/security work,
   unfamiliar subsystems, genuinely uncertain approaches.
-- **Never skipped.** Routine fixes and single-file changes come here too and
-  take the `inline` route, which spends nothing. Skipping the skill is what
-  lets a one-file auth change avoid the disqualifier, so the entry is
-  unconditional and the routing does the pricing.
+- **Never skipped.** Routine fixes come here too, and one that is one file plus
+  its tests with an obvious approach takes the `inline` route, which spends no
+  checker. Skipping the skill is what lets a one-file auth change avoid the
+  disqualifier, so the entry is unconditional and the routing does the pricing.

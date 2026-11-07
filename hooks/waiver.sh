@@ -64,8 +64,9 @@ esac
 # process guard calls. Never a path relative to that directory: one host project
 # collected twenty call logs as deep as six directories that way. Outside a
 # repository it refuses, because a waiver written somewhere nobody will look is
-# worse than the refusal — it reads as recorded. `ORRERY_WAIVER_LOG`, read for
-# one release, names only the old file whose rows are carried over.
+# worse than the refusal — it reads as recorded. `ORRERY_WAIVER_LOG` names only
+# the old file whose rows are carried over, and is read for as long as the call
+# log's old variable is, for the same reason (see `hooks/call-log.sh`).
 here="$(cd "$(dirname "$0")" && pwd -P)"
 # shellcheck source=hooks/orrery-config.sh
 . "$here/orrery-config.sh"

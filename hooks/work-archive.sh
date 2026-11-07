@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse hook. Where a project ignores `.orrery/work/`, a work's records —
-# retrospective, handoff, plan, debt — live only in its worktree, and
+# retrospective, handoff, item, debt — live only in its worktree, and
 # `git worktree remove` deletes them: an ignored file is in no branch. This copies
 # them into the main checkout's `.orrery/local/work/` each time one is written.
 #

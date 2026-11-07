@@ -112,13 +112,24 @@ orrery_tracker() {
   case "$t" in github) printf github ;; *) printf none ;; esac
 }
 
-# Why the config would not be read, or nothing when it is fine: `malformed`,
-# `malformed-local` or `malformed-both`, else `missing`. Missing is only worth
-# saying where the project is plainly on GitHub, has no committed file — one
-# that leaves the tracker out has decided — and no tracker locally either: a
-# local file that sets only the language must not hide that the gate moved.
+# `github` when the origin's host contains "github": github.com, an Enterprise
+# github.example.com, mygithub.example — a substring, not a suffix. The host only:
+# a whole-URL grep missed Enterprise hosts, and widened took gitlab.com:x/github-x.
+orrery_code_host() {
+  local u; u="$(git -C "${1:-.}" remote get-url origin 2>/dev/null)" || u=""
+  u="${u#*://}"; u="${u%%/*}"; u="${u##*@}"; u="${u%%:*}"
+  case "$u" in *[Gg][Ii][Tt][Hh][Uu][Bb]*) printf github ;; *) printf none ;; esac
+}
+
+# Why the config would not be read as written, or nothing when it is fine — the
+# first of: `malformed`, `malformed-local`, `malformed-both`; `unknown-tracker`, a
+# declared one that reads as none (`""` too), once shown to the model as live;
+# `tracker-without-host`, `github` with no GitHub origin, where no pull-request
+# or first-push gate fires; `missing`, only where the project is plainly on
+# GitHub, has no committed file — one that leaves the tracker out has decided —
+# and no tracker locally: a local file setting only the language must not hide it.
 orrery_config_problem() {
-  local f l c=ok lo=ok
+  local f l c=ok lo=ok t
   f="$(orrery_config_file "${1:-.}")"; l="$(orrery_config_local_file "${1:-.}")"
   [ -n "$f" ] || return 0
   [ ! -e "$f" ] || orrery_config_valid "$f" || c=bad
@@ -127,9 +138,14 @@ orrery_config_problem() {
     bad/bad) printf malformed-both ;;
     bad/ok)  printf malformed ;;
     ok/bad)  printf malformed-local ;;
-    *) if [ ! -e "$f" ] && [ "$(orrery_config_source tracker "${1:-.}")" = default ]; then
-         git -C "${1:-.}" remote get-url origin 2>/dev/null | grep -q 'github\.com' && printf missing
-       fi ;;
+    *) t="$(orrery_config tracker "" "${1:-.}")"  # empty: undeclared, or declared ""
+       [ -n "$t" ] || [ "$(orrery_config_source tracker "${1:-.}")" = default ] || t='""'
+       case "$t" in
+         github) [ "$(orrery_code_host "${1:-.}")" = github ] || printf tracker-without-host ;;
+         "") if [ ! -e "$f" ] && [ "$(orrery_code_host "${1:-.}")" = github ]; then printf missing; fi ;;
+         none) ;;
+         *) printf unknown-tracker ;;
+       esac ;;
   esac
   return 0
 }

@@ -237,6 +237,21 @@ if grep -q 'a rule for every project' <<<"$body" && ! grep -q 'a process rule' <
   ok "and the next push enters the git rules instead"
 else bad "and the next push enters the git rules instead" "$body"; fi
 
+# --- filing or noting through the tracker seam enters process, in every form --
+i=0
+for c in 'hooks/tracker.sh file --type bug --title t --body-file b' './hooks/tracker.sh note 12 --body-file b' \
+         '"${CLAUDE_PLUGIN_ROOT:-.}/hooks/tracker.sh" file --title t --body-file b' \
+         '/p/skills/build/../../hooks/tracker.sh -C /some/dir note 12 --body-file b' \
+         "'/a b/hooks/tracker.sh' -C '/a dir' file --title t --body-file b"; do
+  i=$((i + 1)); body="$(context "$(run "$root" "$(bash_payload "s-trk$i" "$c")")")"
+  if grep -q 'a process rule' <<<"$body"; then ok "it enters process: $c"
+  else bad "it enters process: $c" "$body"; fi
+done
+for c in 'hooks/tracker.sh list --search file' 'hooks/tracker.sh -C /d labels'; do
+  if [ -z "$(run "$root" "$(bash_payload s-trk-read "$c")")" ]; then ok "a read enters nothing: $c"
+  else bad "a read enters nothing: $c" "it loaded a scope"; fi
+done
+
 # --- without jq it says so once, then stops repeating itself ----------------
 # The payload is built before PATH is narrowed: a here-string is expanded with
 # the command's environment already in place, so building it inline would run jq

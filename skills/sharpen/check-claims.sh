@@ -214,22 +214,23 @@ else bad "rules carrying provenance that sanitization should have stripped"; for
 # the tracker is unreachable when it is not. Nothing is sent to /dev/null
 # either: whichever of "no gh", "no token" or "the network is down" happened,
 # the line a person reads should carry what gh actually said.
-if ! command -v gh >/dev/null 2>&1; then
-  printf '\033[33m–\033[0m label check skipped: gh is not on PATH\n'
-elif ! gh_out=$(gh label list --limit 100 2>&1); then
-  printf '\033[33m–\033[0m label check skipped: gh could not list labels\n'
-  printf '%s\n' "$gh_out" | sed 's/^/    /'
-else
-  have=$(cut -f1 <<<"$gh_out")
-  absent=""
-  for l in $(jq -r '.debtLabels // {} | (.type // empty), (.priority // [] | .[]), (.pool // [] | .[])' \
-               .orrery/config.json 2>/dev/null); do
-    case "$l" in */\*) continue ;; esac
-    grep -qxF "$l" <<<"$have" || absent="$absent $l"
-  done
-  if [ -z "$absent" ]; then ok "declared labels exist in the tracker"
-  else bad "labels declared in .orrery/config.json that the tracker does not have"; for l in $absent; do note "$l"; done; fi
-fi
+#
+# It asks hooks/tracker.sh, whatever the tracker is: the labels needed are the
+# method's binding plus the project's areas, so this file no longer reads them
+# from config. Exit 3 is an adapter with no labels (`none`); exit 1 with nothing
+# on stdout is a tracker that could not answer (no gh, no token, the sandbox),
+# and its stderr is printed.
+tr_err=$(mktemp "${TMPDIR:-/tmp}/claims-tracker.XXXXXX")
+tr_out=$(hooks/tracker.sh labels 2>"$tr_err"); tr_rc=$?
+case "$tr_rc:${tr_out:+out}" in
+  0:*) ok "declared labels exist in the tracker" ;;
+  3:*) printf '\033[33m–\033[0m label check skipped: %s\n' "${tr_out#unsupported: }" ;;
+  1:out) bad "labels the tracker needs and does not have"; for l in $tr_out; do note "$l"; done ;;
+  1:*) printf '\033[33m–\033[0m label check skipped: the tracker could not answer\n'
+       sed 's/^/    /' "$tr_err" ;;
+  *) bad "hooks/tracker.sh labels exited $tr_rc"; note "$(cat "$tr_err")" ;;
+esac
+rm -f "$tr_err"
 
 # --- 7. plugin.json doesn't redeclare an auto-discovered path ---------------
 # Claude Code loads hooks/hooks.json by convention. Declaring it again in
@@ -287,6 +288,7 @@ fi
 # rather than matched by a pattern, so the next unregistered guard is still
 # caught. `orrery-config.sh` is the same kind of file: the hooks source it for
 # Orrery's paths and settings, and it is never an event's command.
+# `tracker.sh` is a library script too: skills call it, no event does.
 #
 # The first token of a command, not the whole string — a registration may carry
 # arguments, and reading one as part of the path invents two defects at once: a
@@ -295,7 +297,7 @@ fi
 # Every arm reports through `note`, which is what moves the counter; `bad` only
 # prints. Check 7 above is what forgetting that costs.
 cmds=$(jq -r '[.hooks[][].hooks[].command] | .[]' hooks/hooks.json | awk '{print $1}' | tr -d '"')
-scripts=$(ls hooks/*.sh | sed 's#hooks/##' | grep -v '\.test\.sh$' | grep -v '^guard-test-lib\.sh$' | grep -v '^waiver\.sh$' | grep -v '^orrery-config\.sh$' | sort)
+scripts=$(ls hooks/*.sh | sed 's#hooks/##' | grep -v '\.test\.sh$' | grep -v '^guard-test-lib\.sh$' | grep -v '^waiver\.sh$' | grep -v '^orrery-config\.sh$' | grep -v '^tracker\.sh$' | sort)
 registered=$(printf '%s\n' "$cmds" | sed 's#.*/hooks/##' | sort -u)
 if [ "$scripts" = "$registered" ]; then ok "every hook script is registered in hooks.json"
 else bad "hooks/ and hooks.json name different scripts"
@@ -370,6 +372,23 @@ done
 if [ -z "$long" ]; then ok "every SKILL.md fits what survives compaction"
 else bad "skills longer than what survives compaction (ceiling $skill_ceiling bytes)"
      for f in $long; do note "$f"; done; fi
+
+# --- 12. Nothing outside the adapter calls the tracker -----------------------
+# `hooks/tracker.sh` is the one door: `gh issue` and `gh label` live in
+# `hooks/tracker/github.sh` alone, and a skill spelling either breaks on every
+# other tracker. Red only on the verb as a command's first word — line start, or
+# after `$(`, `|`, `&&`, `;` — in a script or a SKILL.md fenced block, because
+# the guards match these verbs in their own patterns. Comment lines are skipped
+# (`hooks/process-guard.sh` quotes one); so are suites, corpora, and `feedback`,
+# which links to the product's own tracker. A scan that fails says so.
+if ! bypass=$(awk 'FNR==1 { f=0; skip = FILENAME ~ "^(hooks/tracker|skills/feedback)/" }
+  skip { next } /^[[:space:]]*```/ { f=!f; next } /^[[:space:]]*#/ { next }
+  (f || FILENAME ~ /[.]sh$/) && /(^|[$][(]|[|]|&&|;)[[:space:]]*gh[[:space:]]+(issue|label)([^[:alnum:]_-]|$)/ { print FILENAME ":" FNR ": " $0 }' \
+  $(find skills hooks -name '*.sh' ! -name '*.test.sh' | sort) skills/*/SKILL.md); then
+  bad "the tracker-verb scan did not run"; fail=1
+elif [ -z "$bypass" ]; then ok "no tracker verb is called outside hooks/tracker/"
+else bad "a tracker verb called around hooks/tracker.sh"
+     while IFS= read -r l; do note "$l"; done <<<"$bypass"; fi
 
 echo
 [ "$fail" -eq 0 ] && echo "claims check: clean" || echo "claims check: $fail area(s) need attention"

@@ -5,9 +5,16 @@ evidence: "a library skill queried an issue label spelled the way one host proje
 ---
 
 A library skill states the distinction it owns and delegates the vocabulary. It
-declares what the host project must supply — labels, paths, commands —
+declares what the host project must supply — areas, paths, commands —
 documented in the library's install guide, read from `.orrery/config.json` at
 runtime, and hard-codes none of it.
+
+Classification is the exception, split three ways. The method fixes the values
+(six types, three priorities, four flags), the tracker adapter's binding fixes
+their spelling (`type/<v>`, `area/<v>`, `priority/<v>`, `flag/<v>` on GitHub),
+and the project declares only its areas. A skill passes the method's value to
+`hooks/tracker.sh` and spells no label itself; a label the binding fixes is not
+a host's fingerprint.
 
 **Why:** a baked-in taxonomy is correct in exactly one project and wrong in
 every other, and it is wrong *silently*. `gh issue list --label tech-debt`
@@ -31,7 +38,8 @@ for the host's fingerprints:
 
 | Fingerprint | Verdict |
 |---|---|
-| Literal label strings, package names, toolchain commands | Move to the project's declaration |
+| Literal label strings | Pass the method's value to the tracker adapter; only an area is the project's to declare |
+| Package names, toolchain commands | Move to the project's declaration |
 | The host's subject matter used as the only example | Generalise; state the mechanism, not the field |
 | The host's business facts ("this is commercial software being sold") | Delete. State the consequence unconditionally instead |
 | A path | Fine **if** it is a stated default with an override, named in the install declaration |

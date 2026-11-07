@@ -4,14 +4,17 @@
 # a session is denied, and should be.
 #
 #   onboard.sh check    <project>                    writes nothing in the project (it fetches origin): what is there, what the next verb does
-#   onboard.sh prepare  <project> --config <file> --mode committed|local [--label <l>] [--pr-gate]
+#   onboard.sh prepare  <project> --config <file> --mode committed|local [--pr-gate]
 #   onboard.sh update   <project> [--records-ok]     the plugin, once the settings are in force
 #   onboard.sh rollback <project>                    the install record `update` saved
 #
-# `prepare --mode committed` opens an issue and a pull request carrying
+# `prepare --mode committed` commits, on a branch of its own,
 # `.orrery/config.json`, the deny list merged into `.claude/settings.json`, a dead
 # `orrery-method` entry removed, and with `--pr-gate` the PR-names-an-issue
-# workflow. It works in a worktree of its own, so the project's checkout and any
+# workflow. Where the draft's tracker is `github` it files an issue through
+# `hooks/tracker.sh`, creating the labels that needs; where origin is on GitHub it
+# pushes and opens a pull request closing that issue, if there is one; elsewhere
+# it stops at the commit. It works in a worktree of its own, so the project's checkout and any
 # work in it are not touched. Run again once the settings are on the default
 # branch, it leaves them as reviewed and only brings the deny list up to date —
 # what an update that adds a rule asks for; a run that would change nothing opens
@@ -36,12 +39,11 @@ usage() { sed -n '6,9p' "$0" | sed 's/^# //' >&2; exit 2; }
 verb="${1:-}"; target="${2:-}"
 [ -n "$verb" ] && [ -n "$target" ] || usage
 shift 2
-config="" mode="" label="" prgate=0 recordsok=0
+config="" mode="" prgate=0 recordsok=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) config="${2:-}"; shift 2 ;;
     --mode) mode="${2:-}"; shift 2 ;;
-    --label) label="${2:-}"; shift 2 ;;
     --pr-gate) prgate=1; shift ;;
     --records-ok) recordsok=1; shift ;;
     *) usage ;;
@@ -53,8 +55,14 @@ main="$(orrery_main "$target")"
 plugins="${ORRERY_INSTALLED_PLUGINS:-$HOME/.claude/plugins/installed_plugins.json}"
 saved="$main/.orrery/local/onboard/install-record.json"
 deny="$root/hooks/permissions.json"
-git -C "$main" fetch -q origin 2>/dev/null || true
-base="$(git -C "$main" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo main)"
+tracker_sh="$root/hooks/tracker.sh"
+# An origin that cannot be reached is said, in git's words: what follows works
+# from what was fetched last, and a silent fallback reads like a fresh answer.
+if ! fetched="$(git -C "$main" fetch -q origin 2>&1)"; then
+  printf 'onboard: cannot fetch origin; working from what was fetched last:\n%s\n' "$(sed 's/^/    /' <<<"$fetched")" >&2
+fi
+base="$(git -C "$main" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)" \
+  || { base=main; echo "onboard: origin names no default branch; taking main" >&2; }
 
 entry() { jq -c --arg p "$main" '[.plugins["orrery@orrery"][]? | select(.projectPath == $p)] | .[0] // empty' "$plugins" 2>/dev/null || true; }
 committed() { git -C "$main" cat-file -e "$base:.orrery/config.json" 2>/dev/null; }
@@ -116,29 +124,47 @@ prepare)
     # and only the deny list is brought up to date — the step every update that
     # adds a rule asks for. The change is built before the issue is opened, so a
     # run that changes nothing opens nothing; and whatever fails, the worktree and
-    # the draft branch go with the exit.
+    # the draft branch go with the exit. `set +e` first: the draft is usually
+    # renamed by then, and under -e its failed delete became the exit status.
     if committed; then what="Orrery's deny list brought up to date"
     else valid || die "--config must name one JSON object"; what="Orrery settings in .orrery/config.json"; fi
     wt="$(mktemp -d "${TMPDIR:-/tmp}/onboard.XXXXXX")"; draft="onboard-draft-$$"
-    trap 'git -C "$main" worktree remove --force "$wt" 2>/dev/null; rm -rf "$wt"; git -C "$main" branch -D "$draft" >/dev/null 2>&1' EXIT
+    trap 'set +e; git -C "$main" worktree remove --force "$wt" 2>/dev/null; rm -rf "$wt" "$wt.body"; git -C "$main" branch -D "$draft" >/dev/null 2>&1' EXIT
     git -C "$main" worktree add -q -b "$draft" "$wt" "$base"
     committed || { mkdir -p "$wt/.orrery"; cp "$config" "$wt/.orrery/config.json"; }
     merge_deny "$wt/.claude/settings.json"
-    if [ "$prgate" = 1 ] && [ "$(jq -r '.tracker // empty' "$wt/.orrery/config.json")" = github ] && ! has_pr_gate; then
-      mkdir -p "$wt/.github/workflows" "$wt/install/ci"
-      cp "$root/install/ci/pr-names-an-issue.yml" "$wt/.github/workflows/"
-      cp "$root/install/ci/names-an-issue.sh" "$root/install/ci/names-an-issue.test.sh" "$wt/install/ci/"
+    # The config being onboarded exists only in the draft tree, so the tracker is
+    # asked of that tree, here and in every tracker.sh call.
+    tracker="$(orrery_tracker "$wt")"
+    if [ "$prgate" = 1 ]; then
+      if [ "$tracker" != github ]; then echo "--pr-gate does nothing: the tracker is $tracker, and that gate asks every pull request for an issue number"
+      elif has_pr_gate; then echo "--pr-gate does nothing: the project has a gate of its own"
+      else
+        mkdir -p "$wt/.github/workflows" "$wt/install/ci"
+        cp "$root/install/ci/pr-names-an-issue.yml" "$wt/.github/workflows/"
+        cp "$root/install/ci/names-an-issue.sh" "$root/install/ci/names-an-issue.test.sh" "$wt/install/ci/"
+      fi
     fi
     git -C "$wt" add -A
     if git -C "$wt" diff --cached --quiet; then echo "nothing to change: $what is already so on $base"; exit 0; fi
-    repo="$(cd "$main" && gh repo view --json nameWithOwner -q .nameWithOwner)"
-    url="$(gh issue create --repo "$repo" ${label:+--label "$label"} --title "chore: $what" \
-      --body "Brings this project's Orrery settings into the repository: \`.orrery/config.json\` where it is missing, Orrery's deny list merged into \`.claude/settings.json\`, and a dead \`orrery-method\` plugin entry removed if there is one.")"
-    n="${url##*/}"; branch="chore/$n-orrery-settings"
+    printf '%s\n' "Brings this project's Orrery settings into the repository: \`.orrery/config.json\` where it is missing, Orrery's deny list merged into \`.claude/settings.json\`, and a dead \`orrery-method\` plugin entry removed if there is one." > "$wt.body"
+    n="" closes="" branch="chore/orrery-settings"
+    if [ "$tracker" = github ]; then
+      # Filing needs the type label; a project new to the tracker has none of them.
+      "$tracker_sh" -C "$wt" labels-create | sed 's/^/label created: /'
+      id="$("$tracker_sh" -C "$wt" file --type chore --title "chore: $what" --body-file "$wt.body")"
+      n="${id#\#}"; branch="chore/$n-orrery-settings"; closes="$("$tracker_sh" -C "$wt" closer "$id")"
+    fi
     git -C "$wt" branch -m "$draft" "$branch"
-    git -C "$wt" commit -q -m "chore: $what (#$n)"
+    git -C "$wt" commit -q -m "chore: $what${n:+ (#$n)}"
+    # A pull request is the code host's, not the tracker's: `gh pr create` only where
+    # origin is on GitHub, and spelled as itself, since the audit gate matches it.
+    if [ "$(orrery_code_host "$wt")" != github ]; then
+      echo "committed on branch $branch in $main. origin is not on GitHub, so the pull request is yours to open from that branch."
+      exit 0
+    fi
     git -C "$wt" push -q -u origin "$branch"
-    (cd "$wt" && gh pr create --base "${base#origin/}" --head "$branch" --title "chore: $what" --body "Closes #$n")
+    (cd "$wt" && gh pr create --base "${base#origin/}" --head "$branch" --title "chore: $what" --body "${closes:-$(cat "$wt.body")}")
     ;;
   *) die "--mode is committed or local" ;;
   esac

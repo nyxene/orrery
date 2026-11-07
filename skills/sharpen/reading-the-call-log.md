@@ -25,7 +25,7 @@ about itself. Group by the session fingerprint and read the shape:
   **The denominator is the hard half, and it is not in this log.** Drafting
   is not an agent — `plan` writes in the session that invoked it — so no
   spawn marks a session as having planned, and the log records no content
-  that could. Until something does, count the plan documents written in the
+  that could. Until something does, count the items carrying a Ruling written in the
   window and say that is what you counted. A ratio whose denominator came
   from a different source than its numerator is worth stating as two numbers
   rather than one fraction.

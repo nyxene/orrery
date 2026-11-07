@@ -16,9 +16,11 @@ friction is still legible — the events it rides, never a schedule.
 ## What this looks at
 
 1. **This conversation** — corrections, friction, things repeated.
-2. **Session transcripts — all of them** — `~/.claude/projects/<project>/*.jsonl`.
-   Extract **user messages only**; assistant output and tool results are noise
-   here and enormous. Filter for feedback signals: corrections ("no", "don't",
+2. **Session transcripts — all of them** — `~/.claude/projects/<project>*/*.jsonl`
+   (worktree folders have a suffix). Extract **user messages only** — text
+   of `user` records that are not tool results or `isMeta`, and
+   `queued_command` attachments with `origin.kind` `human`, typed mid-turn;
+   the rest is noise. Filter for feedback signals: corrections ("no", "don't",
    "actually", "wrong", "instead"), friction ("again", "I already said"),
    explicit asks ("next time", "I wish", "should"), and approval ("exactly",
    "yes, that"). Approval matters — it tells you what to protect.
@@ -184,7 +186,7 @@ first because a proposal already refused is not worth re-costing.
 
 The file may not exist yet; on the first run, create it. Absent is the first
 run, never a signal that the log was cleared — but look for one at
-`docs/sharpen-log.md` first, where it lived before: if the project declared no
+its old place, `docs/sharpen-log.md`, first: if the project declared no
 `sharpenLog` and that file is there, `git mv` it to `.orrery/sharpen-log.md` in
 this pass, and read it as the history it is.
 

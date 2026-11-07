@@ -34,5 +34,6 @@ will not pass, and hand it to the owner.
 
 Five plans for one task, each of them inside the two-iteration cap, is how ten
 checker rounds produced no code. Every round
-was within the limit; nothing counted the sequence — which is why `plan` looks
-for an earlier plan before drafting and never writes a third.
+was within the limit; nothing counted the sequence — which is why the work's
+item carries `Attempt:`, `plan` reads it before drafting, and never writes a
+third.

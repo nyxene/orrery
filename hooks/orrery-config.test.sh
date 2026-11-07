@@ -44,8 +44,13 @@ printf '{"tracker":"github","callLog":false,"debtLabels":{"type":"t"}}' > "$main
 eq "7 a declared tracker" "github" "$(orrery_tracker "$main")"
 eq "8 a boolean prints as JSON, not as its default" "false" "$(orrery_config callLog true "$main")"
 eq "9 an object prints as compact JSON" '{"type":"t"}' "$(orrery_config debtLabels "" "$main")"
+eq "7a a GitHub tracker with no origin is reported" "tracker-without-host" "$(orrery_config_problem "$main")"
 printf '{"tracker":"gitlab"}' > "$main/.orrery/config.json"
 eq "10 an unknown tracker is none, not passed through" "none" "$(orrery_tracker "$main")"
+eq "10a and is reported, not taken silently" "unknown-tracker" "$(orrery_config_problem "$main")"
+printf '{"tracker":""}' > "$main/.orrery/config.json"
+eq "10b an empty tracker is none, and reported as unknown" "none/unknown-tracker" \
+  "$(orrery_tracker "$main")/$(orrery_config_problem "$main")"
 printf 'not json' > "$main/.orrery/config.json"
 eq "11 a malformed file is the defaults" "none" "$(orrery_tracker "$main")"
 eq "12 and is reported as malformed" "malformed" "$(orrery_config_problem "$main")"
@@ -56,6 +61,26 @@ rm -f "$main/.orrery/config.json"
 eq "14 no config and no GitHub remote is not a problem" "" "$(orrery_config_problem "$main")"
 git -C "$main" remote add origin https://github.com/example/example.git
 eq "15 no config beside a GitHub remote is reported" "missing" "$(orrery_config_problem "$main")"
+printf '{"tracker":"github"}' > "$main/.orrery/config.json"
+eq "15o a GitHub tracker beside a GitHub origin is clean" "" "$(orrery_config_problem "$main")"
+mkdir -p "$main/.orrery/local"; printf '{"tracker":"gitlab"}' > "$main/.orrery/local/config.json"
+printf 'nope' > "$main/.orrery/config.json"
+eq "15p malformed is said before an unknown tracker" "malformed" "$(orrery_config_problem "$main")"
+rm -rf "$main/.orrery/config.json" "$main/.orrery/local"
+
+# --- the code host is the origin's host, never a word elsewhere in its URL -----
+for u in https://github.com/a/b git@github.com:a/b ssh://git@github.com/a/b https://github.example.com/a/b \
+         git@gitlab.com:x/github-tools.git https://gitlab.com/github/b; do
+  git -C "$main" remote set-url origin "$u"
+  case "$u" in *gitlab*) want=none ;; *) want=github ;; esac
+  eq "15q $u is $want" "$want" "$(orrery_code_host "$main")"
+done
+git -C "$main" remote set-url origin https://github.example.com/a/b
+eq "15t no config beside a GitHub Enterprise origin is reported too" "missing" "$(orrery_config_problem "$main")"
+git -C "$main" remote remove origin
+eq "15r no origin is none" "none" "$(orrery_code_host "$main")"
+eq "15s outside a repository is none" "none" "$(orrery_code_host "$tmp")"
+git -C "$main" remote add origin https://github.com/example/example.git
 
 # --- a machine-local config: the main checkout's, read from every worktree ----
 loc="$main/.orrery/local/config.json"; mkdir -p "$main/.orrery/local"

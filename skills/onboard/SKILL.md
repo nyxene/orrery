@@ -28,7 +28,9 @@ Against a path, like `doctor`: `/orrery:onboard <path to the project>`.
   once, name the path.
 
 The script is in this skill's own directory; give the owner its absolute path —
-`$CLAUDE_PLUGIN_ROOT` is not set in their terminal.
+`$CLAUDE_PLUGIN_ROOT` is not set in their terminal, nor in this skill's own
+commands. `<that directory>` below is the base directory this skill was loaded
+from; the tracker is reached as `<that directory>/../../hooks/tracker.sh`.
 
 ## 1. Read before asking
 
@@ -36,10 +38,11 @@ The script is in this skill's own directory; give the owner its absolute path �
 |---|---|---|
 | The install | `doctor`'s `check-install.sh <project>` | version, scope, cache, config in force, missing deny rules, leftovers, PR gate, ignored records |
 | The script's view | `onboard.sh check <project>` | the same, plus what `prepare` and `update` would do |
-| Declarations to migrate | the project's `CLAUDE.md`, `CLAUDE.local.md` | language, gates, plan directory, debt labels and quota, branch flow — prose that 0.32 stopped reading |
+| Declarations to migrate | the project's `CLAUDE.md`, `CLAUDE.local.md` | language, gates, areas and debt pool (`areas`, `debtPool`; never the retired `debtLabels`), branch flow — prose that 0.32 stopped reading; a plan folder named there is reported as retired, not migrated — the plan is the work's item |
 | Gates | CI workflows, `package.json`, `Makefile`, `scripts/` | `qualityGates` |
-| Tracker | the `origin` remote; `gh label list` | `tracker`, and whether the debt labels exist |
-| Rulesets | `gh api repos/<owner>/<repo>/rulesets` (read) | whether the default branch takes changes only by pull request |
+| Tracker and host | the `origin` remote; the `tracker` the config in force declares | the code host, and the tracker's default |
+| Labels | only where the config in force already declares `tracker: github`: `<that directory>/../../hooks/tracker.sh -C <project> labels` | which of the method's labels the tracker lacks |
+| Rulesets | only where `origin` is on GitHub: `gh api repos/<owner>/<repo>/rulesets` (read) | whether the default branch takes changes only by pull request |
 
 State what you found; do not ask what the repository already says.
 
@@ -63,8 +66,11 @@ One JSON object; only keys the owner chose or the repository answered.
 
 Then draft, for the owner to run, never run yourself:
 
-- **Labels** the debt keys name and the tracker lacks: `gh label create <name> --repo <owner>/<repo>`.
-- **A ruleset**, where the default branch accepts direct pushes and the owner wants it
+- **Labels**, where the tracker is `github` and lacks some:
+  `<that directory>/../../hooks/tracker.sh -C <project> labels-create`, run once the
+  settings are in force — after `prepare --mode local`. `--mode committed` creates
+  them itself, since filing its issue needs one.
+- **A ruleset**, on a GitHub origin, where the default branch accepts direct pushes and the owner wants it
   not to: the `gh api --method POST repos/<owner>/<repo>/rulesets` call, with the
   pull-request rule — shown, explained, theirs to run.
 - **Attribution**: Claude Code adds a co-author trailer to commits and a line to pull
@@ -75,7 +81,7 @@ Then draft, for the owner to run, never run yourself:
 
 ```
 onboard.sh check    <project>
-onboard.sh prepare  <project> --config <draft> --mode committed|local [--label <l>] [--pr-gate]
+onboard.sh prepare  <project> --config <draft> --mode committed|local [--pr-gate]
 onboard.sh update   <project> [--records-ok]
 onboard.sh rollback <project>
 ```
@@ -86,8 +92,8 @@ onboard.sh rollback <project>
 | Settings | `.orrery/config.json`, in a pull request | `<main>/.orrery/local/config.json`, never committed |
 | Deny list | merged into `.claude/settings.json`, same pull request | merged into `.claude/settings.local.json` — this machine only |
 | `orrery-method` entries | removed | — |
-| `--pr-gate` | copies the PR-names-an-issue workflow where the tracker is GitHub and the project has no gate of its own | — |
-| How | an issue (with `--label` where the project requires one) and a pull request that closes it, from a worktree of its own | written at once |
+| `--pr-gate` | copies the PR-names-an-issue workflow where the tracker is GitHub and the project has no gate of its own; says so when it copies nothing | — |
+| How | a commit on a branch, from a worktree of its own; an issue through `tracker.sh` where the tracker is `github`; on a GitHub origin, a push and a pull request closing that issue. With no GitHub origin it stops at the commit and names the branch — the pull request is the owner's to open | written at once |
 
 **Order: `prepare`, merge its pull request, then `update`.** `update` refuses until
 the settings are in force, and refuses while the default branch's recent merges carry
@@ -98,7 +104,7 @@ add once they know. `update` saves the install record first; `rollback` puts it 
 
 **After an update that adds deny rules**, run `prepare` again in the same mode. In
 committed mode, with the settings already on the default branch, it leaves them as
-reviewed and opens a pull request that only brings the deny list up to date; with
+reviewed and makes a change that only brings the deny list up to date; with
 nothing to change it opens nothing. `doctor` and the line at session start say when
 rules are missing.
 

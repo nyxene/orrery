@@ -91,8 +91,8 @@ cmd="$(jq -r '.tool_input.command // empty' <<<"$input")"
 [ -z "$cmd" ] && exit 0
 
 # Every refusal ends with the rule that governs it, because the rule file does
-# not load here: `rules-loader.sh` enters the scope that holds it only on a `gh`
-# command, so a refused `rm` or `cat` arrived with nothing saying the refusal is
+# not load here: `rules-loader.sh` enters the scope that holds it only on `gh`,
+# filing or a first push, so a refused `rm` or `cat` arrived with nothing saying the refusal is
 # the person's to overrule — and one host's session moved a refused edit into a
 # script file this guard does not read. The sentence costs a line per refusal;
 # the walk-around it names cost the owner finding it by screenshot. The two
@@ -408,9 +408,13 @@ verb_of() {
       # `root` and passed. `-u` and `-g` always take a value (`sudo -u`, `env -u`);
       # `-n` does not always (`sudo -n` is non-interactive), so its value is
       # recognised by being a number rather than by the flag before it.
-      if (t ~ /^-[ug]$/) { skip = 1; continue }
+      # `skip` counts, because a wrapper that steps over one word can also take a
+      # flag with a value before it: `flock -w 5 /tmp/l rm` read `l` as the verb.
+      # `timeout -k`/`-s` and `flock -w`/`-E` are counted only after those two.
+      if (t ~ /^-[ug]$/) { skip++; continue }
+      if (wrapv && t ~ /^-[ksEw]$/) { skip++; continue }
       if (t ~ /^-/) continue
-      if (skip) { skip = 0; continue }
+      if (skip) { skip--; continue }
       if (t ~ /^[0-9]+$/) continue
       # A container runner is a wrapper like the ones below, with one extra word
       # to step over. Reported by a host project after its own hook was walked
@@ -460,10 +464,15 @@ verb_of() {
       # word nobody had listed, so it *was* the verb and every rule judged at the
       # verb stopped at it. That is not a second wrapper list — it is this one,
       # missing the half of a builtin that happens to be spelled with letters.
+      # A wrapper that takes one word before the command: a duration
+      # (`timeout 5s`), a lock file (`flock /tmp/l`). Unlisted, `timeout` was
+      # itself the verb, so `timeout 5 rm -rf ~/dev` reached no delete check at
+      # all; `caffeinate` and `setsid` the same, with nothing to step over.
+      if (t == "timeout" || t == "gtimeout" || t == "flock") { skip++; wrapv = 1; continue }
       if (t == "env" || t == "command" || t == "sudo" || t == "doas" ||
           t == "nohup" || t == "time" || t == "nice" || t == "ionice" ||
           t == "exec" || t == "builtin" || t == "source" ||
-          t == "xargs" || t == "stdbuf" ||
+          t == "xargs" || t == "stdbuf" || t == "caffeinate" || t == "setsid" ||
           t == "then" || t == "do" || t == "else") continue
       # Shell keywords are syntax, not commands. `then`, `do` and `else` were
       # here from the start and the rest were not, so a loop or a conditional put
@@ -492,6 +501,20 @@ verb_of() {
       exit
     }
   }' <<<"$1"
+}
+
+# Prints `stdin` when interpreter $1 is handed no file in segment $2 — no word
+# after its name that is not a flag — so it reads its code from a pipe or a
+# herestring, which the segmenter puts in a segment of its own. One function for
+# sections 1 and 3b: two copies of one contract are kept in step by nothing.
+interp_input() {
+  awk -v v="$1" '{
+    for (i = 1; i <= NF; i++) {
+      t = $i; gsub(/[\042\047]/, "", t); sub(".*/", "", t)
+      if (seen && t != "" && t !~ /^-/) found = 1
+      if (t == v) seen = 1
+    }
+  } END { print (found ? "file" : "stdin") }' <<<"$2"
 }
 
 # An interpreter handed a file reads it; an interpreter handed inline code can do
@@ -650,7 +673,7 @@ command_words() {
       # here, its second `(` is a separator, its operands are words, and a `<<`
       # inside it is a shift rather than a heredoc.
       if (c == "$" && nx == "(") {
-        depth++; sw[depth] = w; si[depth] = inw; sd[depth] = inD; sh[depth] = inH
+        depth++; sw[depth] = w; sd[depth] = inD; sh[depth] = inH
         ar[depth] = (substr(buf, i + 2, 1) == "("); bk[depth] = 0
         # Heredocs queue per substitution. One opened inside `$(…)` inside an
         # unquoted body must not send the walk back into the outer body, which
@@ -660,15 +683,20 @@ command_words() {
       }
       # A backtick is the same substitution with a different closer, so it takes
       # the same stack — heredoc queue included.
+      # On the close, the substitution was part of a word, so a word is open
+      # whatever was there before it: `$(true)#` is one word in bash, and with
+      # the old state restored here the `#` started a comment that hid the rest
+      # of the line — `cat $(true)# <a key>` named no path at all. A lone
+      # substitution now ends as an empty word, which no section matches.
       if (c == "`" && depth > 0 && bk[depth]) {
-        emit(); w = sw[depth]; inw = si[depth]; inD = sd[depth]; inH = sh[depth]; hdn = bs[depth]; cur = sc[depth]; depth--; continue
+        emit(); w = sw[depth]; inw = 1; inD = sd[depth]; inH = sh[depth]; hdn = bs[depth]; cur = sc[depth]; depth--; continue
       }
       if (c == "`") {
-        depth++; sw[depth] = w; si[depth] = inw; sd[depth] = inD; sh[depth] = inH
+        depth++; sw[depth] = w; sd[depth] = inD; sh[depth] = inH
         ar[depth] = 0; bk[depth] = 1; sc[depth] = cur; bs[depth] = hdn; cur = hdn + 1
         w = ""; inw = 0; inD = 0; inH = 0; continue
       }
-      if (c == ")" && depth > 0 && !bk[depth] && !inD && !inH) { emit(); w = sw[depth]; inw = si[depth]; inD = sd[depth]; inH = sh[depth]; hdn = bs[depth]; cur = sc[depth]; depth--; continue }
+      if (c == ")" && depth > 0 && !bk[depth] && !inD && !inH) { emit(); w = sw[depth]; inw = 1; inD = sd[depth]; inH = sh[depth]; hdn = bs[depth]; cur = sc[depth]; depth--; continue }
       if (inH) {
         if (c == "\n" && is_term(i, cur)) { i += tlen + 1; cur++; i = next_body(i) }
         continue
@@ -795,15 +823,8 @@ if grep -qE "$etc_text|$home_text|$secret_text" <<<"$stripped"; then
     if [ -z "$code" ] && grep -qxE "$interpreters" <<<"$v"; then
       if grep -qE "$inline_flag" <<<"$seg" || grep -q '<<' <<<"$seg"; then
         code="$lower"
-      # Handed no file, an interpreter reads its code from stdin — a pipe or a
-      # herestring, which the segmenter puts in a segment of its own.
-      elif ! awk -v v="$v" '{
-          for (i = 1; i <= NF; i++) {
-            t = $i; gsub(/[\042\047]/, "", t); sub(".*/", "", t)
-            if (seen && t != "" && t !~ /^-/) found = 1
-            if (t == v) seen = 1
-          }
-        } END { exit !found }' <<<"$seg"; then
+      # Handed no file, an interpreter reads its code from stdin.
+      elif grep -qx stdin <<<"$(interp_input "$v" "$seg")"; then
         code="$lower"
       fi
     fi
@@ -923,17 +944,24 @@ fi
 # is GNU `sed`'s `e` flag, and a file written in one call and run in a later
 # one, which the Edit tool can do as well and no Bash guard sees.
 gitpre='git([[:space:]]+(-c[[:space:]]*[^[:space:]]+|-C[[:space:]]*[^[:space:]]+|--git-dir[= ][^[:space:]]+|--work-tree[= ][^[:space:]]+|--no-pager|--paginate|--bare))+'
-text_verbs='echo|printf|grep|egrep|fgrep|rg|sed|jq|gh|cat|head|tail'
+# `tracker.sh` is the tracker seam a skill files through instead of `gh`: its
+# `--title` and `--search` are prose, and none of its ops runs an argument.
+text_verbs='echo|printf|grep|egrep|fgrep|rg|sed|jq|gh|tracker\.sh|cat|head|tail'
 git_hit=""
-skip_text=yes
+skip_text=yes others=0 own=""
 while IFS= read -r seg; do
   [ -z "${seg// /}" ] && continue
   seg_lower="$(tr '[:upper:]' '[:lower:]' <<<"$seg")"
-  grep -qxE "$text_verbs|git|cd" <<<"$(verb_of "$seg_lower")" || skip_text=""
+  v="$(verb_of "$seg_lower")"; [ "$v" = cd ] || others=$((others + 1))
+  grep -qxE "$text_verbs|git|cd" <<<"$v" || skip_text=""
   grep -qE '[[:space:]]alias[[:space:]]+(set|import)' <<<"$seg_lower" && skip_text=""
   # A file git runs, written by `sed -i` and run by the `git` beside it.
   grep -qE '\.git/|\.githooks|\.gitconfig|\.gitmodules' <<<"$seg_lower" && skip_text=""
+  # A text verb that may be a file this command wrote (`sed -i`, `>`, `cp`) — run by
+  # a path, under PATH=, or the repo's own seam — is text only if it runs alone.
+  grep -qE "(^|[[:space:]])path=|(^|[[:space:]\"'])tracker\\.sh|/($text_verbs)([[:space:]\"']|\$)" <<<"$seg_lower" && own=yes
 done < <(segments "$cmd")
+[ -n "$own" ] && [ "$others" -gt 1 ] && skip_text=""
 while IFS= read -r seg; do
   [ -z "${seg// /}" ] && continue
   seg_lower="$(tr '[:upper:]' '[:lower:]' <<<"$seg")"
@@ -1044,7 +1072,50 @@ delete_words='(^|[^a-z0-9_-])(rm|rmdir|unlink|shred|srm|rmtree|remove_tree|remov
 # at the head of a segment misses `bash -c "rm -rf ~/dev"`. So: the segment's
 # verb is a delete, or it carries a flag that deletes (`find -delete`, and
 # `rsync --delete`, whose second dash the old pattern did not allow).
+#
+# Every allow below is decided on the raw segment, never on lexed words. Inside
+# quotes, a flag in prose and a flag in code are the same bytes — `bash -c`,
+# `eval`, `| sh`, `$c` all run quoted text — so a flag inside quotes still
+# counts, and the denial says how to pass text that only mentions one. The
+# lexer was tried as a veto and lost on two facts: it emits a substitution's
+# words before the word around it, so the word after `-exec` is not what find
+# runs; and the segmenter cuts inside quotes at `>`, so a fragment can swallow
+# a real flag. A flag is matched after a quote or a backslash too: `"-delete"`
+# and `\-delete` are `-delete` to find.
+#
+# A find action is a delete unless it runs a listed reader, judged by
+# adjacency: whitespace, the action, whitespace, a bare reader or one under
+# `/bin` or `/usr/bin`, whitespace. A substitution, a quote, `./du` or `$X` in
+# that place breaks the match, so it refuses. The readers are listed — what is
+# missing refuses — and nothing that runs code is among them (`rg --pre`,
+# `env`, `xargs`, a shell). The actions are named once, for the trigger and the
+# exemption both: `-okdir` was missing from the trigger alone.
+#
+# `rsync` and `fd` carry deleting flags whose spelling means something else
+# elsewhere (`--del…` is `gh … --delete-branch` too; `-x` is everywhere), so
+# those are asked only of a segment where the tool's name is a word — not of
+# the verb, which `timeout`, `bash -c` and any unlisted wrapper hide.
+action_flags='exec|execdir|ok|okdir'
+find_readers='du|wc|ls|stat|file|cat|head|tail|grep|md5|md5sum|shasum|sha1sum|sha256sum|cksum|basename|dirname|realpath|readlink|echo|printf|test|jq'
+flag_lead='(^|[[:space:]]|["'"'"'\\])'
+flag_tail='([[:space:]"'"'"']|$)'
+delete_flag="$flag_lead--?delete$flag_tail"
+action_flag="$flag_lead--?($action_flags)$flag_tail"
+reader_action="(^|[[:space:]])-($action_flags)[[:space:]]+((/usr)?/bin/)?($find_readers)[[:space:]]"
+# Spelled in both cases by hand: the filesystem is case-insensitive, so `RSYNC`
+# runs rsync, and `[[ =~ ]]` has no flag for it short of a global shopt.
+rsync_word='(^|[[:space:]/"'"'"'])[Rr][Ss][Yy][Nn][Cc]([[:space:]"'"'"']|$)'
+rsync_delete='(^|[[:space:]])(--del(ete(-[a-z]+)*)?|--remove-source-files)([[:space:]="'"'"']|$)'
+# fd's exec flag counts only after fd's own name, so `ls -x /dev/fd` and
+# `tar -xzf fd` are not read as `fd -x`.
+fd_exec='(^|[[:space:]/"'"'"'])[Ff][Dd]([Ff][Ii][Nn][Dd])?[[:space:]"'"'"'](.*[[:space:]])?(-[A-Za-z]*[xX]|--exec(-batch)?)([[:space:]="'"'"']|[A-Za-z]|$)'
+quote_char='["'"'"']'
+# These tests are `[[ =~ ]]`, not grep: they run on every segment, and a
+# process per test per segment put a 99-segment command at 9 s against the
+# hook's 15. Each decision sets the flag on its own line, which is what the
+# mutation pass looks for, so it can blank the line and watch a delete pass.
 hits=""
+quoted_flag=""
 while IFS= read -r seg; do
   [ -z "${seg// /}" ] && continue
   v="$(verb_of "$seg")"
@@ -1058,10 +1129,24 @@ while IFS= read -r seg; do
   # `RM` on PATH to the same binary as `rm`, so `RM -rf` really deletes and was
   # matching nothing here. Costs a false positive only on a command whose name
   # differs from a delete verb by case alone, which is not a thing.
-  if grep -qixE "$delete_verbs" <<<"$v" \
-    || grep -qE '(^|[[:space:]])--?(delete|exec|execdir|ok)([[:space:]]|$)' <<<"$seg"; then
-    hits="$hits$seg"$'\n'
+  if grep -qixE "$delete_verbs" <<<"$v"; then
+    hits="$hits$seg"$'\n'; continue
   fi
+  flagged=""
+  if [[ $seg =~ $delete_flag ]]; then flagged=yes; fi
+  # The reader strip runs only where an action appears at all, so the one
+  # process it costs is not paid by every segment.
+  if [[ $seg =~ $action_flag ]]; then
+    acts="$(sed -E "s#$reader_action# #g" <<<"$seg")"
+    if [[ $acts =~ $action_flag ]]; then flagged=yes; fi
+  fi
+  if [[ $seg =~ $rsync_word ]]; then
+    if [[ $seg =~ $rsync_delete ]]; then flagged=yes; fi
+  fi
+  if [[ $seg =~ $fd_exec ]]; then flagged=yes; fi
+  [ -n "$flagged" ] || continue
+  hits="$hits$seg"$'\n'
+  if [[ $seg =~ $quote_char ]]; then quoted_flag=yes; fi
 done < <(segments "$cmd")
 
 # Inline interpreter code: `python3 -c "import shutil; shutil.rmtree(...)"`, or
@@ -1092,22 +1177,36 @@ done < <(segments "$cmd")
 # The flags are wider than they were. `-[a-z]*[ce]` missed `node -p`,
 # `node --eval`, `deno eval`, `php -r` and `bash --command`, and each deletes.
 flag_3b='(^|[[:space:]])(-[a-z]*[cepr]|--eval|--print|--command|eval)([[:space:]"'"'"'=]|$)'
+#
+# Section 1's two other code sources are read here too: `eval`, whose code is
+# its own segment, and an interpreter handed no file, which reads its code from
+# stdin — `echo "rm -rf ~/dev" | sh`. That code sits in another segment, so it
+# is the whole command that is read, as section 1 reads it. The cost is the one
+# recorded above, narrowed to pipes into a file-less interpreter: one of those
+# with a delete word anywhere in the command is refused.
 inline_delete=""
 while IFS= read -r seg; do
   [ -z "${seg// /}" ] && continue
   v="$(verb_of "$seg")"
-  grep -qxE "$interpreters" <<<"$v" || continue
-  grep -qE "$flag_3b" <<<"$seg" || grep -q '<<' <<<"$seg" || continue
-  grep -qiE "$delete_words" <<<"$seg" && { hits="$hits$seg"$'\n'; inline_delete=yes; }
+  code=""
+  if [[ $v == eval ]]; then code="$seg"; fi
+  if grep -qxE "$interpreters" <<<"$v"; then
+    if grep -qE "$flag_3b" <<<"$seg"; then code="$seg"; fi
+    if grep -q '<<' <<<"$seg"; then code="$seg"; fi
+    if grep -qx stdin <<<"$(interp_input "$v" "$seg")"; then code="$cmd"; fi
+  fi
+  [ -n "$code" ] || continue
+  if grep -qiE "$delete_words" <<<"$code"; then hits="$hits$seg"$'\n'; inline_delete=yes; fi
 done < <(segments "$cmd")
 delete_note=""
 [ -n "$inline_delete" ] && delete_note=" A delete word was found inside inline interpreter code, which is read as text, so a word in a string counts too. To put text that mentions a deletion into a file, use the Edit or Write tool."
+[ -n "$quoted_flag" ] && delete_note="$delete_note A find, rsync or fd flag inside quoted text counts too, because quoted text can be run (bash -c, eval, a pipe into sh, a variable). To pass text that only mentions one, such as an issue or pull request body, write it with the Write tool and use --body-file; to search for one, use the Grep tool."
 
 if [ -n "$hits" ]; then
   targets="$(printf '%s' "$hits" \
     | tr -d '"'"'" \
     | grep -oE '[^[:space:]]+' \
-    | grep -viE '^('"$delete_verbs"'|rmtree|rmsync|remove_tree|removedirs|remove|find|xargs|env|command|sudo|doas|nohup|time|nice|exec|builtin|'"$interpreters"'|import|from|os|shutil|fs|glob|do|done|then|else|fi|-[a-z-]*|[0-9]*>>?.*|[0-9]*<.*|&&|\|\||\{\}|\+|\\;)$' || true)"
+    | grep -viE '^('"$delete_verbs"'|rmtree|rmsync|remove_tree|removedirs|remove|find|xargs|env|command|sudo|doas|nohup|time|nice|exec|builtin|eval|timeout|gtimeout|caffeinate|setsid|flock|[0-9.]+[smhd]?|'"$interpreters"'|import|from|os|shutil|fs|glob|do|done|then|else|fi|-[a-z-]*|[0-9]*>>?.*|[0-9]*<.*|&&|\|\||\{\}|\+|\\;)$' || true)"
 
   if [ -z "$targets" ]; then
     deny "Could not determine what this delete targets; denying by default. Use explicit paths under the session scratchpad.$delete_note"
@@ -1158,6 +1257,15 @@ fi
 #     and the trash family that was the next guess.
 #   * Destruction that is not deletion: `> important.txt`, `dd of=`, `tee`,
 #     `mv` over something. Denying those means denying every write in the project.
+#   * A flag, or the rsync or fd name its flags are scoped by, spelled so the
+#     raw text never shows it: quoting inside the word (`-de''lete`,
+#     `rs""ync`), ANSI-C escapes (`$'-delete'`, whose body the segmenter drops,
+#     and its octal and hex forms), or a flag assembled from a variable
+#     (`x=-exec; find . $x rm {} +`).
+#   * Code that reaches an interpreter by a road the stdin test does not read:
+#     `| sh -s x` and `| bash /dev/stdin` look handed a file; `xargs … sh -c {}`
+#     brings the code through xargs; and inline code split at a `>` puts the
+#     delete word in a segment with no interpreter verb.
 #
 # So: narrowed, not closed. The verb list is the part that cannot be finished —
 # which is why the three fixes above were structural instead, closing the paths

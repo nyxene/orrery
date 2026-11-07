@@ -16,7 +16,7 @@ CASES="$here/cases.tsv"
 # Which lines of the guard are decisions. Read `guard-test-lib.sh` before
 # changing it: a decision whose spelling this misses is never mutated, and the
 # pass reports `survived=0` without ever having tried it.
-MUTANTS_RE='grep -q|deny "|sys_danger=1|resolved='
+MUTANTS_RE='grep -q|deny "|sys_danger=1|resolved=|flagged=yes|quoted_flag=yes|code="\$seg"'
 tmp="${TMPDIR:-/tmp}/orrery-bash-guard-test.$$"
 # A PATH shadow holding one fake `uname`, so the unmodelled-platform branch can
 # be exercised as written rather than by asking the guard to pretend.
@@ -127,11 +127,18 @@ probes() { # $1 = guard path — prints how many it gets wrong
   # not loaded when this guard refuses. Without this line it could be dropped
   # and nothing would go red.
   grep -q "the person's to rule on" <<<"$out" || fails=$((fails + 1))
+  # A flag inside quoted text is refused on purpose, and the refusal has to name
+  # the way to pass text that only mentions one; otherwise it teaches a
+  # respelling. The corpus scores the verdict and cannot see the words.
+  out="$(jq -n '{tool_input:{command:"gh issue create --title t --body \"mentions -delete here\""}}' \
+    | bash "$1" 2>/dev/null || true)"
+  grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
+  grep -q -- '--body-file' <<<"$out" || fails=$((fails + 1))
   echo "$fails"
 }
 
 trap_fails=0
-report_probes "$guard" "the Bash guard" "bad input, unknown platform, a loop body's refusal names the path, and carries the refusal rule" \
+report_probes "$guard" "the Bash guard" "bad input, unknown platform, a loop body's refusal names the path, carries the refusal rule, and a quoted flag's refusal names --body-file" \
   || trap_fails=$((trap_fails + $?))
 
 total="$(grep -cE '^(deny|allow)	' "$CASES")"

@@ -8,7 +8,7 @@ Consensus planning · fan-out execution · debt that gets paid ·
 rules earned from real incidents · guards that fire before every shell call
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.34.0-informational.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.35.0-informational.svg)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-8A63D2.svg)](https://claude.com/claude-code)
 [![Gates](https://github.com/nyxene/orrery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nyxene/orrery/actions/workflows/ci.yml?query=branch%3Amain)
 
@@ -60,7 +60,7 @@ its moment arrives.
 | 🩺 | **`diagnose`** | Find the cause, starting from a command that can prove it is gone |
 | ✅ | **`verify`** | Turn "should work" into a command that was run and read |
 | ✂️ | **`pare`** | Take the smallest solution that actually works |
-| 📋 | **`debt`** | File the mess you chose not to fix — and pay the declared quota down every feature task |
+| 📋 | **`debt`** | File the mess you chose not to fix — and pay two down every feature task |
 | 🧭 | **`doctor`** | Check the plugin is actually loaded and current, not just installed |
 | 🚪 | **`onboard`** | Bring Orrery into a project, or an older install onto this version — settings drafted, one script to run |
 | 📮 | **`feedback`** | Report friction with the tooling itself, sanitized, and only on your word |
@@ -176,10 +176,17 @@ your machine.
 Some skills reach GitHub, and only when you run them. Nothing goes anywhere
 but GitHub, and nothing is sent to this project.
 
-- **Your own tracker, through your own `gh` login, when you declare one.**
-  `build` opens the pull request whose merge closes the issue it finishes;
-  `debt` files and reads debt issues; `learn` files to an incident inbox repository if your project
-  declares one; `sharpen`'s claims check reads your label list. These are the
+- **Your own `gh` login is used in exactly two cases: the project declares
+  `"tracker": "github"`, or its `origin` is on GitHub.** With the tracker
+  declared, `onboard` files its issue and `sharpen`'s claims check reads your
+  label list through `hooks/tracker.sh` into `gh issue` and `gh label`, `debt`
+  calls `gh issue` directly, and the pull-request gate fires on `gh pr create`.
+  With a GitHub origin, `onboard` reads the repository's rulesets and opens its
+  pull request, `review` reads a pull request
+  with `gh pr diff` and `gh pr view`, and `handoff` lists pull requests. With
+  neither — `"tracker": "none"` and an origin elsewhere — none of these
+  calls `gh`; the tracker is a file register in the project. `learn` files to
+  an incident inbox repository only if your project declares one. These are the
   work you asked for, written where you keep your work.
 - **`doctor`**, one request: this plugin's own current commit, to tell you
   whether your installed copy has drifted from the marketplace source.
@@ -228,7 +235,7 @@ gh release verify v0.30.4 -R nyxene/orrery
 
 <div align="center">
 
-Version 0.34.0 · Canon, fourteen skills, three agents, 23 rules, nine hooks
+Version 0.35.0 · Canon, fourteen skills, three agents, 23 rules, nine hooks
 
 [MIT](LICENSE) © Evgeniy Kovrov
 

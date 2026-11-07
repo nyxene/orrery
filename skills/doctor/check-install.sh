@@ -336,8 +336,14 @@ if [ "$have_jq" -eq 1 ]; then
     github)
       src_repo=$(printf '%s' "$src_obj" | jq -r '.repo // empty' 2>/dev/null)
       if [ -n "$src_repo" ]; then
-        live_sha=$(git ls-remote "https://github.com/$src_repo.git" HEAD 2>/dev/null | cut -f1)
-        [ -z "$live_sha" ] && warn "couldn't reach https://github.com/$src_repo.git — skipping drift check (offline?)"
+        # git's own message is printed, not a guess: offline, a missing repo and a
+        # refused credential are three different things to fix.
+        if ls_out=$(git ls-remote "https://github.com/$src_repo.git" HEAD 2>&1); then
+          live_sha=$(printf '%s\n' "$ls_out" | awk '$2 == "HEAD" { print $1; exit }')
+        else
+          warn "couldn't reach https://github.com/$src_repo.git — skipping drift check"
+          printf '%s\n' "$ls_out" | sed 's/^/    /'
+        fi
       else
         warn "no repo recorded for the github-sourced marketplace in $src_where — skipping drift check"
       fi
@@ -673,8 +679,8 @@ fi
 # that merged with no record looks exactly like work that had one.
 # Asked once: each answer is several git and jq processes, and checks 11 and the
 # pull-request gate below both need all three.
-top="$(orrery_toplevel "$PROJECT")" problem="" tracker=""
-[ -z "$top" ] || { problem="$(orrery_config_problem "$PROJECT")"; tracker="$(orrery_tracker "$PROJECT")"; }
+top="$(orrery_toplevel "$PROJECT")" problem="" tracker="" host=""
+[ -z "$top" ] || { problem="$(orrery_config_problem "$PROJECT")"; tracker="$(orrery_tracker "$PROJECT")"; host="$(orrery_code_host "$PROJECT")"; }
 if [ -n "$top" ]; then
   case "$problem" in
     malformed) bad ".orrery/config.json does not parse — every declaration in it reads as its default"
@@ -685,6 +691,10 @@ if [ -n "$top" ]; then
                row "config" "both malformed" ;;
     missing)   warn "no .orrery/config.json beside a GitHub remote, and no tracker in .orrery/local/config.json — the tracker reads as none, so a branch's first push is gated rather than gh pr create; declare \"tracker\": \"github\" to keep the pull request as the gate"
                row "config" "missing" ;;
+    unknown-tracker) warn "tracker \"$(orrery_config tracker "" "$PROJECT")\" ($(orrery_config_source tracker "$PROJECT") config) is not one Orrery knows, so it reads as none — a branch's first push is gated rather than gh pr create; declare \"github\" or \"none\""
+               row "config" "unknown tracker" ;;
+    tracker-without-host) warn "tracker github is declared but origin is not on GitHub — neither the pull-request gate nor the first-push gate fires, and gh cannot infer a repository; add a GitHub origin or declare \"tracker\": \"none\""
+               row "config" "tracker without host" ;;
     *)         ok "config read: tracker $tracker ($(orrery_config_source tracker "$PROJECT"))"
                row "config" "tracker $tracker" ;;
   esac
@@ -709,6 +719,17 @@ if [ -n "$top" ]; then
     bad ".orrery/local/ does not ignore config.json, so this machine's settings can be committed — make .orrery/local/.gitignore a single * line"
     row "local ignored" "no"
   fi
+  # Retired: a plan is the work's item, `.orrery/work/<work>/item.md`, and no
+  # skill reads this key. The file is the person's, so the line says whose edit it is.
+  psrc="$(orrery_config_source planDirectory "$PROJECT")"
+  if [ "$psrc" != default ]; then
+    warn "planDirectory is retired ($psrc config) — plans live in the work's item, .orrery/work/<work>/item.md; remove the key from that file (a person's edit — the model may not write it); existing plan files stay as history"
+    row "planDirectory" "retired, still declared"
+  fi
+  dsrc="$(orrery_config_source debtLabels "$PROJECT")"
+  [ "$dsrc" = default ] || { warn "debtLabels is retired ($dsrc config) — replaced by areas and debtPool, and read in legacy mode only while areas is absent; move it to those keys (a person's edit — the model may not write it)"; row "debtLabels" "retired, still declared"; }
+  nareas="$(jq -r '.areas | arrays | length' <<<"$(orrery_config_json "$PROJECT")" 2>/dev/null || true)"
+  [ "${nareas:-0}" -le 8 ] || warn "areas declares $nareas values; the method allows at most eight, since a longer axis stops sorting anything (a person's edit)"
   # Copied once into `.orrery/` when a hook first needed them, and left where
   # they were so nothing was lost. One is still read: `.claude/orrery-deny.json`,
   # by permissions-check.sh, while `.orrery/deny-declined.json` does not exist.
@@ -774,12 +795,12 @@ fi
 # shape said nothing there, which is silence for exactly the repository with
 # zero merge-side coverage.
 #
-# Only where there is a tracker for a pull request to name: a GitHub one, or a
-# GitHub remote with no config yet, which the config check above already names.
-# A repository with neither has no issue to name, and is not told it lacks a gate
-# for one. Outside a repository there is no telling, so the check runs.
-if [ -n "$top" ] && [ "$tracker" != github ] && [ "$problem" != missing ]; then
-  row "pr gate" "n/a — no tracker"
+# Only where pull requests are GitHub's: an origin on GitHub, whatever the
+# tracker. The gate is a GitHub Actions workflow, and a project there with no
+# tracker still has pull requests. Outside a repository there is no telling, so
+# the check runs.
+if [ -n "$top" ] && [ "$host" != github ]; then
+  row "pr gate" "n/a — no GitHub origin"
 elif grep -rlq 'names-an-issue' "$PROJECT/.github/workflows" 2>/dev/null; then
   ok "a workflow refuses a pull request that names no issue"
   row "pr gate" "present"
