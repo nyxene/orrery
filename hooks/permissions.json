@@ -30,6 +30,8 @@
     "allow": [
       "Bash(./hooks/bash-guard.test.sh *)",
       "Bash(./hooks/call-log.test.sh *)",
+      "Bash(./hooks/tracker.sh labels)",
+      "Bash(./hooks/tracker.sh list *)",
       "Bash(./skills/sharpen/check-claims.sh *)",
       "Bash(./tools/changelog.sh --check)",
       "Bash(./tools/promote.test.sh *)",
@@ -45,6 +47,8 @@
       "Bash(gh pr view *)",
       "Bash(hooks/bash-guard.test.sh *)",
       "Bash(hooks/call-log.test.sh *)",
+      "Bash(hooks/tracker.sh labels)",
+      "Bash(hooks/tracker.sh list *)",
       "Bash(skills/sharpen/check-claims.sh *)",
       "Bash(tools/changelog.sh --check)",
       "Bash(tools/promote.test.sh *)",

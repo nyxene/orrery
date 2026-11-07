@@ -144,6 +144,9 @@ allow	grep -rn "\.netrc" .
 deny	echo $(( $(cat .env) ))
 deny	echo ${X:-$(cat .env)}
 deny	cat <<EOF\n$(cat .env)\nEOF
+# A substitution followed by `#` is one word in bash; read as a comment, the
+# path after it was never a word at all.
+deny	cat $(true)# .env
 allow	cat <<'EOF'\n$(cat .env)\nEOF
 deny	cat $'.env'
 # The third audit. An empty unquoted body ends on the very next line, and the
@@ -224,6 +227,15 @@ allow	grep -rn "git push --force" docs/
 allow	sed -i '' 's/git -C "$root" branch -D "$branch"/x/' tools/tidy.sh
 allow	grep -n 'git -C /x reset --hard' hooks/bash-guard.sh
 allow	gh issue comment 1 --body 'git --git-dir=/x/.git clean -fdx'
+# The tracker seam, `hooks/tracker.sh`, carries a title and a search the same
+# way, by every path a skill types it. The one it cannot see is a path behind an
+# expansion: the verb is unknown until the shell expands it, so that form is
+# still read whole, and skills type the base-directory form instead.
+allow	hooks/tracker.sh file --type bug --title "git -C /x reset --hard is refused" --body-file b.md
+allow	/Users/someone/.claude/plugins/cache/orrery/orrery/0.34.0/skills/build/../../hooks/tracker.sh -C /Users/someone/dev file --type bug --title 'git -C .. clean -fdx' --body-file b.md
+allow	./hooks/tracker.sh list --search 'git --git-dir=/x/.git clean -fdx'
+deny	"${CLAUDE_PLUGIN_ROOT:-.}/hooks/tracker.sh" file --type bug --title 'git -C /x reset --hard' --body-file b.md
+deny	hooks/tracker.sh note 12 --body-file b.md && git -C /Users/someone/dev reset --hard
 deny	bash -c 'git -C /Users/someone/dev reset --hard'
 deny	find . -name .git -execdir git -C .. clean -fdx \;
 deny	sed -n 1p f && git -C /Users/someone/dev branch -D x
@@ -242,6 +254,15 @@ deny	echo 'git -C /Users/someone/dev reset --hard' | xargs env
 deny	/opt/homebrew/bin/gh alias set rh '!git -C /Users/someone/dev reset --hard' && gh rh
 deny	echo 'git -C /Users/someone/dev reset --hard' > s; chmod +x s; ./s
 deny	echo 'import os; os.system("git -C /Users/someone/dev reset --hard")' | python3.12
+# A text verb run by its path, over a file the same command wrote: an overwrite
+# keeps the executable bit, and the seam is an executable in the repository.
+deny	echo 'git -C /Users/someone/dev reset --hard' > hooks/tracker.sh; hooks/tracker.sh
+deny	echo 'git -C /Users/someone/dev reset --hard' > bin/gh; bin/gh
+deny	sed -i '1i git -C /Users/someone/dev reset --hard' hooks/tracker.sh; hooks/tracker.sh
+deny	cd hooks; echo 'git -C /Users/someone/dev reset --hard' > tracker.sh; PATH=.:$PATH tracker.sh
+# The price, a false refusal: such a verb is read as text only when it is the
+# one thing the command runs, so a redirect or a pipe beside it is read whole.
+deny	hooks/tracker.sh list --search 'git -C /x reset --hard' > out.txt
 allow	cd hooks && grep -n 'git -C /x reset --hard' bash-guard.sh
 deny	sed -i '1a git -C /Users/someone/dev reset --hard' .githooks/pre-commit && git commit --allow-empty -m x
 deny	sed -i '$a x = !git -C /Users/someone/dev reset --hard' .git/config && git x
@@ -474,6 +495,8 @@ allow	cat ~/notes.md
 allow	gh pr create --title "chore: rm dead code"
 allow	git commit -m "fix: remove the old rm handler"
 allow	gh issue comment 1 --body "the rm path is denied"
+allow	hooks/tracker.sh file --type chore --title "chore: rm -rf the dead code" --body-file b.md
+deny	hooks/tracker.sh note 3 --body-file b.md && rm -rf /Users/someone/dev
 # a remote branch is git's to delete and 3a governs the destructive git verbs;
 # an interpreter handed a file, not inline code, is running a script
 allow	git push --delete origin feature-x
@@ -687,3 +710,77 @@ allow	grep -n reconcile hooks/permissions-check.sh
 # cost since its interpreter arm was added; an editor writes the file instead and
 # nothing is lost.
 deny	printf %s \\n'bash -c "hooks/permissions-check.sh --reconcile ."'
+
+# --- 3b. a find action, a quoted flag, and the flags the trigger missed ------
+# A find action is a delete unless it runs a listed reader, judged on the raw
+# text: whitespace, a bare reader (or one under /bin, /usr/bin), whitespace.
+allow	find . -path './*orrery-lab*' -maxdepth 2 -name '*.jsonl' -exec du -ch {} +
+allow	find . -type f -exec wc -l {} +
+allow	find . -exec /usr/bin/du {} +
+allow	for c in "find . -exec du {} +" "x"; do echo "$c"; done
+# The widened trigger must not reach these.
+allow	gh pr merge 5 --squash --delete-branch
+allow	bash -x script.sh
+allow	grep -x foo f
+allow	rsync -a --delay-updates a/ b/
+# A reader exemption cannot be borrowed by what follows it, or by a word that
+# only looks like a reader.
+deny	find . -exec du {} \; -exec rm {} \;
+deny	find . -name "a>b'" -exec rm {} +
+deny	find . -exec sh -c 'rm -rf x' \;
+deny	find . -exec env rm {} +
+deny	find . -exec "$(echo rm)" {} +
+deny	find . -exec `printf rm` {} +
+deny	find . -exec $(echo rm) {} +
+deny	find . -type f -exec rg --pre rm . {} +
+deny	find . -exec ./du {} +
+deny	echo "$(find / -exec rm {} +)"
+deny	find . -ok rm {} \;
+deny	find . -okdir rm {} \;
+# Quoted text can be run, so a flag inside it still counts.
+deny	c='find . -delete -print'; $c
+deny	for c in "find . -delete -print"; do $c; done
+deny	eval "find . -delete -print"
+deny	bash -c "find ~/dev -type f -delete -print"
+deny	bash -c "rsync -a --delete /tmp/e/ ~/dev/"
+deny	python3 -c "import os; os.system('find ~/dev -delete -print')"
+deny	echo 'find . -delete -print' | sh
+deny	echo x | xargs sh -c 'find . -delete -print'
+deny	sh <<'EOF'\nfind / -delete\nEOF
+deny	gh issue create --title t --body "mentions -exec and -delete here"
+deny	grep -n -- '-exec' f
+# A substitution followed by # is a word in bash, not a comment.
+deny	find . -path $(true)# -o -delete
+deny	ls $(true)# ; find . -delete
+# Quoted and escaped flags, which the trigger did not see.
+deny	find ~/dev "-delete"
+deny	find ~/dev \-delete
+# rsync and fd, scoped by the tool's name anywhere in the segment.
+deny	rsync -a --delete-after /tmp/e/ ~/dev/
+deny	rsync -a --del /tmp/e/ ~/dev/
+deny	rsync -a --remove-source-files ~/dev/ /tmp/e/
+deny	rsync -a --delete-missing-args /tmp/e/ ~/dev/
+deny	timeout 600 rsync -a --delete-after /tmp/e/ ~/dev/
+deny	sudo rsync -a --del /tmp/e/ ~/dev/
+deny	RSYNC -a --del /tmp/e/ ~/dev/
+deny	fd . ~/dev -x rm
+deny	fd . ~/dev -X rm
+deny	fd . ~/dev --exec-batch rm
+deny	fd . ~/dev --exec=rm
+deny	fd -Hx rm
+# Code with no inline flag: eval, and an interpreter handed no file.
+deny	eval "rm -rf ~/dev"
+deny	echo "rm -rf ~/dev" | sh
+# Wrappers verb_of did not know.
+deny	timeout 5 rm -rf ~/dev
+deny	timeout 1m rm -rf ~/dev
+deny	caffeinate -i rm -rf ~/dev
+deny	setsid rm -rf ~/dev
+deny	flock /tmp/l rm -rf ~/dev
+# fd's exec flag counts only after fd's own name.
+allow	ls -x /dev/fd
+allow	tar -xzf fd
+allow	grep -x fd file
+# A wrapper flag's value is not the verb.
+deny	flock -w 5 /tmp/l rm -rf ~/dev
+deny	timeout -s KILL 5 rm -rf ~/dev

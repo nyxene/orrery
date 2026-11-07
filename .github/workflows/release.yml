@@ -93,9 +93,15 @@ jobs:
           VERSION: ${{ steps.v.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "v$VERSION" >/dev/null 2>&1; then
+          # Only "release not found" means absent. Any other failure (auth,
+          # network) is not an answer: print it and fail rather than go on.
+          if view_out=$(gh release view "v$VERSION" 2>&1); then
             echo "the release page for v$VERSION already exists; leaving it alone"
             exit 0
+          elif ! grep -qi 'release not found' <<<"$view_out"; then
+            echo "could not ask whether the release page for v$VERSION exists:"
+            sed 's/^/    /' <<<"$view_out"
+            exit 1
           fi
           gh release create "v$VERSION" \
             --title "v$VERSION" \

@@ -61,7 +61,11 @@ cwd="$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null || true)"
 # model can say where a setting came from.
 committed="$(orrery_config_obj "$(orrery_config_file "$cwd")")"
 merged="$(orrery_config_json "$cwd" 2>/dev/null || printf '{}')"
-decl="$(jq -r --argjson c "$committed" 'to_entries[] | .key as $k | "- \($k): \(if (.value | type) == "string" then .value else (.value | tojson) end)\(if ($c | has($k)) then "" else " (local)" end)"' <<<"$merged" 2>/dev/null || true)"
+# A retired key is still printed, marked, so a host that kept it is not told it
+# is live: `planDirectory` named a second home for plans, which are the work's
+# item now. The tracker is printed as it resolves: `gitlab` reached the model as
+# live while every script read it as none.
+decl="$(jq -r --argjson c "$committed" --arg t "$(orrery_tracker "$cwd")" 'to_entries[] | .key as $k | "- \($k): \(if $k == "tracker" then $t elif (.value | type) == "string" then .value else (.value | tojson) end)\(if $k == "planDirectory" then " (retired — no skill reads it; a plan is the work'"'"'s item, .orrery/work/<work>/item.md)" elif $k == "debtLabels" then " (retired — replaced by areas and debtPool; read in legacy mode only while areas is absent)" else "" end)\(if ($c | has($k)) then "" else " (local)" end)"' <<<"$merged" 2>/dev/null || true)"
 [ -z "$decl" ] || decl="
 
 Settings this project declared for Orrery, from .orrery/config.json and this machine's .orrery/local/config.json:
@@ -81,10 +85,21 @@ case "$problem" in
   missing)   decl="$decl
 
 WARNING: this project is on GitHub and has no .orrery/config.json, so Orrery runs as if no tracker were configured. Tell the owner; only they write that file." ;;
+  unknown-tracker) decl="$decl
+
+WARNING: $(case "$(orrery_config_source tracker "$cwd")" in local) printf "this machine's .orrery/local/config.json declares" ;; *) printf '.orrery/config.json declares' ;; esac) tracker \"$(orrery_config tracker "" "$cwd")\", which Orrery does not know (github or none), so it runs as if no tracker were configured: tracker: none. Tell the owner; only they write that file." ;;
+  tracker-without-host) decl="$decl
+
+WARNING: the project declares tracker \"github\", but its origin is not on GitHub, so neither the pull-request gate nor the first-push gate fires and gh cannot infer a repository. Tell the owner: add a GitHub origin, or declare \"tracker\": \"none\"." ;;
   malformed*) decl="$decl
 
 WARNING: $(case "$problem" in malformed) printf '.orrery/config.json is' ;; malformed-local) printf "this machine's .orrery/local/config.json is" ;; *) printf 'neither .orrery/config.json nor .orrery/local/config.json is' ;; esac) not a valid JSON object, so its settings fall back to their defaults. Tell the owner; only they write that file." ;;
 esac
+# The area axis is the project's own, and a long one stops being a classification.
+areas_n="$(jq -r '.areas | arrays | length' <<<"$merged" 2>/dev/null || true)"
+if [ "$event" = SessionStart ] && [ "${areas_n:-0}" -gt 8 ]; then decl="$decl
+
+WARNING: \"areas\" declares $areas_n values; the method allows at most eight, since a longer axis stops sorting anything. Tell the owner; only they write that file."; fi
 
 jq -n --arg e "$event" --arg c "$(cat "$canon")" --arg d "$decl" --arg n "$notice" '{
   hookSpecificOutput: {

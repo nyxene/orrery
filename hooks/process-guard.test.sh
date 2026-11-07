@@ -63,7 +63,7 @@ CASES="$here/process-cases.tsv"
 # were about something else entirely. Blanking any of these leaves the variable
 # unset under `set -u`, the guard exits non-zero, and every `deny` case in the
 # corpus goes red, which is a real kill rather than an artifact.
-MUTANTS_RE='^[[:space:]]*(if )?grep -q|^[[:space:]]*if \[ -z "\$reason" \]|^(assign|pos|ghflags|gitflags|cfg|cfgpath|target|settings_msg)=|^[[:space:]]*(scan|pr|prmatch|since|gitdir|log|state|top|rec|base|last|waived|first|pushmatch|def|cur|head|work)=|^[[:space:]]*(\{ ! git|\|\| \{ \[ -n "\$base"|&& ! \{ git|if record_missing|if \[ -n "\$log" \]|if \[ -n "\$first" \]|if \[ "\$u" = 1|\|\| ! git|-u\||-d\||--all\||\[ "\$(src|dst)" !=|\[ -n "\$remote"|\[ "\$\{#refs|src="\$\{src#|case "\$dst"|git -C "\$top" show-ref|w="\$\{w#)|^if \[ -n "\$pushmatch" \]|^[[:space:]]*fp="\$\(fingerprint\)"|^if \[ -n "\$prmatch" \]|^[[:space:]]*if \[ -n "\$top" \]|^[[:space:]]*if \[ -n "\$log" \]|^[[:space:]]*if \[ -z "\$waived" \]|^[[:space:]]*waive "|^[[:space:]]*\[ ! -f "\$state" \]|^[[:space:]]*\$2 == fp|^[[:space:]]*\$6 == "ran"|^[[:space:]]*hd \{|^[[:space:]]*if \(match|^[[:space:]]*(if \(\$6 == "call"\)|else if \(\$6 ==|END \{ for \(id in call\))|^[[:space:]]*v="\$\(audit |^[[:space:]]*\[ "\$v" != |^[[:space:]]*\[ (-n "\$waived"|-z "\$log") \] \|\| audited'
+MUTANTS_RE='^[[:space:]]*(if )?grep -q|^[[:space:]]*if \[ -z "\$reason" \]|^(assign|pos|ghflags|gitflags|cfg|cfgpath|target|settings_msg)=|^[[:space:]]*(scan|pr|prmatch|since|gitdir|log|state|top|rec|base|last|waived|first|pushmatch|def|cur|head|work)=|^[[:space:]]*(\{ ! git|\|\| \{ \[ -n "\$base"|&& ! \{ git|if record_missing|git -C "\$top" check-ignore|if \[ -n "\$log" \]|if \[ -n "\$first" \]|if \[ "\$u" = 1|\|\| ! git|-u\||-d\||--all\||\[ "\$(src|dst)" !=|\[ -n "\$remote"|\[ "\$\{#refs|src="\$\{src#|case "\$dst"|git -C "\$top" show-ref|w="\$\{w#)|^if \[ -n "\$pushmatch" \]|^[[:space:]]*fp="\$\(fingerprint\)"|^if \[ -n "\$prmatch" \]|^[[:space:]]*if \[ -n "\$top" \]|^[[:space:]]*if \[ -n "\$log" \]|^[[:space:]]*if \[ -z "\$waived" \]|^[[:space:]]*waive "|^[[:space:]]*\[ ! -f "\$state" \]|^[[:space:]]*\$2 == fp|^[[:space:]]*\$6 == "ran"|^[[:space:]]*hd \{|^[[:space:]]*if \(match|^[[:space:]]*(if \(\$6 == "call"\)|else if \(\$6 ==|END \{ for \(id in call\))|^[[:space:]]*v="\$\(audit |^[[:space:]]*\[ "\$v" != |^[[:space:]]*\[ (-n "\$waived"|-z "\$log") \] \|\| audited'
 
 tmp="${TMPDIR:-/tmp}/orrery-process-guard-test.$$"
 mutdir="$tmp.mut"
@@ -192,10 +192,14 @@ probes() { # $1 = guard path — prints how many it gets wrong
   mkdir -p "$(dirname "$rec")"; printf '# Retrospective — %s\n' "$work" > "$rec"
   out="$(payload "$pr" toolu_r2 | bash "$1" 2>/dev/null || true)"
   grep -q 'record.sh write' <<<"$out" || fails=$((fails + 1))
-  # Where the project ignores its work, on disk is all there can be.
+  grep -q 'commit it with the work' <<<"$out" || fails=$((fails + 1))
+  # Where the project ignores its work, on disk is all there can be — and a
+  # refusal there says to write it, never to commit what cannot be committed.
   printf '.orrery/work/\n' > "$repo/.gitignore"
   out="$(payload "$pr" toolu_r3 | bash "$1" 2>/dev/null || true)"
   grep -q 'record.sh write' <<<"$out" && fails=$((fails + 1))
+  mv "$rec" "$rec.off"; out="$(payload "$pr" toolu_r3b | bash "$1" 2>/dev/null || true)"; mv "$rec.off" "$rec"
+  grep -q 'is never committed' <<<"$out" && ! grep -q 'commit it with' <<<"$out" || fails=$((fails + 1))
   rm -f "$repo/.gitignore"
   git -C "$repo" add .orrery/work && git -C "$repo" commit -q -m rec
   # The same name again after that record merged: the old record does not count.
@@ -242,6 +246,8 @@ probes() { # $1 = guard path — prints how many it gets wrong
   # audit still covers the next attempt.
   out="$(payload "$pr" toolu_p2 | bash "$1" 2>/dev/null || true)"
   grep -q '"deny"' <<<"$out" && fails=$((fails + 1))
+  chmod 000 "$state"; out="$(payload "$pr" toolu_p9 | bash "$1" 2>&1)"; chmod 644 "$state"  # unreadable, unwritable: both said with the cause, and still a pass
+  [ "$(grep -A1 'could not be' <<<"$out" | grep -c '^    .*pr-gate\.tsv')" = 2 ] && ! grep -q '"deny"' <<<"$out" || fails=$((fails + 1))
   # Once a create has run, the audit before it is spent.
   row ${d}4Z Bash - ran toolu_p2 >> "$calls"
   [ ! -f "$state" ] || sed -i.bak "s/^[^$(printf '\t')]*\(	$fp	toolu_p2\)$/${d}4Z\1/" "$state" && rm -f "$state.bak"

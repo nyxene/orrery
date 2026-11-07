@@ -63,6 +63,12 @@ case "$tool" in
         [ ! -e "$(orrery_marker "rules-$session-process" "$cwd")" ] || scope=git ;;
       *" git "*|" git "*|"git "*) scope=git ;;
       *" gh "*|"gh "*) scope=process ;;
+      # The tracker seam files and notes in `gh`'s place, by whatever path a skill
+      # types it; its `list` and `labels` only read, and enter nothing.
+      *tracker.sh*)
+        re="tracker\\.sh[\"']?[[:space:]]+(-C[[:space:]]+(\"[^\"]*\"|'[^']*'|[^[:space:]]+)[[:space:]]+)?(file|note)([[:space:]]|\$)"
+        [[ $cmd =~ $re ]] || exit 0
+        scope=process ;;
       *) exit 0 ;;
     esac
     ;;

@@ -69,7 +69,10 @@ evidence about a past decision, never a veto over the person directing the work.
 ## When NOT to invoke
 
 - **A fact about one codebase.** "This API returns 204 on empty" is
-  documentation, not a rule.
+  documentation, not a rule. So is a standing ruling the owner gives about
+  what this project is: write it into the project's own instructions in the
+  session it is given — never only into an operator's private memory, which no
+  subagent, teammate or other machine reads.
 - **Something a script can enforce.** If a linter, type-checker, or CI gate can
   catch it, add the gate. A rule that a machine could enforce is a rule that
   will be forgotten.

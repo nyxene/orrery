@@ -123,7 +123,7 @@ Raise it rather than adding a fifth line.
 
 ### Never write
 
-- The roadmap. That is the plan, or the issue where the project keeps one.
+- The roadmap. That is the work's item, `.orrery/work/<work>/item.md`.
 - What was accomplished. That is the diff and the log.
 - Rules or lessons. Those are `learn`, and they outlive this task.
 - Anything carried over "just in case". If it matters and is durable, it goes
@@ -143,7 +143,7 @@ of the dead end survives; one planned for later often is not written at all.
 
 2. **Verify before trusting it.** A handoff describes a past state, and the
    world moved: the branch may be gone, the PR may have merged, someone may
-   have fixed it. Check the actual state — `git log`, `gh pr list` where there is a tracker, the file
+   have fixed it. Check the actual state — `git log`, `gh pr list` where the origin is on GitHub, the file
    itself — before acting on a single line of it.
 
    A stale handoff followed confidently is worse than no handoff, because it

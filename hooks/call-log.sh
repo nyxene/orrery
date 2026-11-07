@@ -19,9 +19,9 @@
 # own instructions — the same omission removes the behaviour and the evidence of
 # it. The case this exists to catch is exactly that: a plan that spiked and then
 # skipped its checkers, which `skills/plan/SKILL.md` argues against and cannot
-# enforce. From here it is a session with a planner spawn, some Bash, and no
-# critic — visible without the skill cooperating and without reading anything it
-# produced.
+# enforce. From here it is a session with a `Skill plan` row, some Bash, and no
+# critic — drafting is not a spawn, but invoking the skill is a row — visible
+# without the skill cooperating and without reading anything it produced.
 #
 # ## What is recorded, and what is deliberately next to it and not recorded
 #
@@ -116,8 +116,10 @@ here="$(cd "$(dirname "$0")" && pwd -P)"
 # Outside a repository nothing is recorded: a file created in a stranger's tree
 # is damage they have to find, and a missing line costs a line.
 #
-# `ORRERY_CALL_LOG` is read once more, for one release: it names the old file,
-# whose rows are copied in the first time the new one is written.
+# `ORRERY_CALL_LOG` is still read, only to name the old file, whose rows are
+# copied in the first time the new one is written. It stays while a host may
+# upgrade from a version before 0.32.0, which moved the log; dropping it is a
+# release's own change, named in that release's changelog.
 old="${ORRERY_CALL_LOG:-.claude/orrery-calls.tsv}"
 
 if [ "${1:-}" = --purge ]; then

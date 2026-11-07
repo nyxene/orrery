@@ -59,10 +59,10 @@ eq "4 a session in the main checkout writing into a worktree archives it" "h" \
   "$(cat "$arch/w@$k1/handoff.md" 2>/dev/null)"
 
 # --- a Bash command archives every worktree -----------------------------------
-printf 'p\n' > "$wt/.orrery/work/w/plan.md"
+printf 'p\n' > "$wt/.orrery/work/w/item.md"
 bash_ "$main" "cd $wt && skills/build/record.sh write --what x"
 eq "5 record.sh run from anywhere archives the worktrees" "p" \
-  "$(cat "$arch/w@$k1/plan.md" 2>/dev/null)"
+  "$(cat "$arch/w@$k1/item.md" 2>/dev/null)"
 
 # --- a deletion in the tree takes nothing from the copy -----------------------
 # A record removed while the work's directory remains, so the copy runs over a

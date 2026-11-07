@@ -52,7 +52,7 @@ substantially, that is a fact for the report, not a reason to stop.
 
 **Related:** the rule that every merge is recorded in an issue is the other
 half — it says a record must exist, this one says the record is not where the
-work goes to wait. The rule that every task also pays the declared debt quota governs
+work goes to wait. The rule that every task also pays two debts governs
 the pool of things already filed; this one governs what is allowed to enter it,
 and a defect you found today is not one of them. Canon §2 draws the other boundary —
 a defect is not a drive-by refactor, and a refactor is not a defect.

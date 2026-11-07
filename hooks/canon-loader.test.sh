@@ -154,13 +154,26 @@ fi
 
 # --- the project's declarations follow the canon -----------------------------
 mkdir -p "$repo/.orrery"
-printf '{"planDirectory":"plans-here/","tracker":"github"}' > "$repo/.orrery/config.json"
+printf '{"qualityGates":"make test","tracker":"github"}' > "$repo/.orrery/config.json"
 ctx="$(context "$(feed SubagentStart "$repo")")"
-if grep -qF -- '- planDirectory: plans-here/' <<<"$ctx" && grep -qF -- '- tracker: github' <<<"$ctx"; then
+if grep -qF -- '- qualityGates: make test' <<<"$ctx" && grep -qF -- '- tracker: github' <<<"$ctx"; then
   ok "declarations in .orrery/config.json reach the context"
 else
   bad "declarations in .orrery/config.json reach the context" "$ctx"
 fi
+printf '{"planDirectory":"docs/p/"}' > "$repo/.orrery/config.json"
+if grep -qF -- '- planDirectory: docs/p/ (retired' <<<"$(context "$(feed SubagentStart "$repo")")"; then
+  ok "a retired key is printed as retired, not as a live setting"
+else bad "a retired key is printed as retired, not as a live setting" "no retired mark"; fi
+printf '{"debtLabels":{"type":"type/debt"},"areas":["a","b","c","d","e","f","g","h"]}' > "$repo/.orrery/config.json"
+ctx="$(context "$(feed SessionStart "$repo")")"
+if grep -qF -- '- debtLabels: {"type":"type/debt"} (retired — replaced by areas and debtPool' <<<"$ctx" && ! grep -q 'WARNING.*"areas"' <<<"$ctx"; then
+  ok "debtLabels is marked retired, naming areas and debtPool; eight areas pass"
+else bad "debtLabels is marked retired, naming areas and debtPool; eight areas pass" "$ctx"; fi
+printf '{"areas":["a","b","c","d","e","f","g","h","i"]}' > "$repo/.orrery/config.json"
+if grep -qF 'WARNING: "areas" declares 9 values' <<<"$(context "$(feed SessionStart "$repo")")"; then
+  ok "more than eight areas is warned at session start"
+else bad "more than eight areas is warned at session start" "no warning"; fi
 
 # --- a GitHub project with no config is told, once per session --------------
 rm -f "$repo/.orrery/config.json"
@@ -175,6 +188,15 @@ if grep -q 'WARNING' <<<"$(context "$(feed SubagentStart "$repo")")"; then
 else
   ok "the warning is not repeated in every subagent"
 fi
+printf '{"tracker":"gitlab"}' > "$repo/.orrery/config.json"; ctx="$(context "$(feed SessionStart "$repo")")"
+if grep -qF -- '- tracker: none' <<<"$ctx" && grep -qF 'WARNING: .orrery/config.json declares tracker "gitlab"' <<<"$ctx"; then ok "an unknown tracker reaches the context as none, warned by name"
+else bad "an unknown tracker reaches the context as none, warned by name" "$ctx"; fi
+rm "$repo/.orrery/config.json"; mkdir -p "$repo/.orrery/local"; printf '{"tracker":"gitlab"}' > "$repo/.orrery/local/config.json"
+if grep -qF "WARNING: this machine's .orrery/local/config.json declares tracker \"gitlab\"" <<<"$(context "$(feed SessionStart "$repo")")"; then ok "an unknown tracker from the local file names the local file"
+else bad "an unknown tracker from the local file names the local file" "no local warning"; fi; rm "$repo/.orrery/local/config.json"
+git -C "$repo" remote set-url origin git@gitlab.com:x/y.git; printf '{"tracker":"github"}' > "$repo/.orrery/config.json"
+if grep -q 'WARNING.*origin is not on GitHub' <<<"$(context "$(feed SessionStart "$repo")")"; then ok "a GitHub tracker with no GitHub origin is warned"
+else bad "a GitHub tracker with no GitHub origin is warned" "no warning"; fi
 
 # --- a malformed config is said, and does not stop the canon -----------------
 printf 'not json' > "$repo/.orrery/config.json"
@@ -187,10 +209,10 @@ fi
 
 # --- this machine's local file: marked for the model, gate keys told the person
 mkdir -p "$repo/.orrery/local"
-printf '{"planDirectory":"p/"}' > "$repo/.orrery/config.json"
+printf '{"qualityGates":"p/"}' > "$repo/.orrery/config.json"
 printf '{"callLog":false,"outputLanguage":"Russian"}' > "$repo/.orrery/local/config.json"
 out="$(feed SessionStart "$repo")"; ctx="$(context "$out")"
-if grep -qF -- '- callLog: false (local)' <<<"$ctx" && grep -qF -- '- planDirectory: p/' <<<"$ctx" \
+if grep -qF -- '- callLog: false (local)' <<<"$ctx" && grep -qF -- '- qualityGates: p/' <<<"$ctx" \
    && ! grep -qF -- 'p/ (local)' <<<"$ctx"; then
   ok "a key from the local file is marked (local), a committed one is not"
 else
@@ -201,7 +223,7 @@ if jq -e '(.systemMessage | test("callLog=false")) and (.systemMessage | test("o
 else
   bad "a local gate key reaches the person, beside the canon, and only gate keys do" "$out"
 fi
-printf '{"planDirectory":"p/","callLog":true}' > "$repo/.orrery/config.json"
+printf '{"qualityGates":"p/","callLog":true}' > "$repo/.orrery/config.json"
 if jq -e 'has("systemMessage") | not' <<<"$(feed SessionStart "$repo")" >/dev/null 2>&1; then
   ok "a gate key the committed file declares is not told as local"
 else

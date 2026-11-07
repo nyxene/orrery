@@ -131,6 +131,10 @@ news.
   `gh pr create`. Declaring `"tracker": "github"` is the project's edit to make;
   the model may not write that file. **malformed** — it does not parse, and every
   declaration in it reads as its default.
+- **planDirectory: retired, still declared** — no skill reads it; a plan is the
+  work's item, `.orrery/work/<work>/item.md`. Removing the key is the person's
+  edit, in whichever config file the line names; the model may not write either.
+  Plans already in that folder stay as history.
 - **Old files: n left** — files a hook used before `.orrery/` existed, copied
   once and read no more. Safe to delete once the old rows are not wanted.
 - **Records: r/n** — of the changes on the default branch in the window, how

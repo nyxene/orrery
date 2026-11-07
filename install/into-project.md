@@ -60,7 +60,7 @@ folder that is not its own:
                    doctor's log, session markers. Carries its own `.gitignore`.
                    Written by Orrery's hooks and scripts, never by the model —
                    except onboard's drafts, under local/onboard/<project>/
-  work/<work>/     a piece of work's record, handoff and plan — committed with the work
+  work/<work>/     a piece of work's item (its plan), record and handoff — committed with the work
   work/debt/       the debt register, where there is no tracker
   sharpen-log.md   what each `sharpen` pass proposed and decided — committed
 ```
@@ -90,9 +90,9 @@ Orrery holds the skills and guards. The project holds its own facts, in
 | `tracker` | `"github"`, or leave it out for none | every skill and guard that asks a tracker | No tracker: records, handoffs and debt are files, and a branch's first push is the gated act |
 | `callLog` | `false` to switch the call log off | the recorder, the audit gate | On |
 | `outputLanguage` | the terminal conversation's language | Canon §8, `build` | Everything stays English |
-| `planDirectory` | where plans go | `plan`, `build` | `.orrery/work/<work>/plan.md` |
-| `debtLabels` | `type`, `scope`, `priority`, `pool` — the labels in the tracker's own spelling | `debt` | Its queries match nothing, and an empty pool is indistinguishable from a clean one |
-| `debtQuota` | how many debt items a feature task also closes | `debt`, `build` | No quota; the skill tracks and reports only |
+| `areas` | The project's areas, bare values (`skills`, not `area/skills`), at most eight; the loader warns on more | `tracker.sh`, which refuses `--area` with a value not listed | A work item cannot be given an area |
+| `debtPool` | The areas whose debt feeds the two-per-task rule; a subset of `areas` | `debt` | An empty pool is indistinguishable from a clean one |
+| `debtLabels` | **Retired**, replaced by `areas` and `debtPool`. Read in legacy mode only while `areas` is absent: the areas are `pool` with `area/` stripped, and the chore type's label is `type` | `tracker.sh` | In legacy mode, nothing; once `areas` is declared, it is ignored |
 | `qualityGates` | the commands that prove the work | `build`, Canon §3 | The agent has no proving command to run |
 | `branchFlow` | how a change reaches the default branch | `build` | Branch-from-default, PR, squash |
 | `sharpenLog` | where `sharpen` keeps its log | `sharpen` | `.orrery/sharpen-log.md`, created on first use; one at the old `docs/sharpen-log.md` is moved there |
@@ -438,10 +438,13 @@ recommendation about your project.
 
 ## A pull request needs the work's record, and an auditor before it
 
-`hooks/process-guard.sh` refuses `gh pr create` until two things hold. In a
-project whose `.orrery/config.json` declares no tracker, the act is instead a
-branch's **first push** — no remote-tracking ref for it yet, a URL for a
-remote, or `-u` — and the record must be in the pushed branch. The audit there
+`hooks/process-guard.sh` refuses `gh pr create` until two things hold, in a
+project whose `.orrery/config.json` declares `"tracker": "github"`. In a
+project that declares none — the default, and the only mode for a host with no
+GitHub origin — the act is instead a branch's **first push** — no
+remote-tracking ref for it yet, a URL for a remote, or `-u` — and the record
+must be in the pushed branch. (A declared `github` with an origin that is not
+on GitHub gets neither gate; `doctor` and the session start say so.) The audit there
 counts from the branch's first reflog entry; later pushes pass, and so does a
 push straight to the default branch, which this gate does not serve.
 

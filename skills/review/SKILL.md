@@ -22,7 +22,7 @@ size roughly as often as they are right.
 
 | Argument | What to run |
 |---|---|
-| A PR number | `gh pr diff <n>`, and `gh pr view <n>` for the description and linked issue |
+| A PR number, where the origin is on GitHub | `gh pr diff <n>`, and `gh pr view <n>` for the description and linked issue |
 | A branch | `git diff $(git merge-base HEAD <branch>)..<branch>` |
 | A commit range | `git diff <range>` |
 | Paths, or nothing | `git diff HEAD` and `git status` — the uncommitted working tree |
@@ -88,8 +88,9 @@ their tier and the scope, then wait for the go-ahead. One agent does not need it
 
 `critic` returns a structured verdict. Pass it through — the severities, the
 evidence, the ranking. Then add the one thing the agent could not know: whether
-its findings are already tracked. A CRITICAL that duplicates an open issue is a
-different fact than a new one.
+its findings are already tracked — `<base>/../../hooks/tracker.sh list --search
+<words>`, `<base>` being the directory this skill was loaded from. A CRITICAL
+that duplicates an open item is a different fact than a new one.
 
 Anything real that is **not** being fixed here goes to the debt register through
 `debt` before this skill reports done. A review whose findings evaporate

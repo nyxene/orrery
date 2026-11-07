@@ -352,11 +352,16 @@ record_missing() { # $1 = commit, $2 = the work's name (default: this tree's)
     && ! { git -C "$top" check-ignore -q "$rec" 2>/dev/null && [ -f "$top/$rec" ]; }
 }
 no_record() { # $1 = the act, $2 = where the record had to be
-  deny "$1 is where the work heads for the default branch, and its record is not
-committed: $rec is not in $2, or is the one the default branch already holds
-from an earlier work of the same name.
+  # An ignoring project passes on the file alone, so it is told to write, not commit.
+  local why="$rec is not in $2, or is the one the default branch already holds
+from an earlier work of the same name." how="Write it and commit it with the work:"
+  git -C "$top" check-ignore -q "$rec" 2>/dev/null && why="$rec is not on disk." \
+    && how="This project ignores .orrery/work/, so it is never committed: write it,
+and the file on disk is all this check needs:"
+  deny "$1 is where the work heads for the default branch, and its record is
+missing: $why
 
-Write it and commit it with the work:
+$how
 
   $here/../skills/build/record.sh write --what \"one line on what happened\"
 
@@ -423,6 +428,9 @@ read_log() {
   fi
   [ -r "$log" ] || log=""
 }
+# A lost pr-gate.tsv row shifts the next pull request's window, so a failed read
+# or write is said with its cause. The decision is made exactly as before.
+unkept() { printf 'process-guard: %s could not be %s:\n' "${state:-pr-gate.tsv}" "$1" >&2; sed 's/^/    /' <<<"$2" >&2; }
 
 # With a GitHub tracker the gated act is the pull request; without one, the
 # first push of a branch, below. One gated act per mode, never two on one state.
@@ -441,12 +449,14 @@ if [ -n "$prmatch" ] && [ "$(orrery_tracker "$dir")" = github ]; then
     state="$(orrery_local_file pr-gate.tsv "$gitdir/orrery-pr-gate" "$dir" || true)"
     fp="$(fingerprint)"
     since=""
-    [ ! -f "$state" ] || since="$(awk -F'\t' -v fp="$fp" '
+    gate() { awk -F'\t' -v fp="$fp" '
       NR == FNR { if ($6 == "ran") ran[$7] = 1; next }
-      $2 == fp && ($3 in ran) { s = $1 } END { print s }' "$log" "$state" 2>/dev/null || true)"
+      $2 == fp && ($3 in ran) { s = $1 } END { print s }' "$log" "$state"; }
+    # Read again only to say why: the answer and awk's words must not mix.
+    [ ! -f "$state" ] || since="$(gate 2>/dev/null)" || unkept read "$(gate 2>&1 >/dev/null)"
     [ -n "$waived" ] || audited "gh pr create" "$since" "its last pull request"
-    { printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$fp" \
-        "$(jq -r '.tool_use_id // "-"' <<<"$input" 2>/dev/null || true)" >>"$state"; } 2>/dev/null || true
+    werr="$({ printf '%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$fp" \
+        "$(jq -r '.tool_use_id // "-"' <<<"$input" 2>/dev/null || true)" >>"$state"; } 2>&1)" || unkept written "$werr"
   fi
 fi
 
